@@ -11,6 +11,8 @@
     rwx: S6 + 'VDOT_Road_Weather_ReadOnly/FeatureServer/0',
     county: S6 + 'County_Boundary/FeatureServer/0',
     power: 'https://utility.arcgis.com/usrsvcs/servers/aebf11ec0dea4f88a89928072eee0ef3/rest/services/Hosted/Join_VDEM_Regions_to_Locality_Power_Outages/FeatureServer/0',
+    usgs: 'https://waterservices.usgs.gov/nwis/iv/?format=json&siteStatus=active&period=PT24H&parameterCd=00065,00060,00045&bBox=-80.25,37.20,-79.40,37.95',
+    nwsg: 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/Live_Stream_Gauges_v1/FeatureServer/0',
     radar: 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity/MapServer/export'
   };
   var NEAR = ['Botetourt', 'Roanoke', 'Craig', 'Rockbridge', 'Bedford', 'Alleghany', 'Salem'];
@@ -23,10 +25,11 @@
     { k: 'vdot', n: 'VDOT incidents', c: COL.vdot, on: true },
     { k: 'power', n: 'Power outages', c: '#c77dff', on: true },
     { k: 'nws', n: 'Weather warnings', c: '#ffd27a', on: true },
+    { k: 'gauge', n: 'River & rain gauges', c: '#3D9BFF', on: true },
     { k: 'radar', n: 'Radar', c: '#2FBF71', on: false },
     { k: 'cp', n: 'Command Post incidents', c: COL.cp, on: true }
   ];
-  var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [] }, asof: '', err: '', on: {}, timer: null };
+  var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [], gauges: [] }, asof: '', err: '', on: {}, timer: null };
   LAYERS.forEach(function (l) { O.on[l.k] = l.on; });
   try { var pr = CP.store.prefs(); if (pr.owOn) Object.assign(O.on, pr.owOn); O.tab = pr.owTab || 'map'; } catch (e) {}
 
@@ -46,11 +49,52 @@
       rwx: a.query(SRC.rwx, "station_name LIKE 'SAL%' OR road LIKE 'I-81%'", { geom: true, n: 300, fields: 'station_name,road,direction,air_temp_f,surface_temp_f,surface_status,black_ice_signal,obs_time,is_stale,latitude,longitude' }),
       cp: a.own ? a.query(a.own.url + '/0', "status<>'Closed'", { geom: true, n: 100, fields: 'incident_name,incident_type,status,complexity,ic_name,location_desc' }) : Promise.resolve([])
     };
+    jobs.gauges = O.loadGauges();
     var errs = [];
     await Promise.all(Object.keys(jobs).map(function (k) { return jobs[k].then(function (r) { O.d[k] = r; }).catch(function (e) { errs.push(k + ': ' + e.message); }); }));
     if (!O.county) a.query(SRC.county, '1=1', { geom: true, n: 1, fields: 'OBJECTID' }).then(function (r) { O.county = r[0] && r[0].geometry; O.draw(); }).catch(function () {});
     O.asof = new Date().toTimeString().slice(0, 5); O.err = errs.join(' · ');
     O.paint();
+  };
+
+  // ---- river & rain gauges: USGS live readings + NWS flood status ----
+  function miles(a, b, c, d) { var R = 3958.8, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); }
+  function inRings(lat, lng, rings) { var ins = false; (rings || []).forEach(function (p) { for (var i = 0, j = p.length - 1; i < p.length; j = i++) { var yi = p[i][1], xi = p[i][0], yj = p[j][1], xj = p[j][0]; if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) ins = !ins; } }); return ins; }
+  function toCounty(lat, lng) {
+    var g = O.county; if (!g || !g.rings) return null;
+    if (inRings(lat, lng, g.rings)) return 0;
+    var best = 1e9; g.rings.forEach(function (p) { for (var i = 0; i < p.length; i += 3) { var d = miles(lat, lng, p[i][1], p[i][0]); if (d < best) best = d; } }); return best;
+  }
+  function nice(n) { return String(n || '').toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\bVa\b/, 'VA').replace(/\bWv\b/, 'WV').replace(/\b(Nr|Bl|At|Near|Above|Below)\b/g, function (m) { return m.toLowerCase(); }); }
+  O.loadGauges = async function () {
+    var j = await fetch(SRC.usgs).then(function (r) { return r.json(); });
+    var nws = await CP.arc.query(SRC.nwsg, "org='NOAA'", { geom: true, n: 200, fields: 'stationid,name,status,status_24h,status_48h,stage_ft,stationurl,graphurl,lastupdate', extra: { geometry: '-80.25,37.20,-79.40,37.95', geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects' } }).catch(function () { return []; });
+    var sites = {}, now = Date.now();
+    (j.value && j.value.timeSeries || []).forEach(function (ts) {
+      var si = ts.sourceInfo, id = si.siteCode[0].value, p = ts.variable.variableCode[0].value;
+      var vals = (ts.values[0] && ts.values[0].value || []).map(function (v) { return { t: Date.parse(v.dateTime), v: parseFloat(v.value) }; }).filter(function (v) { return !isNaN(v.v) && v.v > -999; });
+      if (!vals.length) return;
+      var last = vals[vals.length - 1]; if (now - last.t > 6 * 3600e3) return; // skip gauges not reporting
+      var s = sites[id] = sites[id] || { id: id, name: nice(si.siteName), lat: si.geoLocation.geogLocation.latitude, lng: si.geoLocation.geogLocation.longitude, t: 0 };
+      s.t = Math.max(s.t, last.t);
+      if (p === '00065') { s.stage = last.v; var old = vals.filter(function (v) { return v.t <= last.t - 3 * 3600e3; }).pop(); if (old) s.trend = last.v - old.v; var mx = Math.max.apply(null, vals.map(function (v) { return v.v; })); s.max24 = mx; }
+      if (p === '00060') s.flow = last.v;
+      if (p === '00045') { var sum = function (h) { return vals.filter(function (v) { return v.t > last.t - h * 3600e3; }).reduce(function (a, v) { return a + v.v; }, 0); }; s.rain = { h1: sum(1), h6: sum(6), h24: sum(24) }; }
+    });
+    var out = Object.keys(sites).map(function (k) { return sites[k]; });
+    nws.forEach(function (f) { // attach NWS flood status to the nearest USGS gauge (within half a mile), else keep it on its own
+      var a = f.attributes, g = f.geometry; if (!g) return;
+      var near = out.filter(function (s) { return miles(s.lat, s.lng, g.y, g.x) < 0.5; })[0];
+      var st = { status: a.status, f24: a.status_24h, f48: a.status_48h, url: a.stationurl, graph: a.graphurl };
+      if (near) near.nws = st; else if (a.lastupdate && now - a.lastupdate < 6 * 3600e3) out.push({ id: a.stationid, name: nice(a.name), lat: g.y, lng: g.x, stage: a.stage_ft, t: a.lastupdate, nws: st });
+    });
+    return out;
+  };
+  var FLOOD = { 'Major Flooding': ['#c21bd6', 4], 'Moderate Flooding': ['#F0444C', 3], 'Minor Flooding': ['#F28C28', 2], 'Action': ['#ffd27a', 1], 'Near Flood Stage': ['#ffd27a', 1] };
+  function flood(s) { var n = s.nws; if (!n) return null; var w = [n.status, n.f24, n.f48].map(function (x) { return FLOOD[x] ? x : null; }).filter(Boolean).sort(function (a, b) { return FLOOD[b][1] - FLOOD[a][1]; })[0]; return { now: n.status || '', worst: w || '', col: w ? FLOOD[w][0] : '#2FBF71' }; }
+  O.gaugeList = function () {
+    return O.d.gauges.map(function (s) { s.dc = toCounty(s.lat, s.lng); return s; }).filter(function (s) { return s.dc == null || s.dc <= 12; })
+      .sort(function (a, b) { var fa = flood(a), fb = flood(b), wa = fa && fa.worst ? FLOOD[fa.worst][1] : 0, wb = fb && fb.worst ? FLOOD[fb.worst][1] : 0; return (wb - wa) || ((a.dc || 0) - (b.dc || 0)); });
   };
 
   O.mount = function (box) {
@@ -71,7 +115,7 @@
   O.paint = function () {
     if (!O.box) return;
     var n = O.counts();
-    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['wx', 'Weather', n.nws]];
+    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['wx', 'Weather', n.nws + (O.gaugeList().filter(function (x) { var f = flood(x); return f && f.worst; }).length ? ' 🌊' : '')]];
     O.box.querySelector('#owBar').innerHTML = tabs.map(function (x) { return '<button class="' + (O.tab === x[0] ? 'on' : '') + '" data-act="owTab" data-a="' + x[0] + '">' + x[1] + (x[2] !== '' ? ' <b>' + x[2] + '</b>' : '') + '</button>'; }).join('') +
       '<span class="owasof">' + (O.err ? '<span title="' + E(O.err) + '" style="color:#ffb3b8">⚠ </span>' : '') + (O.asof ? 'Updated ' + O.asof : 'Loading…') + ' <button class="ibtn" data-act="owRefresh" title="Refresh now">' + I('refresh') + '</button></span>';
     var mapEl = O.box.querySelector('#owMap'), list = O.box.querySelector('#owList');
@@ -134,6 +178,12 @@
       var a = f.attributes, gm = f.geometry; if (!gm) return;
       g.cp.addLayer(L.marker([gm.y, gm.x], { icon: L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10], html: '<div class="owdia" style="background:' + COL.cp + ';width:16px;height:16px"></div>' }) }).bindPopup(pop(a.incident_name, [['Type', a.incident_type], ['Status', a.status], ['Type level', a.complexity], ['IC', a.ic_name], ['Where', a.location_desc]])));
     });
+    O.gaugeList().forEach(function (s) {
+      var fl = flood(s), rainOnly = s.stage == null && s.rain, col = rainOnly ? '#2FBF71' : (fl ? fl.col : '#3D9BFF');
+      var lbl = rainOnly ? (s.rain.h24 ? s.rain.h24.toFixed(2) + '"' : '0"') : (s.stage != null ? s.stage.toFixed(1) + "'" : '');
+      var html = '<div class="owgauge' + (rainOnly ? ' rain' : '') + '" style="border-color:' + col + '">' + lbl + '</div>';
+      g.gauge.addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: null, html: html }) }).bindPopup(pop(s.name, [['Stage', s.stage != null ? s.stage.toFixed(2) + ' ft' + (s.trend != null ? (s.trend > 0.05 ? ' ▲ rising' : s.trend < -0.05 ? ' ▼ falling' : ' steady') : '') : ''], ['Flow', s.flow != null ? Math.round(s.flow).toLocaleString() + ' cfs' : ''], ['NWS status', fl ? fl.now : ''], ['Forecast', fl && fl.worst && fl.worst !== fl.now ? fl.worst : ''], ['Rain 1 h / 6 h / 24 h', s.rain ? s.rain.h1.toFixed(2) + ' / ' + s.rain.h6.toFixed(2) + ' / ' + s.rain.h24.toFixed(2) + ' in' : ''], ['Reading', t(s.t)]]) + '<br><a href="' + (s.nws && s.nws.url || 'https://waterdata.usgs.gov/monitoring-location/' + s.id + '/') + '" target="_blank" rel="noopener">Gauge page ↗</a>'));
+    });
     LAYERS.forEach(function (l) { var on = O.on[l.k]; if (on && !O.map.hasLayer(g[l.k])) g[l.k].addTo(O.map); if (!on && O.map.hasLayer(g[l.k])) O.map.removeLayer(g[l.k]); });
     if (O.on.radar) O.radar();
     var leg = O.box.querySelector('#owLeg');
@@ -172,6 +222,18 @@
     }
     if (tab === 'wx') {
       h = '<div class="ownote">Weather warnings for Botetourt County</div>' + (O.d.nws.length ? O.d.nws.map(function (f) { var a = f.attributes; return '<div class="owcard" style="border-left-color:#ffd27a"><div class="owt"><b>' + E(a.Event) + '</b><span>' + E(a.Severity || '') + '</span></div><div class="owa">Until ' + t(a.End_) + '</div></div>'; }).join('') : '<div class="owempty">No active watches or warnings.</div>');
+      var gl = O.gaugeList(), rivers = gl.filter(function (x) { return x.stage != null || x.flow != null; }), rains = gl.filter(function (x) { return x.rain; });
+      var where = function (x) { return x.dc == null ? '' : x.dc === 0 ? '<span class="owin">In county</span>' : Math.round(x.dc) + ' mi out'; };
+      h += '<div class="ownote" style="margin-top:14px">River gauges (' + rivers.length + ')</div>';
+      h += rivers.length ? '<table class="owtab"><tr><th>Gauge</th><th>Stage</th><th>Flow</th><th>Flood</th><th></th></tr>' + rivers.map(function (x) {
+        var fl = flood(x), tr = x.trend == null ? '' : x.trend > 0.05 ? ' <span style="color:#F28C28">▲</span>' : x.trend < -0.05 ? ' <span style="color:#93A9C3">▼</span>' : '';
+        return '<tr' + (fl && fl.worst ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + where(x) + ' · ' + t(x.t) + '</small></td><td>' + (x.stage != null ? x.stage.toFixed(2) + ' ft' + tr : '') + '</td><td>' + (x.flow != null ? Math.round(x.flow).toLocaleString() + ' cfs' : '') + '</td><td>' + (fl ? '<span style="color:' + fl.col + '">' + E(fl.worst || fl.now || '') + '</span>' : '<small>no NWS stage</small>') + '</td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>';
+      }).join('') + '</table>' : '<div class="owempty">No river gauges reporting.</div>';
+      h += '<div class="ownote" style="margin-top:14px">Rain gauges (' + rains.length + ')</div>';
+      h += rains.length ? '<table class="owtab"><tr><th>Gauge</th><th>1 h</th><th>6 h</th><th>24 h</th><th></th></tr>' + rains.sort(function (a, b) { return b.rain.h24 - a.rain.h24; }).map(function (x) {
+        return '<tr' + (x.rain.h1 >= 0.5 ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + where(x) + ' · ' + t(x.t) + '</small></td><td>' + x.rain.h1.toFixed(2) + '"</td><td>' + x.rain.h6.toFixed(2) + '"</td><td>' + x.rain.h24.toFixed(2) + '"</td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>';
+      }).join('') + '</table>' : '<div class="owempty">No rain gauges reporting.</div>';
+      h += '<div class="dim" style="font-size:11px;margin-top:6px">USGS live readings, NWS flood status and forecast. Gauges within 12 miles of the county line.</div>';
       var r = O.d.rwx.filter(function (f) { return f.attributes.is_stale !== 'Yes'; });
       if (r.length) h += '<div class="ownote" style="margin-top:14px">VDOT road weather stations (I-81 / Salem)</div><table class="owtab"><tr><th>Station</th><th>Air</th><th>Road</th><th>Surface</th></tr>' + r.slice(0, 40).map(function (f) { var a = f.attributes, ice = /ice/i.test(a.black_ice_signal || '') && !/no ice/i.test(a.black_ice_signal || ''); return '<tr' + (ice ? ' class="me"' : '') + '><td>' + E((a.road || '') + ' ' + (a.direction || '')) + '<br><small>' + E(a.station_name || '') + '</small></td><td>' + (a.air_temp_f != null ? Math.round(a.air_temp_f) + '°' : '') + '</td><td>' + (a.surface_temp_f != null ? Math.round(a.surface_temp_f) + '°' : '') + '</td><td>' + E(a.surface_status || '') + (ice ? ' ⚠' : '') + '</td></tr>'; }).join('') + '</table>';
       return h;
