@@ -44,7 +44,7 @@
       power: a.query(SRC.power, nearW, { geom: true, n: 50, fields: 'name,localitylabel,customersout,customerstracked,percent_out,lastupdateddatetime' }),
       nws: a.query(a.L.nws, "Affected LIKE '%Botetourt%'", { geom: true, n: 50, fields: 'Event,Severity,End_,Affected' }),
       rwx: a.query(SRC.rwx, "station_name LIKE 'SAL%' OR road LIKE 'I-81%'", { geom: true, n: 300, fields: 'station_name,road,direction,air_temp_f,surface_temp_f,surface_status,black_ice_signal,obs_time,is_stale,latitude,longitude' }),
-      cp: a.own ? a.query(a.own.url + '/0', "status<>'Closed'", { geom: true, n: 100, fields: 'name,type,status,complexity' }) : Promise.resolve([])
+      cp: a.own ? a.query(a.own.url + '/0', "status<>'Closed'", { geom: true, n: 100, fields: 'incident_name,incident_type,status,complexity,ic_name,location_desc' }) : Promise.resolve([])
     };
     var errs = [];
     await Promise.all(Object.keys(jobs).map(function (k) { return jobs[k].then(function (r) { O.d[k] = r; }).catch(function (e) { errs.push(k + ': ' + e.message); }); }));
@@ -131,7 +131,7 @@
     });
     O.d.cp.forEach(function (f) {
       var a = f.attributes, gm = f.geometry; if (!gm) return;
-      g.cp.addLayer(L.marker([gm.y, gm.x], { icon: L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10], html: '<div class="owdia" style="background:' + COL.cp + ';width:16px;height:16px"></div>' }) }).bindPopup(pop(a.name, [['Type', a.type], ['Status', a.status], ['Complexity', a.complexity]])));
+      g.cp.addLayer(L.marker([gm.y, gm.x], { icon: L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10], html: '<div class="owdia" style="background:' + COL.cp + ';width:16px;height:16px"></div>' }) }).bindPopup(pop(a.incident_name, [['Type', a.incident_type], ['Status', a.status], ['Type level', a.complexity], ['IC', a.ic_name], ['Where', a.location_desc]])));
     });
     LAYERS.forEach(function (l) { var on = O.on[l.k]; if (on && !O.map.hasLayer(g[l.k])) g[l.k].addTo(O.map); if (!on && O.map.hasLayer(g[l.k])) O.map.removeLayer(g[l.k]); });
     if (O.on.radar) O.radar();
