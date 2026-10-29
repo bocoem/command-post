@@ -384,7 +384,7 @@
       settle(arc.query(L.notices, "activeincid='Yes'", { fields: 'zonename,evactype,description' })),
       settle(arc.stats(L.daZones, inc ? 'incident_name=' + sq(inc.name) : '1=1', [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], 'zone_status')),
       settle(arc.query(L.sitrep, '1=1', { fields: '*', order: 'report_time DESC', n: 1 })),
-      settle(arc.query(L.nws, '1=1', { fields: 'Event,Severity,Expiration,Affected', extra: bb, n: 50 })),
+      settle(arc.query(L.nws, '1=1', { fields: 'Event,Severity,End_,Affected', extra: bb, n: 50 })),
       settle(arc.count(L.vdot, '1=1')),
       settle(arc.count(L.caltopo, '1=1')),
       settle(arc.stats(L.lifelineTasks, inc ? 'incident_name=' + sq(inc.name) : '1=1', [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], 'status')),
@@ -427,7 +427,7 @@
     }
     if (name === 'cadUnits') return arc.query(L.cadUnits, '1=1', { geom: true, fields: 'UnitID,StatusName,UnitTypeDesc,DeptName,CFSNumber' });
     if (name === 'caltopo') return arc.query(L.caltopo, '1=1', { geom: true });
-    if (name === 'nws') { var b = CP.COUNTY.bbox; return arc.query(L.nws, '1=1', { geom: true, fields: 'Event,Severity,Expiration', extra: { geometry: b.xmin + ',' + b.ymin + ',' + b.xmax + ',' + b.ymax, geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', maxAllowableOffset: 0.005 } }); }
+    if (name === 'nws') { var b = CP.COUNTY.bbox; return arc.query(L.nws, '1=1', { geom: true, fields: 'Event,Severity,End_', extra: { geometry: b.xmin + ',' + b.ymin + ',' + b.xmax + ',' + b.ymax, geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', maxAllowableOffset: 0.005 } }); }
     if (name === 'notices') return arc.query(L.notices, "activeincid='Yes'", { geom: true, extra: { maxAllowableOffset: 0.0005 } });
     return [];
   };
