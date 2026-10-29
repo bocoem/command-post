@@ -24,12 +24,12 @@
       '<g transform="translate(1250 58)"><circle r="120" fill="url(#hr)"/><g fill="none" stroke="#FDB833" stroke-opacity=".22"><circle r="26"/><circle r="52"/><circle r="80" stroke-opacity=".14"/><circle r="110" stroke-opacity=".08"/></g>' +
       '<g stroke="#FDB833" stroke-opacity=".35"><line x1="-130" y1="0" x2="-30" y2="0"/><line x1="30" y1="0" x2="130" y2="0"/><line x1="0" y1="-70" x2="0" y2="-30"/><line x1="0" y1="30" x2="0" y2="70"/></g>' +
       '<path d="M-6 16 V-18 H14 L9 -11 L14 -4 H-6" fill="#FDB833" stroke="#FDB833" stroke-width="2" stroke-linejoin="round"/><circle cx="-6" cy="16" r="2.5" fill="#FDB833"/>' +
-      '<circle cx="-62" cy="-22" r="4.5" fill="#D02129" stroke="#fff" stroke-width="1.5"/><circle cx="48" cy="30" r="4.5" fill="#3D7BFF" stroke="#fff" stroke-width="1.5"/><circle cx="70" cy="-34" r="4" fill="#2FBF71" stroke="#fff" stroke-width="1.5"/><circle cx="-40" cy="40" r="3.5" fill="#FDB833" stroke="#fff" stroke-width="1.5"/></g>' +
+      '</g>' +
       '<g stroke="#3D7BFF" stroke-opacity=".18" fill="none"><path d="M1500 120 L1640 0"/><path d="M1560 120 L1700 0"/><path d="M1620 120 L1760 0"/></g></svg></div>';
   }
   app.mount = function () {
     document.getElementById('app').innerHTML =
-      '<header class="hdr">' + headerArt() + '<button class="ibtn mnav" data-act="menu" style="position:relative;margin-left:8px;color:#fff">' + I('menu') + '</button><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock" data-act="home" title="All incidents"><div class="k">BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t">COMMAND POST<span>Incident Management</span></div></div>' +
+      '<header class="hdr">' + headerArt() + '<button class="ibtn mnav" data-act="menu" style="position:relative;margin-left:8px;color:#fff">' + I('menu') + '</button><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock" data-act="home" title="All incidents"><img class="lockimg" src="cp_lockup.png?v=1" alt="Botetourt County Emergency Management. Command Post, Incident Management."></div>' +
       '<div class="right"><div class="clock" id="clock"></div></div></header>' +
       '<div id="ibar"></div><div class="body"><nav class="nav" id="nav"></nav><main class="main" id="main"></main><aside class="calls" id="calls"></aside><aside class="apps" id="apps"></aside></div><button class="callstab" id="callstab" data-act="callsToggle" title="Live CAD calls"></button><button class="callstab appstab" id="appstab" data-act="appsToggle" title="Overwatch and Stormwatch Responder"></button>' +
       '<datalist id="dl_kinds">' + CP.RES_KINDS.map(function (k) { return '<option value="' + E(k) + '">'; }).join('') + '</datalist>' +

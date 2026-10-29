@@ -25,6 +25,7 @@ a{color:var(--gold)} button,input,select,textarea{font:inherit;color:inherit}
 .hdr::after{content:'';position:absolute;left:0;right:0;bottom:0;height:5px;background:linear-gradient(90deg,var(--red) 0 33.33%,var(--gold) 33.33% 66.66%,var(--indigo) 66.66%)}
 .hdr .seal{position:relative;width:62px;height:62px;margin:0 14px 0 14px;flex:none;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5))}
 .hdr .lock{position:relative;line-height:1.08;cursor:pointer;user-select:none}
+.hdr .lockimg{display:block;height:62px;width:auto}
 .hdr .k{color:var(--gold);font:800 10px/1.2 var(--disp);letter-spacing:2px}
 .hdr .t{color:#fff;font:800 34px/1.08 var(--disp);letter-spacing:1.5px;white-space:nowrap}
 .hdr .t span{color:var(--gold);font:600 19px var(--disp);letter-spacing:0;margin-left:12px}
@@ -269,6 +270,7 @@ table.t.ro td{padding:9px 8px}
 @media (max-width:860px){
   :root{--hh:78px}
   .hdr .seal{width:50px;height:50px;margin:0 10px}
+  .hdr .lockimg{height:44px}
   .hdr .k{font-size:8px;letter-spacing:1px}.hdr .t{font-size:24px}.hdr .t span{display:block;margin:2px 0 0;font-size:13px}
   .clock{display:none}
   .nav{position:fixed;left:0;top:0;bottom:0;z-index:900;transform:translateX(-100%);transition:transform .2s;width:260px;box-shadow:var(--sh)}
