@@ -6,11 +6,10 @@
   var LIST = [
     { k: 'overwatch', n: 'Overwatch', d: 'Live CAD, VDOT, power, weather', u: X + '299778f2f57a472eb478ac1bf21bb424', native: true },
     { k: 'stormwatch', n: 'Stormwatch', d: 'Public storm reports', u: X + 'c8f438b974da4e2b9d9fd01893687ec4' },
-    { k: 'responder', n: 'Stormwatch Responder', d: 'Responder storm reports', u: X + '0f7a1564b1db45c2adcb469b56973330' },
-    { k: 'eoc', n: 'EOC app', d: 'SitReps, lifelines, checklists', u: X + '0ed836c463984dcc86ab3e1a6d36831a', sign: true }
+    { k: 'responder', n: 'Stormwatch Responder', d: 'Responder storm reports', u: X + '0f7a1564b1db45c2adcb469b56973330' }
   ];
   var P = CP.liveApps = { open: false, cur: 'overwatch', wide: false, made: {} };
-  try { var pr = CP.store.prefs(); P.cur = pr.appsCur || 'overwatch'; P.wide = !!pr.appsWide; } catch (e) {}
+  try { var pr = CP.store.prefs(); P.cur = pr.appsCur === 'eoc' ? 'overwatch' : (pr.appsCur || 'overwatch'); P.wide = !!pr.appsWide; } catch (e) {}
 
   P.paint = function () {
     var el = document.getElementById('apps'); if (!el) return;
