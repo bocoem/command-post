@@ -87,6 +87,7 @@
       s.push(['Split the work into teams or areas', A(inc.assignments).length > 0, 'assign']);
       s.push(['List hazards and write the safety message', A(inc.hazards).length > 0 && !!op.safetyMsg, 'safety']);
       s.push(['Confirm radio channels and the medical plan', A(inc.comms).some(function (c) { return c.rx || c.tx; }) || A(inc.medical.aid).length > 0, 'comms']);
+      var tk = (CP.app.ui.cache || {}).tasks; s.push(['Work the EOC lifeline checklist', !!(tk && tk.data && !tk.data._err && tk.data.some(function (f) { return f.attributes.incident_name === inc.name && f.attributes.status !== 'Open'; })), 'checklist']);
       s.push(['Approve and print the shift plan', !!(inc.iapPrinted && inc.iapPrinted[op.n]), 'forms']);
     }
     s.push(['Send a SitRep', A(inc.sitreps).length > 0, 'status']);
@@ -425,7 +426,12 @@
     var lv = a.live || {};
     return '<div class="wrap">' + phead('Connections', 'How Command Post connects to the county ArcGIS Online: shared incident records, what it updates in the other EM tools, and live feeds.', '') +
       '<div class="grid g2"><div class="grid" style="align-content:start">' + card('Account', acct) + card('Shared incident records', svc) + card('Live feeds', a.signedIn() ? '<div class="muted" style="font-size:13px">CAD calls and units, Stormwatch reports (responder, dispatch, public), shelters and registrations, road closures, evacuation notices, damage assessment zones, the latest SitRep, NWS warnings, VDOT and CalTopo.</div><div class="row" style="margin-top:8px"><button class="btn sm" data-act="live">' + I('refresh') + 'Refresh now</button><span class="dim" style="font-size:12px">' + (lv.asof ? 'Updated ' + lv.asof : '') + '</span></div>' + (lv.errors && lv.errors.length ? '<div class="warnbox" style="margin-top:8px;font-size:12px">' + lv.errors.map(E).join('<br>') + '</div>' : '') : '<div class="muted">Sign in to load.</div>') + '</div>' +
-      '<div>' + card('Send to county layers', outs) + '</div></div><div style="height:14px"></div>' + card('EM toolkit', '<div class="tk">' + CP.TOOLKIT.map(function (t) { return '<a class="' + t.c + '" href="' + t.u + '" target="_blank" rel="noopener"><b>' + E(t.n) + '</b><span>' + E(t.d) + '</span></a>'; }).join('') + '</div>') + '</div>';
+      '<div>' + card('Send to county layers', outs) + '</div></div><div style="height:14px"></div>' + card('Who uses what', '<p class="muted" style="margin-top:0;font-size:13.5px">Run the incident from Command Post and give these tools to the people below. What they enter flows back into Command Post automatically.</p>' + V.stakeholders()) + '<div style="height:14px"></div>' + card('Open Command Post from other apps', '<div class="muted" style="font-size:13.5px">Link straight to a page or an incident:</div><div class="mono" style="font-size:12.5px;margin-top:6px;line-height:1.8">' + E(location.origin + location.pathname) + '?view=monitor<br>' + E(location.origin + location.pathname) + '?view=checklist' + (inc ? '<br>' + E(location.origin + location.pathname) + '?incident=' + E(inc.id) + '&amp;view=dash' : '') + '</div>') + '<div style="height:14px"></div>' + card('EM toolkit', '<div class="tk">' + CP.TOOLKIT.map(function (t) { return '<a class="' + t.c + '" href="' + t.u + '" target="_blank" rel="noopener"><b>' + E(t.n) + '</b><span>' + E(t.d) + '</span></a>'; }).join('') + '</div>') + '</div>';
+  };
+
+  // ================= DAMAGE ASSESSMENT =================
+  V.da = function (inc) {
+    return '<div class="wrap">' + phead('Damage Assessment', 'Progress of the county damage assessment: zones, teams and the latest totals. Teams work in Field Maps and DA Operations; their results show up here and in the SitRep.', '<button class="btn sm" data-act="cacheRefresh">' + I('refresh') + 'Refresh</button>' + (CP.arc.signedIn() ? '<button class="btn sm pri" data-act="push" data-a="damage">' + I('cloud') + 'Activate DA for this incident</button>' : '')) + card('Status', V.daCard()) + '</div>';
   };
 
   // ================= SETTINGS =================

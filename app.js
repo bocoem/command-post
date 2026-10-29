@@ -6,9 +6,9 @@
   CP.me = CP.store.prefs().me || {};
 
   var NAV = [
-    ['Incident', [['dash', 'Overview', 'dash'], ['brief', 'Situation', 'brief'], ['map', 'Map', 'map'], ['log', 'Activity Log', 'log']]],
+    ['Incident', [['dash', 'Overview', 'dash'], ['brief', 'Situation', 'brief'], ['map', 'Map', 'map'], ['log', 'Activity Log', 'log'], ['monitor', 'EOC Monitor', 'eye']]],
     ['People & Resources', [['org', 'People & Roles', 'org'], ['resources', 'Resources', 'truck'], ['assign', 'Teams & Areas', 'list', 3], ['messages', 'Requests & Messages', 'req'], ['facilities', 'Facilities', 'flag']]],
-    ['Community', [['roads', 'Roads & Evacuations', 'warn'], ['shelters', 'Shelters & Distribution', 'build'], ['field', 'Field Reports', 'pin'], ['lifelines', 'Lifelines', 'lifeline'], ['public', 'Public Updates', 'news']]],
+    ['Community', [['roads', 'Roads & Evacuations', 'warn'], ['shelters', 'Shelters & Distribution', 'build'], ['field', 'Field Reports', 'pin'], ['da', 'Damage Assessment', 'home'], ['lifelines', 'Lifelines', 'lifeline'], ['checklist', 'EOC Checklist', 'check'], ['public', 'Public Updates', 'news']]],
     ['Planning', [['objectives', 'Shift Plan', 'target', 3], ['safety', 'Safety', 'shield', 3], ['comms', 'Radio & Contacts', 'radio', 3], ['medical', 'Medical Plan', 'med', 3]]],
     ['Reports', [['status', 'Status Reports', 'report'], ['forms', 'Reports & Forms', 'forms']]],
     ['Setup', [['arc', 'Connections', 'cloud'], ['settings', 'Settings', 'gear']]]
@@ -53,7 +53,8 @@
   };
   function navHtml() {
     var inc = app.inc;
-    if (!inc) return '<div class="grp">Command Post</div><a href="#" class="on" data-act="home">' + I('home') + 'Incident board</a><a href="#" data-act="new">' + I('plus') + 'New incident</a><a href="#" data-nav="arc">' + I('cloud') + 'ArcGIS</a><div class="grp">EM toolkit</div>' + CP.TOOLKIT.map(function (t) { return '<a href="' + t.u + '" target="_blank" rel="noopener">' + I('link') + E(t.n) + '</a>'; }).join('');
+    var on = function (v) { return app.view === v ? ' class="on"' : ''; };
+    if (!inc) return '<div class="grp">Command Post</div><a href="#"' + on('home') + ' data-act="home">' + I('home') + 'Incident board</a><a href="#" data-act="new">' + I('plus') + 'New incident</a><a href="#"' + on('monitor') + ' data-nav="monitor">' + I('eye') + 'EOC Monitor</a><a href="#"' + on('checklist') + ' data-nav="checklist">' + I('check') + 'EOC Checklist</a><a href="#"' + on('arc') + ' data-nav="arc">' + I('cloud') + 'Connections</a><div class="grp">EM toolkit</div>' + CP.TOOLKIT.map(function (t) { return '<a href="' + t.u + '" target="_blank" rel="noopener">' + I('link') + E(t.n) + '</a>'; }).join('');
     var cnt = { resources: A(inc.resources).filter(function (r) { return ['Released', 'Demobilized'].indexOf(r.status) < 0; }).length, log: A(inc.log).length, messages: A(inc.requests).filter(function (r) { return ['Filled', 'Cancelled'].indexOf(r.status) < 0; }).length, assign: A(inc.assignments).length, org: A(inc.org).filter(function (p) { return p.name; }).length, facilities: A(inc.facilities).length };
     var h = '', hidden = 0;
     NAV.forEach(function (g) {
@@ -68,13 +69,13 @@
   app.render = function () {
     var main = document.getElementById('main'); if (!main) return;
     var v = app.view, inc = app.inc;
-    if (!inc && v !== 'home' && v !== 'arc') v = app.view = 'home';
+    if (!inc && ['home', 'arc', 'monitor', 'checklist'].indexOf(v) < 0) v = app.view = 'home';
     if (inc && !app.visible(v)) v = app.view = 'dash';
     var html;
     try { html = (CP.views[v] || CP.views.home)(inc); } catch (e) { console.error(e); html = '<div class="wrap"><div class="warnbox">This page hit an error: ' + E(e.message) + '</div></div>'; }
     var y = main.scrollTop; main.innerHTML = html; if (app._keepScroll) main.scrollTop = y; app._keepScroll = false;
     app.paintChrome();
-    if (CP.after[v] && inc) try { CP.after[v](inc); } catch (e) { console.error(e); }
+    if (CP.after[v] && (inc || v === 'monitor')) try { CP.after[v](inc); } catch (e) { console.error(e); }
     document.getElementById('nav').classList.remove('open');
   };
   app.rerender = function () { app._keepScroll = true; app.render(); };
@@ -214,7 +215,7 @@
   };
   var cssCache = null, sealCache = null;
   app.downloadHtml = async function (name, list, o) {
-    if (!cssCache) cssCache = await fetch('app.css?v=3').then(function (r) { return r.text(); }).catch(function () { return ''; });
+    if (!cssCache) cssCache = await fetch('app.css?v=4').then(function (r) { return r.text(); }).catch(function () { return ''; });
     if (!sealCache) sealCache = await fetch('seal.png').then(function (r) { return r.blob(); }).then(function (b) { return new Promise(function (res) { var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.readAsDataURL(b); }); }).catch(function () { return ''; });
     var css = cssCache.slice(cssCache.indexOf('/* ===================== ICS FORM PAPER')).replace('#printroot{display:none}', '');
     var body = pagesFor(list, o).split('seal.png').join(sealCache);
@@ -258,7 +259,7 @@
     if (t.tagName === 'A' && t.getAttribute('target') === '_blank') return;
     if (t.tagName === 'INPUT' && t.type === 'checkbox') return;
     e.preventDefault();
-    if (t.dataset.nav) { if (!app.inc && t.dataset.nav !== 'arc') return; U.closeModal(); return app.go(t.dataset.nav); }
+    if (t.dataset.nav) { if (!app.inc && ['arc', 'monitor', 'checklist'].indexOf(t.dataset.nav) < 0) return; U.closeModal(); return app.go(t.dataset.nav); }
     if (t.dataset.add) return addRow(t.dataset.add, t.dataset.tpl);
     if (t.dataset.del) { var p = t.dataset.del.split('|'); CP.delItem(app.inc, p[0], p[1]); app.commit(true); if (app._modalRefresh) app._modalRefresh(); return; }
     var fn = app.act[t.dataset.act]; if (fn) fn(t.dataset.a, t);
@@ -567,6 +568,7 @@
   if (CP.extendActs) CP.extendActs(act);
   if (CP.extendChange) CP.extendChange(app.change);
   if (CP.extendCallActs) CP.extendCallActs(act, app.change);
+  if (CP.extendEocActs) CP.extendEocActs(act, app.change);
   act.actions = function () { U.modal('What do you need to do?', CP.views.qaGrid(3), [], { wide: true, nofocus: true }); };
   act.mode = function (m) { var inc = app.inc; if (m === 'quick') { CP.setPath(inc, 'showAll', false); if (inc.complexity <= 3) CP.setPath(inc, 'complexity', 4); } else CP.setPath(inc, 'showAll', true); app.log('Switched to ' + m + ' mode', 'Note'); app.commit(true); };
   function packetList(k) {
@@ -586,16 +588,21 @@
     var h = location.hash.replace('#', '');
     try { await CP.arc.handleRedirect(); } catch (e) { console.warn(e); }
     h = location.hash.replace('#', '') || h;
-    var last = CP.store.prefs().last;
-    if (last && CP.store.get(last)) { app.inc = migrate(CP.store.get(last)); app.view = h && CP.views[h] ? h : 'dash'; } else app.view = 'home';
+    var qs = new URLSearchParams(location.search), want = qs.get('incident'), wantView = qs.get('view');
+    if (want || wantView) history.replaceState(null, '', location.pathname + (wantView ? '#' + wantView : location.hash));
+    if (wantView) h = wantView;
+    var last = want && CP.store.get(want) ? want : CP.store.prefs().last;
+    if (want) { CP.store.setPref('last', want); app._wantRemote = want; }
+    if (last && CP.store.get(last)) { app.inc = migrate(CP.store.get(last)); app.view = h && CP.views[h] ? h : 'dash'; } else app.view = ['monitor', 'checklist', 'arc'].indexOf(h) >= 0 ? h : 'home';
     app.render();
     if (CP.arc.signedIn()) {
       await CP.arc.connect();
       if (app.inc && CP.arc.status === 'on') { try { var r = await CP.arc.loadRemote(app.inc.id); if (r) { app.inc = CP.merge(app.inc, r); CP.store.put(app.inc); } else app.pushRemote(); } catch (e) {} }
+      if (app._wantRemote && (!app.inc || app.inc.id !== app._wantRemote) && CP.arc.status === 'on') { try { await app.open(app._wantRemote, h && CP.views[h] ? h : 'dash'); } catch (e) {} }
       app.render(); app.loadRemoteList(); app.refreshLive(); if (CP.calls) CP.calls.refresh();
     }
     if (CP.calls) CP.calls.paint();
-    window.addEventListener('hashchange', function () { var v = location.hash.replace('#', ''); if (v && v !== app.view && CP.views[v] && (app.inc || v === 'arc')) { app.view = v; app.render(); } });
+    window.addEventListener('hashchange', function () { var v = location.hash.replace('#', ''); if (v && v !== app.view && CP.views[v] && (app.inc || ['arc', 'monitor', 'checklist'].indexOf(v) >= 0)) { app.view = v; app.render(); } });
     setInterval(async function () { // pull others' changes
       if (!app.inc || CP.arc.status !== 'on' || app.saving) return;
       try { var m = await CP.arc.checkRemote(app.inc); if (m) { app.inc = m; CP.store.put(m); if (!editing() && !document.getElementById('modal')) app.rerender(); else app.paintChrome(); } } catch (e) { console.warn(e); }
