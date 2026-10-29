@@ -419,3 +419,6 @@ body.apps-open.apps-wide .appstab,body.apps-open.apps-wide .callstab{right:68vw}
 .owgauge{background:#0B1A2B;color:#fff;border:2px solid;border-radius:10px 10px 10px 2px;padding:0 4px;font:600 10px 'JetBrains Mono',monospace;white-space:nowrap;transform:translate(0,-100%)}
 .owgauge.rain{border-radius:50% 50% 50% 0;color:#bff5d6}
 .owin{color:#FDB833;font-weight:600}
+
+.owrad{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(10,23,36,.92);border:1px solid #24405e;border-radius:6px;padding:4px 10px;display:none;align-items:center;gap:8px;font:600 11.5px 'JetBrains Mono',monospace;color:#e6edf5}
+.owrad .ibtn{color:#FDB833;font-size:11px;width:22px}.owrad input{width:110px;accent-color:#FDB833}.owrad i{color:#93A9C3;font-style:normal}.owrad b{color:#7CFC9A}

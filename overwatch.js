@@ -25,8 +25,9 @@
     { k: 'vdot', n: 'VDOT incidents', c: COL.vdot, on: true },
     { k: 'power', n: 'Power outages', c: '#c77dff', on: true },
     { k: 'nws', n: 'Weather warnings', c: '#ffd27a', on: true },
-    { k: 'gauge', n: 'River & rain gauges', c: '#3D9BFF', on: true },
-    { k: 'radar', n: 'Radar', c: '#2FBF71', on: false },
+    { k: 'river', n: 'River gauges', c: '#3D9BFF', on: true },
+    { k: 'rain', n: 'Rain gauges', c: '#2FBF71', on: true },
+    { k: 'radar', n: 'Radar (loop)', c: '#7CFC9A', on: true },
     { k: 'cp', n: 'Command Post incidents', c: COL.cp, on: true }
   ];
   var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [], gauges: [] }, asof: '', err: '', on: {}, timer: null };
@@ -52,6 +53,7 @@
     var errs = [];
     await Promise.all(Object.keys(jobs).map(function (k) { return jobs[k].then(function (r) { O.d[k] = r; }).catch(function (e) { errs.push(k + ': ' + e.message); }); }));
     if (!O.county) a.query(SRC.county, '1=1', { geom: true, n: 1, fields: 'OBJECTID' }).then(function (r) { O.county = r[0] && r[0].geometry; O.draw(); }).catch(function () {});
+    if (O.on.radar && O.map) O.radarValid();
     O.asof = new Date().toTimeString().slice(0, 5); O.err = errs.join(' · ');
     O.paint();
     if (!O.gLoading && (!O.gAt || Date.now() - O.gAt > 5 * 60000)) {
@@ -118,7 +120,7 @@
   O.paint = function () {
     if (!O.box) return;
     var n = O.counts();
-    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['wx', 'Weather', n.nws + (O.gaugeList().filter(function (x) { var f = flood(x); return f && f.worst; }).length ? ' 🌊' : '')]];
+    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['water', 'Water', O.gAt ? (O.gaugeList().filter(function (x) { var f = flood(x); return f && f.worst; }).length || '') : ''], ['wx', 'Weather', n.nws]];
     O.box.querySelector('#owBar').innerHTML = tabs.map(function (x) { return '<button class="' + (O.tab === x[0] ? 'on' : '') + '" data-act="owTab" data-a="' + x[0] + '">' + x[1] + (x[2] !== '' ? ' <b>' + x[2] + '</b>' : '') + '</button>'; }).join('') +
       '<span class="owasof">' + (O.err ? '<span title="' + E(O.err) + '" style="color:#ffb3b8">⚠ </span>' : '') + (O.asof ? 'Updated ' + O.asof : 'Loading…') + ' <button class="ibtn" data-act="owRefresh" title="Refresh now">' + I('refresh') + '</button></span>';
     var mapEl = O.box.querySelector('#owMap'), list = O.box.querySelector('#owList');
@@ -131,17 +133,41 @@
   O.ensureMap = function () {
     if (O.map) return;
     var el = O.box.querySelector('#owMap');
-    el.innerHTML = '<div id="owLeaf" style="position:absolute;inset:0"></div><div class="owleg" id="owLeg"></div>';
+    el.innerHTML = '<div id="owLeaf" style="position:absolute;inset:0"></div><div class="owleg" id="owLeg"></div><div class="owrad" id="owRad"></div>';
     O.map = CP.map.create(el.querySelector('#owLeaf'), {});
     O.g = {}; LAYERS.forEach(function (l) { O.g[l.k] = L.layerGroup(); });
-    O.map.on('moveend', function () { if (O.on.radar) O.radar(); });
+
   };
 
-  O.radar = function () {
+  // Animated radar: NEXRAD base reflectivity from the Iowa Environmental Mesonet, last 50 minutes in 5-minute frames.
+  var RF = ['-m50m', '-m45m', '-m40m', '-m35m', '-m30m', '-m25m', '-m20m', '-m15m', '-m10m', '-m05m', ''];
+  var R = O.rad = { frames: [], i: RF.length - 1, play: true, timer: null, valid: 0 };
+  O.radarValid = function () { return fetch('https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json').then(function (r) { return r.json(); }).then(function (j) { var v = Date.parse(j.meta.valid); if (v && v !== R.valid) { R.valid = v; O.radarBuild(); } }).catch(function () {}); };
+  O.radarBuild = function () {
     if (!O.map) return;
-    var b = O.map.getBounds(), s = O.map.getSize();
-    var url = SRC.radar + '?bbox=' + [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',') + '&bboxSR=4326&imageSR=3857&size=' + s.x + ',' + s.y + '&format=png32&transparent=true&f=image&_=' + Math.floor(Date.now() / 300000);
-    O.g.radar.clearLayers(); O.g.radar.addLayer(L.imageOverlay(url, b, { opacity: 0.65 }));
+    O.g.radar.clearLayers(); R.frames = RF.map(function (f, i) {
+      var l = L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913' + f + '/{z}/{x}/{y}.png?v=' + R.valid, { opacity: i === R.i ? 0.7 : 0, maxNativeZoom: 12, attribution: 'Radar: NWS NEXRAD via Iowa Environmental Mesonet' });
+      O.g.radar.addLayer(l); return l;
+    });
+    O.radarShow(R.i);
+  };
+  O.radarShow = function (i) {
+    R.i = i; R.frames.forEach(function (l, k) { l.setOpacity(k === i ? 0.7 : 0); });
+    var el = O.box && O.box.querySelector('#owRad'); if (!el) return;
+    var ts = R.valid ? R.valid - (RF.length - 1 - i) * 300000 : 0, ago = (RF.length - 1 - i) * 5;
+    el.innerHTML = '<button class="ibtn" data-act="owRadPlay" title="' + (R.play ? 'Pause' : 'Play') + '">' + (R.play ? '❚❚' : '►') + '</button><input type="range" min="0" max="' + (RF.length - 1) + '" value="' + i + '" data-act-change="owRadSeek"><span>' + (ts ? new Date(ts).toTimeString().slice(0, 5) : '') + (ago ? ' <i>−' + ago + ' min</i>' : ' <b>latest</b>') + '</span>';
+  };
+  O.radarRun = function () {
+    clearTimeout(R.timer);
+    if (!O.on.radar || !R.play || !O.map) return;
+    var last = R.i === RF.length - 1;
+    R.timer = setTimeout(function () { if (!O.box || O.box.style.display === 'none' || O.tab !== 'map') { R.timer = setTimeout(O.radarRun, 2000); return; } O.radarShow(last ? 0 : R.i + 1); O.radarRun(); }, last ? 1800 : 550);
+  };
+  O.radar = function () {
+    var el = O.box && O.box.querySelector('#owRad'); if (el) el.style.display = O.on.radar ? 'flex' : 'none';
+    if (!O.on.radar) { clearTimeout(R.timer); return; }
+    if (!R.frames.length) { if (R.valid) O.radarBuild(); else O.radarValid(); }
+    O.radarRun();
   };
 
   function pop(title, rows) { return '<b>' + E(title || '') + '</b>' + rows.filter(function (r) { return r[1] != null && r[1] !== ''; }).map(function (r) { return '<br><span style="color:#93A9C3">' + r[0] + ':</span> ' + E(String(r[1])); }).join(''); }
@@ -185,10 +211,10 @@
       var fl = flood(s), rainOnly = s.stage == null && s.rain, col = rainOnly ? '#2FBF71' : (fl ? fl.col : '#3D9BFF');
       var lbl = rainOnly ? (s.rain.h24 ? s.rain.h24.toFixed(2) + '"' : '0"') : (s.stage != null ? s.stage.toFixed(1) + "'" : '');
       var html = '<div class="owgauge' + (rainOnly ? ' rain' : '') + '" style="border-color:' + col + '">' + lbl + '</div>';
-      g.gauge.addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: null, html: html }) }).bindPopup(pop(s.name, [['Stage', s.stage != null ? s.stage.toFixed(2) + ' ft' + (s.trend != null ? (s.trend > 0.05 ? ' ▲ rising' : s.trend < -0.05 ? ' ▼ falling' : ' steady') : '') : ''], ['Flow', s.flow != null ? Math.round(s.flow).toLocaleString() + ' cfs' : ''], ['NWS status', fl ? fl.now : ''], ['Forecast', fl && fl.worst && fl.worst !== fl.now ? fl.worst : ''], ['Rain 1 h / 6 h / 24 h', s.rain ? s.rain.h1.toFixed(2) + ' / ' + s.rain.h6.toFixed(2) + ' / ' + s.rain.h24.toFixed(2) + ' in' : ''], ['Reading', t(s.t)]]) + '<br><a href="' + (s.nws && s.nws.url || 'https://waterdata.usgs.gov/monitoring-location/' + s.id + '/') + '" target="_blank" rel="noopener">Gauge page ↗</a>'));
+      g[rainOnly ? 'rain' : 'river'].addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: null, html: html }) }).bindPopup(pop(s.name, [['Stage', s.stage != null ? s.stage.toFixed(2) + ' ft' + (s.trend != null ? (s.trend > 0.05 ? ' ▲ rising' : s.trend < -0.05 ? ' ▼ falling' : ' steady') : '') : ''], ['Flow', s.flow != null ? Math.round(s.flow).toLocaleString() + ' cfs' : ''], ['NWS status', fl ? fl.now : ''], ['Forecast', fl && fl.worst && fl.worst !== fl.now ? fl.worst : ''], ['Rain 1 h / 6 h / 24 h', s.rain ? s.rain.h1.toFixed(2) + ' / ' + s.rain.h6.toFixed(2) + ' / ' + s.rain.h24.toFixed(2) + ' in' : ''], ['Reading', t(s.t)]]) + '<br><a href="' + (s.nws && s.nws.url || 'https://waterdata.usgs.gov/monitoring-location/' + s.id + '/') + '" target="_blank" rel="noopener">Gauge page ↗</a>'));
     });
     LAYERS.forEach(function (l) { var on = O.on[l.k]; if (on && !O.map.hasLayer(g[l.k])) g[l.k].addTo(O.map); if (!on && O.map.hasLayer(g[l.k])) O.map.removeLayer(g[l.k]); });
-    if (O.on.radar) O.radar();
+    O.radar();
     var leg = O.box.querySelector('#owLeg');
     if (leg) leg.innerHTML = '<div class="owlegh">Layers</div>' + LAYERS.map(function (l) { return '<label><input type="checkbox" data-act-change="owLayer" data-a="' + l.k + '"' + (O.on[l.k] ? ' checked' : '') + '><i style="background:' + l.c + '"></i>' + l.n + '</label>'; }).join('');
   };
@@ -223,13 +249,13 @@
       var st = O.powerStale();
       return (st ? '<div class="owcard" style="border-left-color:#F0444C"><b>Outage feed is out of date</b><div class="owd">The VDEM power-outage layer last updated ' + new Date(st).toLocaleString() + '. These numbers are not current; check the utility outage maps directly.</div></div>' : '') + '<div class="ownote">Customers without power, Botetourt and neighbors (VDEM).</div><table class="owtab"><tr><th>Locality</th><th>Out</th><th>%</th><th>Updated</th></tr>' + p.map(function (f) { var a = f.attributes; return '<tr' + (/^Botetourt/.test(a.name) ? ' class="me"' : '') + '><td>' + E(a.localitylabel || a.name) + '</td><td>' + (a.customersout || 0).toLocaleString() + '</td><td>' + ((a.percent_out || 0) * 100).toFixed(2) + '</td><td>' + t(a.lastupdateddatetime) + '</td></tr>'; }).join('') + '</table>';
     }
-    if (tab === 'wx') {
-      h = '<div class="ownote">Weather warnings for Botetourt County</div>' + (O.d.nws.length ? O.d.nws.map(function (f) { var a = f.attributes; return '<div class="owcard" style="border-left-color:#ffd27a"><div class="owt"><b>' + E(a.Event) + '</b><span>' + E(a.Severity || '') + '</span></div><div class="owa">Until ' + t(a.End_) + '</div></div>'; }).join('') : '<div class="owempty">No active watches or warnings.</div>');
+    if (tab === 'water') {
+      h = '';
       var gl = O.gaugeList(), rivers = gl.filter(function (x) { return x.stage != null || x.flow != null; }), rains = gl.filter(function (x) { return x.rain; });
       var where = function (x) { return x.dc == null ? '' : x.dc === 0 ? '<span class="owin">In county</span>' : Math.round(x.dc) + ' mi out'; };
       if (!O.gAt) h += '<div class="ownote" style="margin-top:14px">River &amp; rain gauges</div><div class="owempty">' + (O.gErr ? 'Gauges could not load: ' + E(O.gErr) : 'Loading gauges from USGS…') + '</div>';
       else {
-      h += '<div class="ownote" style="margin-top:14px">River gauges (' + rivers.length + ')</div>';
+      h += '<div class="ownote">River gauges (' + rivers.length + ')</div>';
       h += rivers.length ? '<table class="owtab"><tr><th>Gauge</th><th>Stage</th><th>Flow</th><th>Flood</th><th></th></tr>' + rivers.map(function (x) {
         var fl = flood(x), tr = x.trend == null ? '' : x.trend > 0.05 ? ' <span style="color:#F28C28">▲</span>' : x.trend < -0.05 ? ' <span style="color:#93A9C3">▼</span>' : '';
         return '<tr' + (fl && fl.worst ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + where(x) + ' · ' + t(x.t) + '</small></td><td>' + (x.stage != null ? x.stage.toFixed(2) + ' ft' + tr : '') + '</td><td>' + (x.flow != null ? Math.round(x.flow).toLocaleString() + ' cfs' : '') + '</td><td>' + (fl ? '<span style="color:' + fl.col + '">' + E(fl.worst || fl.now || '') + '</span>' : '<small>no NWS stage</small>') + '</td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>';
@@ -240,6 +266,10 @@
       }).join('') + '</table>' : '<div class="owempty">No rain gauges reporting.</div>';
       h += '<div class="dim" style="font-size:11px;margin-top:6px">USGS live readings, NWS flood status and forecast. Gauges within 12 miles of the county line. Updated ' + new Date(O.gAt).toTimeString().slice(0, 5) + '.</div>';
       }
+      return h;
+    }
+    if (tab === 'wx') {
+      h = '<div class="ownote">Weather warnings for Botetourt County</div>' + (O.d.nws.length ? O.d.nws.map(function (f) { var a = f.attributes; return '<div class="owcard" style="border-left-color:#ffd27a"><div class="owt"><b>' + E(a.Event) + '</b><span>' + E(a.Severity || '') + '</span></div><div class="owa">Until ' + t(a.End_) + '</div></div>'; }).join('') : '<div class="owempty">No active watches or warnings.</div>');
       var r = O.d.rwx.filter(function (f) { return f.attributes.is_stale !== 'Yes'; });
       if (r.length) h += '<div class="ownote" style="margin-top:14px">VDOT road weather stations (I-81 / Salem)</div><table class="owtab"><tr><th>Station</th><th>Air</th><th>Road</th><th>Surface</th></tr>' + r.slice(0, 40).map(function (f) { var a = f.attributes, ice = /ice/i.test(a.black_ice_signal || '') && !/no ice/i.test(a.black_ice_signal || ''); return '<tr' + (ice ? ' class="me"' : '') + '><td>' + E((a.road || '') + ' ' + (a.direction || '')) + '<br><small>' + E(a.station_name || '') + '</small></td><td>' + (a.air_temp_f != null ? Math.round(a.air_temp_f) + '°' : '') + '</td><td>' + (a.surface_temp_f != null ? Math.round(a.surface_temp_f) + '°' : '') + '</td><td>' + E(a.surface_status || '') + (ice ? ' ⚠' : '') + '</td></tr>'; }).join('') + '</table>';
       return h;
@@ -251,6 +281,8 @@
     act.owTab = function (k) { O.tab = k; CP.store.setPref('owTab', k); O.paint(); };
     act.owRefresh = function () { O.asof = ''; O.paint(); O.refresh(); };
     act.owZoom = function (ll) { var p = ll.split(',').map(Number); O.tab = 'map'; O.paint(); setTimeout(function () { O.map.setView(p, 16); }, 80); };
+    act.owRadPlay = function () { O.rad.play = !O.rad.play; O.radarShow(O.rad.i); O.radarRun(); };
+    chg.owRadSeek = function (el) { O.rad.play = false; O.radarShow(+el.value); clearTimeout(O.rad.timer); };
     chg.owLayer = function (el) { var k = el.dataset.a; O.on[k] = el.checked; CP.store.setPref('owOn', O.on); O.draw(); };
   };
 })(window.CP);
