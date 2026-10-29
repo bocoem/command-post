@@ -425,3 +425,4 @@ body.apps-open.apps-wide .appstab,body.apps-open.apps-wide .callstab{right:68vw}
 
 .owaqi{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 10.5px 'JetBrains Mono',monospace;color:#0B1A2B;border:2px solid #0B1A2B;box-shadow:0 0 0 1px rgba(255,255,255,.7)}
 .owaqi.sm{display:inline-flex;width:auto;min-width:24px;height:18px;border-radius:9px;padding:0 5px;font-size:10.5px;border-width:1px;box-shadow:none;vertical-align:middle}
+.owaqi.epa{border-radius:5px;width:30px}

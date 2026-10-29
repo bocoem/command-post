@@ -27,11 +27,11 @@
     { k: 'nws', n: 'Weather warnings', c: '#ffd27a', on: true },
     { k: 'river', n: 'River gauges', c: '#3D9BFF', on: false },
     { k: 'rain', n: 'Rain gauges', c: '#2FBF71', on: false },
-    { k: 'air', n: 'Air quality sensors', c: '#9b7bff', on: true },
+    { k: 'air', n: 'Air quality (EPA + PurpleAir)', c: '#9b7bff', on: true },
     { k: 'radar', n: 'Radar (loop)', c: '#7CFC9A', on: true },
     { k: 'cp', n: 'Command Post incidents', c: COL.cp, on: true }
   ];
-  var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [], gauges: [], air: [] }, asof: '', err: '', on: {}, timer: null };
+  var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [], gauges: [], air: [], airnow: [] }, asof: '', err: '', on: {}, timer: null };
   LAYERS.forEach(function (l) { O.on[l.k] = l.on; });
   try { var pr = CP.store.prefs(); if (pr.owOn2) Object.assign(O.on, pr.owOn2); O.tab = pr.owTab || 'map'; } catch (e) {}
 
@@ -51,13 +51,14 @@
       rwx: a.query(SRC.rwx, "station_name LIKE 'SAL%' OR road LIKE 'I-81%'", { geom: true, n: 300, fields: 'station_name,road,direction,air_temp_f,surface_temp_f,surface_status,black_ice_signal,obs_time,is_stale,latitude,longitude' }),
       cp: a.own ? a.query(a.own.url + '/0', "status<>'Closed'", { geom: true, n: 100, fields: 'incident_name,incident_type,status,complexity,ic_name,location_desc' }) : Promise.resolve([])
     };
+    jobs.airnow = fetch('https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/Air_Now_Current_Monitors_Ozone_and_PM/FeatureServer/0/query?f=json&where=1%3D1&outFields=SiteName,DataSource,OZONEPM_AQI,OZONE_AQI,PM25_AQI,PM10_AQI,ValidTime,ReportingArea_PipeDelimited&returnGeometry=true&outSR=4326&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&geometry=-80.6,37.0,-79.0,38.1').then(function (r) { return r.json(); }).then(function (j) { if (j.error) throw new Error(j.error.message); return j.features || []; });
     var errs = [];
     await Promise.all(Object.keys(jobs).map(function (k) { return jobs[k].then(function (r) { O.d[k] = r; }).catch(function (e) { errs.push(k + ': ' + e.message); }); }));
     if (!O.county) a.query(SRC.county, '1=1', { geom: true, n: 1, fields: 'OBJECTID' }).then(function (r) { O.county = r[0] && r[0].geometry; O.draw(); }).catch(function () {});
     if (O.on.radar && O.map) O.radarValid();
     O.asof = new Date().toTimeString().slice(0, 5); O.err = errs.join(' · ');
     O.paint();
-    if (!O.aLoading && (!O.aAt || Date.now() - O.aAt > 10 * 60000)) {
+    if (!O.aLoading && (!O.aAt || Date.now() - O.aAt > 15 * 60000)) {
       O.aLoading = true;
       O.loadAir().then(function (x) { O.d.air = x; O.aAt = Date.now(); O.aErr = ''; }).catch(function (e) { O.aErr = e.message; O.aAt = Date.now(); }).then(function () { O.aLoading = false; O.paint(); });
     }
@@ -117,7 +118,7 @@
   O.loadAir = async function () {
     if (O.airKey == null) O.airKey = await CP.arc.settings.get('purpleair_read_key').catch(function () { return ''; });
     if (!O.airKey) return [];
-    var u = 'https://api.purpleair.com/v1/sensors?fields=name,latitude,longitude,pm2.5_cf_1,pm2.5_60minute,humidity,last_seen,confidence&location_type=0&max_age=7200&nwlng=-80.35&nwlat=37.95&selng=-79.35&selat=37.15';
+    var u = 'https://api.purpleair.com/v1/sensors?fields=name,latitude,longitude,pm2.5_cf_1,pm2.5_60minute,humidity,last_seen&location_type=0&max_age=7200&nwlng=-80.35&nwlat=37.95&selng=-79.35&selat=37.15';
     var r = await fetch(u, { headers: { 'X-API-Key': O.airKey } });
     var j = await r.json();
     if (!r.ok || j.error) throw new Error((j.description || j.error || ('HTTP ' + r.status)));
@@ -126,6 +127,11 @@
       var rh = d[ix('humidity')], now = epa(d[ix('pm2.5_cf_1')], rh), hr = epa(d[ix('pm2.5_60minute')], rh);
       return { id: d[ix('sensor_index')], name: d[ix('name')], lat: d[ix('latitude')], lng: d[ix('longitude')], pm: now, pm60: hr, aqi: aqi(now), aqi60: aqi(hr), rh: rh, seen: d[ix('last_seen')] * 1000, conf: d[ix('confidence')] };
     }).filter(function (x) { return x.lat != null && x.aqi != null; });
+  };
+  O.airnowList = function () {
+    return O.d.airnow.map(function (f) { var a = f.attributes, g = f.geometry || {}; var dom = [['PM2.5', a.PM25_AQI], ['Ozone', a.OZONE_AQI], ['PM10', a.PM10_AQI != null ? Math.round(+a.PM10_AQI) : null]].filter(function (x) { return x[1] != null && x[1] !== ''; }).sort(function (x, y) { return y[1] - x[1]; });
+      return { name: a.SiteName, src: a.DataSource, area: a.ReportingArea_PipeDelimited, aqi: a.OZONEPM_AQI, by: dom.length ? dom[0][0] : '', parts: dom, t: a.ValidTime, lat: g.y, lng: g.x, dc: toCounty(g.y, g.x) };
+    }).filter(function (x) { return x.aqi != null && x.lat != null && (x.dc == null || x.dc <= 30); }).sort(function (a, b) { return (a.dc || 0) - (b.dc || 0); });
   };
   O.airList = function () { return O.d.air.map(function (s) { s.dc = toCounty(s.lat, s.lng); return s; }).filter(function (s) { return s.dc == null || s.dc <= 12; }).sort(function (a, b) { return ((a.dc ? 1 : 0) - (b.dc ? 1 : 0)) || (b.aqi - a.aqi); }); };
 
@@ -147,7 +153,7 @@
   O.paint = function () {
     if (!O.box) return;
     var n = O.counts();
-    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['water', 'Water', O.gAt ? (O.gaugeList().filter(function (x) { var f = flood(x); return f && f.worst; }).length || '') : ''], ['air', 'Air', O.d.air.length ? Math.max.apply(null, O.airList().filter(function (x) { return x.dc === 0; }).map(function (x) { return x.aqi; }).concat([0])) || '' : ''], ['wx', 'Weather', n.nws]];
+    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['water', 'Water', O.gAt ? (O.gaugeList().filter(function (x) { var f = flood(x); return f && f.worst; }).length || '') : ''], ['air', 'Air', (function () { var v = O.airnowList().map(function (x) { return x.aqi; }).concat(O.airList().filter(function (x) { return x.dc === 0; }).map(function (x) { return x.aqi; })); return v.length ? Math.max.apply(null, v) : ''; })()], ['wx', 'Weather', n.nws]];
     O.box.querySelector('#owBar').innerHTML = tabs.map(function (x) { return '<button class="' + (O.tab === x[0] ? 'on' : '') + '" data-act="owTab" data-a="' + x[0] + '">' + x[1] + (x[2] !== '' ? ' <b>' + x[2] + '</b>' : '') + '</button>'; }).join('') +
       '<span class="owasof">' + (O.err ? '<span title="' + E(O.err) + '" style="color:#ffb3b8">⚠ </span>' : '') + (O.asof ? 'Updated ' + O.asof : 'Loading…') + ' <button class="ibtn" data-act="owRefresh" title="Refresh now">' + I('refresh') + '</button></span>';
     var mapEl = O.box.querySelector('#owMap'), list = O.box.querySelector('#owList');
@@ -240,6 +246,11 @@
       var html = '<div class="owgauge' + (rainOnly ? ' rain' : '') + '" style="border-color:' + col + '">' + lbl + '</div>';
       g[rainOnly ? 'rain' : 'river'].addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: null, html: html }) }).bindPopup(pop(s.name, [['Stage', s.stage != null ? s.stage.toFixed(2) + ' ft' + (s.trend != null ? (s.trend > 0.05 ? ' ▲ rising' : s.trend < -0.05 ? ' ▼ falling' : ' steady') : '') : ''], ['Flow', s.flow != null ? Math.round(s.flow).toLocaleString() + ' cfs' : ''], ['NWS status', fl ? fl.now : ''], ['Forecast', fl && fl.worst && fl.worst !== fl.now ? fl.worst : ''], ['Rain 1 h / 6 h / 24 h', s.rain ? s.rain.h1.toFixed(2) + ' / ' + s.rain.h6.toFixed(2) + ' / ' + s.rain.h24.toFixed(2) + ' in' : ''], ['Reading', t(s.t)]]) + '<br><a href="' + (s.nws && s.nws.url || 'https://waterdata.usgs.gov/monitoring-location/' + s.id + '/') + '" target="_blank" rel="noopener">Gauge page ↗</a>'));
     });
+    O.airnowList().forEach(function (s) {
+      var c = aqiCat(s.aqi);
+      g.air.addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: [30, 26], iconAnchor: [15, 13], html: '<div class="owaqi epa" style="background:' + c[2] + ';color:' + (s.aqi <= 150 ? '#0B1A2B' : '#fff') + '">' + s.aqi + '</div>' }) })
+        .bindPopup(pop(s.name + ' (EPA AirNow monitor)', [['AQI', s.aqi + ' — ' + c[1] + (s.by ? ' (' + s.by + ')' : '')], ['Readings', s.parts.map(function (p) { return p[0] + ' ' + p[1]; }).join(' · ')], ['Operator', s.src], ['Hour', t(s.t)]]) + '<br><a href="https://www.airnow.gov/?city=' + encodeURIComponent(s.area || 'Roanoke') + '&state=VA&country=USA" target="_blank" rel="noopener">AirNow ↗</a>'));
+    });
     O.airList().forEach(function (s) {
       var c = aqiCat(s.aqi);
       g.air.addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div class="owaqi" style="background:' + c[2] + ';color:' + (s.aqi > 100 && s.aqi <= 150 || s.aqi <= 100 ? '#0B1A2B' : '#fff') + '">' + s.aqi + '</div>' }) })
@@ -282,15 +293,20 @@
       return (st ? '<div class="owcard" style="border-left-color:#F0444C"><b>Outage feed is out of date</b><div class="owd">The VDEM power-outage layer last updated ' + new Date(st).toLocaleString() + '. These numbers are not current; check the utility outage maps directly.</div></div>' : '') + '<div class="ownote">Customers without power, Botetourt and neighbors (VDEM).</div><table class="owtab"><tr><th>Locality</th><th>Out</th><th>%</th><th>Updated</th></tr>' + p.map(function (f) { var a = f.attributes; return '<tr' + (/^Botetourt/.test(a.name) ? ' class="me"' : '') + '><td>' + E(a.localitylabel || a.name) + '</td><td>' + (a.customersout || 0).toLocaleString() + '</td><td>' + ((a.percent_out || 0) * 100).toFixed(2) + '</td><td>' + t(a.lastupdateddatetime) + '</td></tr>'; }).join('') + '</table>';
     }
     if (tab === 'air') {
-      if (O.airKey === '') return '<div class="owcard" style="border-left-color:#9b7bff"><b>Connect PurpleAir</b><div class="owd" style="margin:6px 0 10px">Paste your PurpleAir <b>READ</b> API key. It is saved in Command Post\'s private ArcGIS service, so only signed-in county users can use it; it is never put in the public code.</div><div class="row"><input class="in" id="paKey" type="password" placeholder="PurpleAir READ key" autocomplete="off" style="flex:1"><button class="btn pri" data-act="owAirKey">Save</button></div></div>';
-      if (!O.aAt) return '<div class="owempty">Loading air quality sensors…</div>';
-      if (O.aErr) return '<div class="owcard" style="border-left-color:#F0444C"><b>PurpleAir could not load</b><div class="owd">' + E(O.aErr) + '</div><div class="row" style="margin-top:8px"><button class="btn sm" data-act="owAirReset">Enter a different key</button></div></div>';
+      var an = O.airnowList(), where = function (x) { return x.dc == null ? '' : x.dc === 0 ? '<span class="owin">In county</span>' : Math.round(x.dc) + ' mi out'; };
+      h = '<div class="ownote">EPA AirNow monitors (' + an.length + ')</div>';
+      h += an.length ? '<table class="owtab"><tr><th>Monitor</th><th>AQI</th><th>Readings</th><th></th></tr>' + an.map(function (x) { var c = aqiCat(x.aqi); return '<tr' + (x.aqi > 100 ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + where(x) + ' · ' + t(x.t) + '</small></td><td><span class="owaqi sm" style="background:' + c[2] + '">' + x.aqi + '</span> <small>' + c[1] + '</small></td><td><small>' + x.parts.map(function (p) { return p[0] + ' ' + p[1]; }).join('<br>') + '</small></td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>'; }).join('') + '</table>' : '<div class="owempty">No EPA monitors reporting nearby.</div>';
+      h += '<div class="dim" style="font-size:11px;margin:6px 0 16px">Official, regulatory-grade monitors run by Virginia DEQ and EPA. Hourly. There is no official monitor inside Botetourt; these are the nearest (within 30 miles).</div>';
+      h += '<div class="ownote">PurpleAir sensors</div>';
+      if (O.airKey === '') return h + '<div class="owcard" style="border-left-color:#9b7bff"><div class="owd" style="margin-bottom:8px">Neighborhood sensors such as the one in Fincastle need a PurpleAir READ key. When you have one, paste it here. It is kept in Command Post\'s private ArcGIS service, never in the public code.</div><div class="row"><input class="in" id="paKey" type="password" placeholder="PurpleAir READ key" autocomplete="off" style="flex:1"><button class="btn sm pri" data-act="owAirKey">Save</button></div></div>';
+      if (!O.aAt) return h + '<div class="owempty">Loading PurpleAir sensors…</div>';
+      if (O.aErr) return h + '<div class="owcard" style="border-left-color:#F0444C"><b>PurpleAir could not load</b><div class="owd">' + E(O.aErr) + '</div><div class="row" style="margin-top:8px"><button class="btn sm" data-act="owAirReset">Enter a different key</button></div></div>';
       var al = O.airList();
-      if (!al.length) return '<div class="owempty">No outdoor PurpleAir sensors reporting nearby.</div>';
-      return '<div class="ownote">Air quality sensors (' + al.length + ')</div><table class="owtab"><tr><th>Sensor</th><th>AQI now</th><th>1 h</th><th>PM2.5</th><th></th></tr>' + al.map(function (x) {
+      if (!al.length) return h + '<div class="owempty">No outdoor PurpleAir sensors reporting nearby.</div>';
+      return h + '<table class="owtab"><tr><th>Sensor</th><th>AQI now</th><th>1 h</th><th>PM2.5</th><th></th></tr>' + al.map(function (x) {
         var c = aqiCat(x.aqi), c60 = x.aqi60 != null ? aqiCat(x.aqi60) : null;
-        return '<tr' + (x.aqi > 100 ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + (x.dc == null ? '' : x.dc === 0 ? '<span class="owin">In county</span>' : Math.round(x.dc) + ' mi out') + ' · ' + t(x.seen) + '</small></td><td><span class="owaqi sm" style="background:' + c[2] + '">' + x.aqi + '</span> <small>' + c[1] + '</small></td><td>' + (c60 ? '<span class="owaqi sm" style="background:' + c60[2] + '">' + x.aqi60 + '</span>' : '') + '</td><td>' + (x.pm != null ? x.pm.toFixed(1) : '') + '</td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>';
-      }).join('') + '</table><div class="dim" style="font-size:11px;margin-top:6px">PurpleAir outdoor sensors with the EPA correction applied (the same adjustment the AirNow Fire &amp; Smoke Map uses), shown on the EPA AQI scale. Updated ' + new Date(O.aAt).toTimeString().slice(0, 5) + ', every 10 minutes.</div>';
+        return '<tr' + (x.aqi > 100 ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + where(x) + ' · ' + t(x.seen) + '</small></td><td><span class="owaqi sm" style="background:' + c[2] + '">' + x.aqi + '</span> <small>' + c[1] + '</small></td><td>' + (c60 ? '<span class="owaqi sm" style="background:' + c60[2] + '">' + x.aqi60 + '</span>' : '') + '</td><td>' + (x.pm != null ? x.pm.toFixed(1) : '') + '</td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>';
+      }).join('') + '</table><div class="dim" style="font-size:11px;margin-top:6px">Outdoor sensors with the EPA correction applied (as on the AirNow Fire &amp; Smoke Map). Updated ' + new Date(O.aAt).toTimeString().slice(0, 5) + '; checked every 15 minutes while this panel is open.</div>';
     }
     if (tab === 'water') {
       h = '';
