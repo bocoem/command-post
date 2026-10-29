@@ -4,23 +4,21 @@
   var I = CP.ui.icon, E = CP.esc;
   var X = 'https://experience.arcgis.com/experience/';
   var LIST = [
-    { k: 'overwatch', n: 'Overwatch', d: 'Live CAD, VDOT, power, weather', u: X + '299778f2f57a472eb478ac1bf21bb424', native: true },
-    { k: 'stormwatch', n: 'Stormwatch', d: 'Public storm reports', u: X + 'c8f438b974da4e2b9d9fd01893687ec4' },
-    { k: 'responder', n: 'Stormwatch Responder', d: 'Responder storm reports', u: X + '0f7a1564b1db45c2adcb469b56973330' }
+    { k: 'overwatch', n: 'Overwatch', d: 'Live CAD, VDOT, power, weather', u: X + '299778f2f57a472eb478ac1bf21bb424', native: true }
   ];
   var P = CP.liveApps = { open: false, cur: 'overwatch', wide: false, made: {} };
-  try { var pr = CP.store.prefs(); P.cur = pr.appsCur === 'eoc' ? 'overwatch' : (pr.appsCur || 'overwatch'); P.wide = !!pr.appsWide; } catch (e) {}
+  try { var pr = CP.store.prefs(); P.cur = 'overwatch'; P.wide = !!pr.appsWide; } catch (e) {}
 
   P.paint = function () {
     var el = document.getElementById('apps'); if (!el) return;
     document.body.classList.toggle('apps-open', P.open);
     document.body.classList.toggle('apps-wide', P.wide);
     var tab = document.getElementById('appstab');
-    if (tab) tab.innerHTML = I('map') + '<span>LIVE APPS</span>';
+    if (tab) tab.innerHTML = I('map') + '<span>' + (LIST.length === 1 ? LIST[0].n.toUpperCase() : 'LIVE APPS') + '</span>';
     if (!el.dataset.built) {
       el.dataset.built = '1';
-      el.innerHTML = '<div class="chead"><b>' + I('map') + ' Live apps</b><button class="ibtn" data-act="appsWide" title="Wider / narrower">' + I('eye') + '</button><a class="ibtn" id="appsNew" href="#" target="_blank" rel="noopener" title="Open in a new tab">' + I('link') + '</a><button class="ibtn" data-act="appsToggle" title="Close">' + I('x') + '</button></div>' +
-        '<div class="cfilt" id="appsSw">' + LIST.map(function (a) { return '<button data-act="appsShow" data-a="' + a.k + '" title="' + E(a.d) + '">' + E(a.n) + '</button>'; }).join('') + '</div>' +
+      el.innerHTML = '<div class="chead"><b>' + I('map') + ' ' + (LIST.length === 1 ? E(LIST[0].n) : 'Live apps') + '</b><button class="ibtn" data-act="appsWide" title="Wider / narrower">' + I('eye') + '</button><a class="ibtn" id="appsNew" href="#" target="_blank" rel="noopener" title="Open in a new tab">' + I('link') + '</a><button class="ibtn" data-act="appsToggle" title="Close">' + I('x') + '</button></div>' +
+        '<div class="cfilt" id="appsSw"' + (LIST.length === 1 ? ' style="display:none"' : '') + '>' + LIST.map(function (a) { return '<button data-act="appsShow" data-a="' + a.k + '" title="' + E(a.d) + '">' + E(a.n) + '</button>'; }).join('') + '</div>' +
         '<div class="appsnote" id="appsNote"></div><div class="appframes" id="appFrames"></div>';
     }
     var a = LIST.find(function (x) { return x.k === P.cur; }) || LIST[0];
