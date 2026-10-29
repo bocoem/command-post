@@ -64,6 +64,7 @@
     return '<div class="wrap">' + stats + '<div class="card" style="margin-top:14px"><h3>Quick actions <small>' + (CP.arc.signedIn() ? 'cloud icon = updates the county ArcGIS layers' : 'sign in to post roads, evacuations, shelters and reports to ArcGIS') + '</small></h3>' + V.qaGrid() + '</div>' +
       '<div class="grid g3" style="margin-top:14px"><div class="span2 grid" style="align-content:start">' + qlog +
       card('Goals this shift · ' + (op ? 'shift ' + op.n : ''), objH, '<a class="btn xs" href="#" data-nav="' + (CP.app.visible('objectives') ? 'objectives' : 'brief') + '">Edit</a>') +
+      (A(inc.calls).filter(function (c) { return !c.cleared; }).length ? card('Linked CAD calls', A(inc.calls).filter(function (c) { return !c.cleared; }).map(function (c) { return '<div class="feed"><div class="v" style="font-size:14px;min-width:80px;color:#ff8d3a">#' + E(c.callid) + '</div><div class="l"><b>' + E(c.type) + '</b> · ' + E(c.addr || '') + '<small>' + (c.units ? 'Units ' + E(c.units) + ' · ' : '') + 'linked by ' + E(c.linkedBy || '') + '</small></div></div>'; }).join(''), '<button class="btn xs" data-act="callsToggle">Calls panel</button>') : '') +
       card('Recent activity', tl, '<a class="btn xs" href="#" data-nav="log">Full log</a>') +
       card('Incident map', '<div class="map sm" id="dashmap"></div>', '<a class="btn xs" href="#" data-nav="map">Open map</a>') + '</div>' +
       '<div class="grid" style="align-content:start">' + card('Next steps', nextSteps(inc), '<span class="chip gold">Type ' + inc.complexity + '</span>') +

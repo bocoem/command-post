@@ -44,6 +44,10 @@
       group.addLayer(L.marker([f.lat, f.lng], { icon: M.pinIcon(M.FAC_COLOR[f.type] || '#93A9C3', M.FAC_CODE[f.type] || '', 24) }).bindPopup('<b>' + CP.esc(f.name) + '</b><br>' + CP.esc(f.type) + (f.address ? '<br>' + CP.esc(f.address) : '')));
       pts.push([f.lat, f.lng]);
     });
+    CP.alive(inc.calls).forEach(function (c) {
+      if (c.lat == null || c.cleared) return;
+      group.addLayer(L.marker([c.lat, c.lng], { icon: M.pinIcon('#ff8d3a', 'CAD', 24) }).bindPopup('<b>CAD #' + CP.esc(c.callid) + '</b><br>' + CP.esc(c.type || '') + '<br>' + CP.esc(c.addr || '') + (c.units ? '<br>Units: ' + CP.esc(c.units) : '')));
+    });
     if (inc.location.lat) {
       group.addLayer(L.marker([inc.location.lat, inc.location.lng], { icon: M.pinIcon('#FDB833', '★', 34), zIndexOffset: 1000 }).bindPopup('<b>' + CP.esc(inc.name) + '</b><br>' + CP.esc(inc.location.desc || '')));
       pts.push([inc.location.lat, inc.location.lng]);

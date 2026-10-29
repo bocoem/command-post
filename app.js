@@ -31,7 +31,7 @@
     document.getElementById('app').innerHTML =
       '<header class="hdr">' + headerArt() + '<button class="ibtn mnav" data-act="menu" style="position:relative;margin-left:8px;color:#fff">' + I('menu') + '</button><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock" data-act="home" title="All incidents"><div class="k">BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t">COMMAND POST<span>Incident Management</span></div></div>' +
       '<div class="right"><div class="clock" id="clock"></div></div></header>' +
-      '<div id="ibar"></div><div class="body"><nav class="nav" id="nav"></nav><main class="main" id="main"></main></div>' +
+      '<div id="ibar"></div><div class="body"><nav class="nav" id="nav"></nav><main class="main" id="main"></main><aside class="calls" id="calls"></aside></div><button class="callstab" id="callstab" data-act="callsToggle" title="Live CAD calls"></button>' +
       '<datalist id="dl_kinds">' + CP.RES_KINDS.map(function (k) { return '<option value="' + E(k) + '">'; }).join('') + '</datalist>' +
       '<datalist id="dl_agency">' + ['Botetourt County Fire & EMS', 'Botetourt County Sheriff\'s Office', 'Botetourt County Emergency Management', 'Botetourt County Emergency Communications', 'Botetourt County Public Works', 'Botetourt County Public Schools', 'Town of Buchanan', 'Town of Fincastle', 'Town of Troutville', 'Virginia State Police', 'VDOT', 'VDEM', 'American Red Cross', 'AEP', 'Craig-Botetourt Electric Cooperative', 'Carilion Clinic', 'Roanoke County', 'Rockbridge County', 'Craig County', 'Bedford County', 'Virginia Dept. of Forestry', 'Virginia Dept. of Health'].map(function (k) { return '<option value="' + E(k) + '">'; }).join('') + '</datalist>' +
       '<datalist id="dl_pos">' + CP.POSITIONS.map(function (p) { return '<option value="' + E(p.t) + '">'; }).join('') + '</datalist>';
@@ -172,6 +172,8 @@
     if (mode === 'loc') app.act.mapPick();
     else if (mode && mode.indexOf('fac:') === 0) pickFacility(mode.slice(4));
     if (CP.arc.signedIn()) app.loadOverlays();
+    var fc = app.ui.focusCall; app.ui.focusCall = null;
+    if (fc && fc.lat != null) { m.setView([fc.lat, fc.lng], 15); L.popup().setLatLng([fc.lat, fc.lng]).setContent('<b>CAD #' + E(fc.callid) + '</b><br>' + E(fc.type || '') + '<br>' + E(fc.addr || '')).openOn(m); }
   };
   function hint(msg, cancel) { var h = document.getElementById('maphint'); if (h) h.innerHTML = msg ? '<div class="hint" style="margin-bottom:10px;display:flex;gap:10px;align-items:center">' + msg + (cancel ? '<button class="btn xs" style="margin-left:auto" data-act="' + cancel + '">' + (cancel === 'mapDrawDone' ? 'Finish' : 'Cancel') + '</button>' : '') + '</div>' : ''; }
   function pickFacility(fid) {
@@ -212,7 +214,7 @@
   };
   var cssCache = null, sealCache = null;
   app.downloadHtml = async function (name, list, o) {
-    if (!cssCache) cssCache = await fetch('app.css?v=2').then(function (r) { return r.text(); }).catch(function () { return ''; });
+    if (!cssCache) cssCache = await fetch('app.css?v=3').then(function (r) { return r.text(); }).catch(function () { return ''; });
     if (!sealCache) sealCache = await fetch('seal.png').then(function (r) { return r.blob(); }).then(function (b) { return new Promise(function (res) { var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.readAsDataURL(b); }); }).catch(function () { return ''; });
     var css = cssCache.slice(cssCache.indexOf('/* ===================== ICS FORM PAPER')).replace('#printroot{display:none}', '');
     var body = pagesFor(list, o).split('seal.png').join(sealCache);
@@ -564,6 +566,7 @@
 
   if (CP.extendActs) CP.extendActs(act);
   if (CP.extendChange) CP.extendChange(app.change);
+  if (CP.extendCallActs) CP.extendCallActs(act, app.change);
   act.actions = function () { U.modal('What do you need to do?', CP.views.qaGrid(3), [], { wide: true, nofocus: true }); };
   act.mode = function (m) { var inc = app.inc; if (m === 'quick') { CP.setPath(inc, 'showAll', false); if (inc.complexity <= 3) CP.setPath(inc, 'complexity', 4); } else CP.setPath(inc, 'showAll', true); app.log('Switched to ' + m + ' mode', 'Note'); app.commit(true); };
   function packetList(k) {
@@ -589,8 +592,9 @@
     if (CP.arc.signedIn()) {
       await CP.arc.connect();
       if (app.inc && CP.arc.status === 'on') { try { var r = await CP.arc.loadRemote(app.inc.id); if (r) { app.inc = CP.merge(app.inc, r); CP.store.put(app.inc); } else app.pushRemote(); } catch (e) {} }
-      app.render(); app.loadRemoteList(); app.refreshLive();
+      app.render(); app.loadRemoteList(); app.refreshLive(); if (CP.calls) CP.calls.refresh();
     }
+    if (CP.calls) CP.calls.paint();
     window.addEventListener('hashchange', function () { var v = location.hash.replace('#', ''); if (v && v !== app.view && CP.views[v] && (app.inc || v === 'arc')) { app.view = v; app.render(); } });
     setInterval(async function () { // pull others' changes
       if (!app.inc || CP.arc.status !== 'on' || app.saving) return;

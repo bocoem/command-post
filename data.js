@@ -167,7 +167,7 @@ window.CP = window.CP || {};
       opPeriods: [], currentOP: 1,
       org: [], resources: [], assignments: [], comms: [], contacts: [],
       medical: { aid: [], transport: [], hospitals: [], procedures: '', aviation: false },
-      facilities: [], hazards: [], log: [], messages: [], requests: [], sitreps: [], briefings: [],
+      facilities: [], calls: [], hazards: [], log: [], messages: [], requests: [], sitreps: [], briefings: [],
       eoc: { eoc_status: 'Virtually Monitoring', declaration_status: 'Non-Declared', shelter_status: 'Closed', gov_offices_status: 'Open',
         schools_status: 'Open', weather_status: 'No Active Alerts', fire_academy_status: 'Normal' },
       lifelines: {}, publicInfo: { shortMessage: '', longMessage: '', actionRequired: false, actionMessage: '', url: '', releases: [] },
