@@ -87,6 +87,7 @@
   V.monitor = function (inc) {
     var head = '<div class="phead"><div><h1 class="pg">EOC Monitor</h1><p class="pgsub" style="margin:0">Every active incident and the whole county picture in one view. Read-only; refreshes every minute.</p></div><div class="acts"><button class="btn sm" data-act="monFull">' + I('eye') + 'Full screen</button><button class="btn sm" data-act="cacheRefresh">' + I('refresh') + 'Refresh</button></div></div>';
     if (!arc().signedIn()) return '<div class="wrap">' + head + needSignIn('Monitor data') + '</div>';
+    if (arc().status !== 'on' || !arc().own) return '<div class="wrap">' + head + '<div class="muted">Connecting to ArcGIS…</div></div>';
     var incs = load('monInc', D.incidents, 55000), act = load('monAct', D.activity, 55000), ll = load('monLL', D.lifelinesLatest, 55000), da = load('da', D.da, 120000);
     var roads = load('roads', arc().roads.list, 55000), evac = load('evac', arc().evac.list, 55000), sites = load('sites', arc().sites.list, 55000), field = load('field', function () { return arc().field.recent(1); }, 55000);
     if (!(arc().live && arc().live.asof)) app().refreshLive();

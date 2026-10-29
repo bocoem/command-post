@@ -215,7 +215,7 @@
   };
   var cssCache = null, sealCache = null;
   app.downloadHtml = async function (name, list, o) {
-    if (!cssCache) cssCache = await fetch('app.css?v=4').then(function (r) { return r.text(); }).catch(function () { return ''; });
+    if (!cssCache) cssCache = await fetch('app.css?v=5').then(function (r) { return r.text(); }).catch(function () { return ''; });
     if (!sealCache) sealCache = await fetch('seal.png').then(function (r) { return r.blob(); }).then(function (b) { return new Promise(function (res) { var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.readAsDataURL(b); }); }).catch(function () { return ''; });
     var css = cssCache.slice(cssCache.indexOf('/* ===================== ICS FORM PAPER')).replace('#printroot{display:none}', '');
     var body = pagesFor(list, o).split('seal.png').join(sealCache);
