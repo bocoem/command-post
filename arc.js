@@ -517,7 +517,7 @@
       ]);
       var addr = {}; r[0].forEach(function (f) { var a = f.attributes; addr[a.Type || a.TYPE || 'Unspecified'] = a.n || a.N || 0; });
       var res = 0, mh = 0, bus = 0, other = 0, tot = 0;
-      Object.keys(addr).forEach(function (k) { var n = addr[k]; tot += n; if (/MH|MOBILE|TRAILER/i.test(k)) mh += n; else if (/RES|STY|SFD|DWELL|APART|APT|DUPLEX|TOWN|CONDO|HOUSE/i.test(k)) res += n; else if (/BUSINESS|COMMER|INDUST|OFFICE|STORE|RETAIL/i.test(k)) bus += n; else other += n; });
+      Object.keys(addr).forEach(function (k) { var n = addr[k]; tot += n; if (/MH|MOBILE|TRAILER/i.test(k)) mh += n; else if (/RES|STY|SFD|FRM|FRAME|MODULAR|DWELL|APART|APT|DUPLEX|TOWN|CONDO|HOUSE/i.test(k)) res += n; else if (/BUSINESS|COMMER|INDUST|OFFICE|STORE|RETAIL/i.test(k)) bus += n; else other += n; });
       var st = {}, stTot = 0, pop = 0; r[1].forEach(function (f) { var a = f.attributes, n = a.n || a.N || 0; st[a.OCC_CLS || 'Unclassified'] = n; stTot += n; pop += a.pop || a.POP || 0; });
       return { asof: Date.now(), addr: { total: tot, residences: res, mobileHomes: mh, businesses: bus, other: other, byType: addr }, structures: { total: stTot, byClass: st, popEst: Math.round(pop) },
         shelters: r[2].map(function (f) { var a = f.attributes; return { name: a.facname, addr: a.fulladdr, status: a.status, cap: a.capacity, occ: a.occupancy }; }),
