@@ -51,6 +51,9 @@
   function done(msg, cat) { app().log(msg, cat || 'Action'); app().commit(true); U.toast(E(msg), 'ok'); app().ui.cache = {}; }
   function guard() { if (!signedIn()) { U.toast('Sign in with ArcGIS first. This goes straight to the county layers.', 'err', 5000); return false; } if (!app().inc) return false; return true; }
 
+  // shared with impact.js
+  Q._h = { mapDialog: mapDialog, sel: sel, f: f, inp: inp, ta: ta, track: track, done: done, fail: fail, guard: guard, card: card, when: when, needSignIn: needSignIn, signedIn: signedIn };
+
   // ---------- quick actions ----------
   Q.closeRoad = function () {
     if (!guard()) return;
@@ -83,6 +86,46 @@
           var s = app().inc.s209.threatMgmt = app().inc.s209.threatMgmt || {}; if (/Level 3|Voluntary/.test(a.level)) s['Evacuation(s) in Progress'] = true; if (a.level === 'Shelter in Place') s['Shelter-in-Place in Progress'] = true; CP.touch(app().inc, 's209');
           done(a.level + ' notice issued for ' + a.zone + '. Posted to county Notices & Evacuations.', 'Public Info');
         }).catch(fail);
+      });
+  };
+  Q.detour = function () {
+    if (!guard()) return;
+    var r = (app().ui.cache && app().ui.cache.roads && app().ui.cache.roads.data) || null;
+    var cls = r && !r._err ? r.closures : [];
+    mapDialog('Detour route', f('Detour name / road *', inp('street', 'e.g. Rt 43 detour around Rt 220 closure')) + f('For which closure', '<select class="in" name="closure"><option value="">(not tied to a closure)</option>' + cls.map(function (x) { var a = x.attributes; return '<option value="' + E(a.GlobalID || a.globalid || '') + '">' + E(a.street) + '</option>'; }).join('') + '</select>') +
+      f('Directions for drivers', ta('desc', 'e.g. Northbound traffic follow Rt 43 to Buchanan, then Rt 11.')) + f('Expected to end', inp('end', '', '', 'datetime-local')),
+      'line', I('check') + 'Post detour', function (b, pts) {
+        var a = { street: U.val(b, 'street'), closureGlobalId: U.val(b, 'closure'), desc: U.val(b, 'desc'), end: CP.fromLocalInput(U.val(b, 'end')) };
+        if (!a.street) { U.toast('Name the detour.', 'err'); return false; }
+        CP.arc.roads.detour(a, pts).then(function (oid) { track('detour', { oid: oid, label: a.street }); done('Detour posted: ' + a.street + '. Posted to county Road Closures (Detours).'); }).catch(fail);
+      });
+  };
+  Q.evacRoute = function () {
+    if (!guard()) return;
+    mapDialog('Evacuation route', f('Route name *', inp('name', 'e.g. Eagle Rock to Lord Botetourt HS shelter via Rt 220 S')) + '<div class="grid g2">' + f('Road class', sel('roadclass', ['Highway', 'Major Arterial', 'Minor Arterial', 'Collector', 'Local', 'Unknown'], 'Highway')) + '<label class="chk" style="align-self:end"><input type="checkbox" name="contraflow"> Contraflow</label></div>' +
+      f('Directions', ta('desc', 'Where it starts, where it goes, who should use it.')),
+      'line', I('check') + 'Post route', function (b, pts) {
+        var a = { name: U.val(b, 'name'), roadclass: U.val(b, 'roadclass'), contraflow: U.val(b, 'contraflow'), desc: U.val(b, 'desc') };
+        if (!a.name) { U.toast('Name the route.', 'err'); return false; }
+        CP.arc.routes.add(app().inc, a, pts).then(function (oid) { track('evacroute', { oid: oid, label: a.name }); done('Evacuation route posted: ' + a.name + '. Posted to county Evacuation Routes.', 'Public Info'); }).catch(fail);
+      });
+  };
+  Q.incLine = function () {
+    if (!guard()) return;
+    mapDialog('Incident line / path', f('What it is *', inp('name', 'e.g. Fire line, storm track, spill reach, hose lay')) + f('Details', ta('desc')) + '<label class="chk"><input type="checkbox" name="pub"> Show on public maps</label>',
+      'line', I('check') + 'Post line', function (b, pts) {
+        var a = { name: U.val(b, 'name'), desc: U.val(b, 'desc'), pub: U.val(b, 'pub') };
+        if (!a.name) { U.toast('Say what the line is.', 'err'); return false; }
+        CP.arc.incLines.add(app().inc, a, pts).then(function (oid) { track('incline', { oid: oid, label: a.name }); done('Incident line posted: ' + a.name + '. Posted to county Incident Lines.', 'Event'); }).catch(fail);
+      });
+  };
+  Q.critFacility = function () {
+    if (!guard()) return;
+    mapDialog('Critical facility', f('Name *', inp('name', 'e.g. Buchanan water treatment plant')) + '<div class="grid g2">' + f('Sector', sel('sector', CP.arc.critInfra.SECTORS, 'Other')) + f('Type', inp('type', 'e.g. Water plant, cell tower, nursing home')) + '</div>' + f('Address', inp('address')) + '<div class="grid g2">' + f('Contact', inp('poc')) + f('Phone', inp('phone')) + '</div>' + f('Notes', ta('comments')),
+      'point', I('check') + 'Add facility', function (b, ll) {
+        var a = { name: U.val(b, 'name'), sector: U.val(b, 'sector'), type: U.val(b, 'type'), address: U.val(b, 'address'), poc: U.val(b, 'poc'), phone: U.val(b, 'phone'), comments: U.val(b, 'comments') };
+        if (!a.name) { U.toast('Name the facility.', 'err'); return false; }
+        CP.arc.critInfra.add(a, ll).then(function () { done('Critical facility added: ' + a.name + ' (' + a.sector + '). Posted to county Critical Infrastructure.', 'Event'); }).catch(fail);
       });
   };
   Q.shelter = function () {
@@ -170,23 +213,26 @@
     if (!c[key] || !c[key].loading) { c[key] = { loading: true }; fn().then(function (d) { c[key] = { data: d }; if (app().view && document.getElementById('main')) app().rerender(); }).catch(function (e) { c[key] = { data: { _err: e.message } }; app().rerender(); }); }
     return null;
   }
+  Q._h.load = function (k, fn) { return load(k, fn); }; Q._h.refreshBtn = function () { return refreshBtn(); };
   function refreshBtn() { return '<button class="btn sm" data-act="cacheRefresh">' + I('refresh') + 'Refresh</button>'; }
 
   // ---------- ROADS & EVACUATIONS ----------
   V.roads = function (inc) {
-    var acts = '<button class="btn pri sm" data-act="q" data-a="closeRoad">' + I('plus') + 'Close a road</button><button class="btn sm" data-act="q" data-a="roadBlock">' + I('plus') + 'Road block</button><button class="btn sm red" data-act="q" data-a="evac">' + I('warn') + 'Evacuation notice</button>' + (signedIn() ? refreshBtn() : '');
+    var acts = '<button class="btn pri sm" data-act="q" data-a="closeRoad">' + I('plus') + 'Close a road</button><button class="btn sm" data-act="q" data-a="roadBlock">' + I('plus') + 'Road block</button><button class="btn sm" data-act="q" data-a="detour">' + I('plus') + 'Detour</button><button class="btn sm red" data-act="q" data-a="evac">' + I('warn') + 'Evacuation notice</button><button class="btn sm" data-act="q" data-a="evacRoute">' + I('plus') + 'Evacuation route</button>' + (signedIn() ? refreshBtn() : '');
     if (!signedIn()) return '<div class="wrap">' + phead('Roads &amp; Evacuations', 'Close roads and issue evacuation or shelter-in-place notices. They post straight to the county layers that feed Overwatch, Stormwatch, the public Incident Status dashboard and the EM website.', '') + needSignIn('Road closures and evacuation notices') + '</div>';
-    var r = load('roads', CP.arc.roads.list), e = load('evac', CP.arc.evac.list);
+    var r = load('roads', CP.arc.roads.list), e = load('evac', CP.arc.evac.list), rt = load('routes', CP.arc.routes.list);
     var mapCard = '<div class="card" style="padding:8px"><div class="map" id="roadmap" style="height:420px"></div></div>';
-    var cl = !r ? '<div class="muted">Loading…</div>' : r._err ? '<div class="warnbox">' + E(r._err) + '</div>' : (r.closures.length + r.blocks.length) ? '<div class="tbl-wrap"><table class="t ro"><thead><tr><th>Road</th><th>Type</th><th>Access</th><th>Since</th><th>Reopens</th><th></th></tr></thead><tbody>' +
+    var cl = !r ? '<div class="muted">Loading…</div>' : r._err ? '<div class="warnbox">' + E(r._err) + '</div>' : (r.closures.length + r.blocks.length + (r.detours || []).length) ? '<div class="tbl-wrap"><table class="t ro"><thead><tr><th>Road</th><th>Type</th><th>Access</th><th>Since</th><th>Reopens</th><th></th></tr></thead><tbody>' +
       r.closures.map(function (x) { var a = x.attributes; return '<tr><td><b>' + E(a.street) + '</b><div class="dim" style="font-size:12px">' + E(a.description || '') + (a.altroute ? ' · Detour: ' + E(a.altroute) : '') + '</div></td><td>Closure · ' + E(a.laneimpact || '') + '</td><td>' + E(a.accessallowed || '') + '</td><td>' + when(a.starttime) + '</td><td>' + (when(a.endtime) || '—') + '</td><td class="act"><button class="btn xs" data-act="reopen" data-a="closure|' + CP.arc.oidOf(a) + '|' + E(a.street) + '">Reopen</button></td></tr>'; }).join('') +
-      r.blocks.map(function (x) { var a = x.attributes; return '<tr><td><b>' + E(a.street) + '</b><div class="dim" style="font-size:12px">' + E(a.description || '') + '</div></td><td>Road block</td><td>' + E(a.accessallowed || '') + '</td><td>' + when(a.starttime) + '</td><td>' + (when(a.endtime) || '—') + '</td><td class="act"><button class="btn xs" data-act="reopen" data-a="block|' + CP.arc.oidOf(a) + '|' + E(a.street) + '">Reopen</button></td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">No active road closures in the county.</div>';
+      r.blocks.map(function (x) { var a = x.attributes; return '<tr><td><b>' + E(a.street) + '</b><div class="dim" style="font-size:12px">' + E(a.description || '') + '</div></td><td>Road block</td><td>' + E(a.accessallowed || '') + '</td><td>' + when(a.starttime) + '</td><td>' + (when(a.endtime) || '—') + '</td><td class="act"><button class="btn xs" data-act="reopen" data-a="block|' + CP.arc.oidOf(a) + '|' + E(a.street) + '">Reopen</button></td></tr>'; }).join('') +
+      (r.detours || []).map(function (x) { var a = x.attributes; return '<tr><td><b>' + E(a.street) + '</b><div class="dim" style="font-size:12px">' + E(a.description || '') + '</div></td><td>Detour</td><td>—</td><td>' + when(a.starttime) + '</td><td>' + (when(a.endtime) || '—') + '</td><td class="act"><button class="btn xs" data-act="reopen" data-a="detour|' + CP.arc.oidOf(a) + '|' + E(a.street) + '">End</button></td></tr>'; }).join('') + '</tbody></table></div>' : (r.detours || []).length ? '' : '<div class="empty">No active road closures in the county.</div>';
     var LV = ['Level 3', 'Level 2', 'Level 1', 'Voluntary Evacuation', 'Shelter in Place', 'Clear'];
     var ev = !e ? '<div class="muted">Loading…</div>' : e._err ? '<div class="warnbox">' + E(e._err) + '</div>' : e.length ? '<div class="tbl-wrap"><table class="t ro"><thead><tr><th>Area</th><th>Notice</th><th>Issued</th><th>Change to</th></tr></thead><tbody>' + e.map(function (x) {
       var a = x.attributes; return '<tr><td><b>' + E(a.zonename || a.incidentnm || 'Zone') + '</b><div class="dim" style="font-size:12px">' + E(a.description || '') + '</div></td><td><span class="chip ' + (/Level 3/.test(a.evactype) ? 'red' : /Level 2|Shelter/.test(a.evactype) ? 'warn' : 'blue') + '">' + E(a.evactype) + '</span></td><td>' + when(a.dateissued || a.startdate) + '</td><td class="act"><select class="in" style="min-width:150px" data-act-change="evacLevel" data-k="' + CP.arc.oidOf(a) + '|' + E(a.zonename || '') + '"><option value=""></option>' + LV.filter(function (l) { return l !== a.evactype; }).map(function (l) { return '<option>' + l + '</option>'; }).join('') + '</select></td></tr>';
     }).join('') + '</tbody></table></div>' : '<div class="empty">No active evacuation or shelter-in-place notices.</div>';
+    var rts = !rt ? '<div class="muted">Loading…</div>' : rt._err ? '<div class="warnbox">' + E(rt._err) + '</div>' : rt.length ? '<div class="tbl-wrap"><table class="t ro"><thead><tr><th>Route</th><th>Since</th><th></th></tr></thead><tbody>' + rt.map(function (x) { var a = x.attributes; return '<tr><td><b>' + E(a.routenm || 'Route') + '</b>' + (a.contraflow === 'Yes' ? ' <span class="chip warn">Contraflow</span>' : '') + '<div class="dim" style="font-size:12px">' + E(a.description || '') + '</div></td><td>' + when(a.startdate) + '</td><td class="act"><button class="btn xs" data-act="endRoute" data-a="' + CP.arc.oidOf(a) + '|' + E(a.routenm || '') + '">End</button></td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">No active evacuation routes.</div>';
     return '<div class="wrap">' + phead('Roads &amp; Evacuations', 'Everything here is live county-wide data. Changes post straight to the county Road Closures and Notices &amp; Evacuations layers (Overwatch, Stormwatch, public dashboard, EM website) and are logged.', acts) +
-      '<div class="grid g2"><div class="grid" style="align-content:start">' + card('Active road closures', cl) + card('Evacuation &amp; shelter-in-place notices', ev) + '</div>' + mapCard + '</div></div>';
+      '<div class="grid g2"><div class="grid" style="align-content:start">' + card('Active road closures &amp; detours', cl) + card('Evacuation &amp; shelter-in-place notices', ev) + card('Evacuation routes', rts) + '</div>' + mapCard + '</div></div>';
   };
   AFTER.roads = function (inc) {
     var el = document.getElementById('roadmap'); if (!el || !window.L) return;
@@ -194,6 +240,8 @@
     var c = (app().ui.cache || {}), r = c.roads && c.roads.data, e = c.evac && c.evac.data, all = L.featureGroup().addTo(m);
     if (r && !r._err) { r.closures.forEach(function (x) { var l = CP.map.esri(x.geometry); if (l) all.addLayer(l.bindPopup('<b>' + E(x.attributes.street) + '</b><br>' + E(x.attributes.description || ''))); }); r.blocks.forEach(function (x) { var l = CP.map.esri(x.geometry, { icon: CP.map.pinIcon('#ff4d58', '✕', 22) }); if (l) all.addLayer(l.bindPopup('<b>' + E(x.attributes.street) + '</b> road block')); }); }
     if (e && !e._err) e.forEach(function (x) { var l = CP.map.esri(x.geometry); if (l) all.addLayer(l.bindPopup('<b>' + E(x.attributes.zonename || '') + '</b><br>' + E(x.attributes.evactype))); });
+    if (r && !r._err) (r.detours || []).forEach(function (x) { var l = CP.map.esri(x.geometry, { color: '#FDB833', weight: 5, dashArray: '8 6' }); if (l) all.addLayer(l.bindPopup('<b>Detour: ' + E(x.attributes.street) + '</b><br>' + E(x.attributes.description || ''))); });
+    var rt = c.routes && c.routes.data; if (rt && !rt._err) rt.forEach(function (x) { var l = CP.map.esri(x.geometry, { color: '#2FBF71', weight: 5 }); if (l) all.addLayer(l.bindPopup('<b>Evacuation route: ' + E(x.attributes.routenm || '') + '</b><br>' + E(x.attributes.description || ''))); });
     if (all.getLayers().length) m.fitBounds(all.getBounds().pad(0.2), { maxZoom: 14 }); else if (pts.length) m.setView(pts[pts.length - 1], 12);
   };
 
@@ -248,8 +296,9 @@
     act.cacheRefresh = function () { app().ui.cache = {}; app().refreshLive(); app().rerender(); };
     act.reopen = function (a) {
       var p = a.split('|');
-      U.confirm('Reopen ' + p[2] + '?', 'This ends the ' + (p[0] === 'block' ? 'road block' : 'closure') + ' on the county Road Closures layer now.', 'Reopen road', function () { CP.arc.roads.reopen(p[0], +p[1]).then(function () { done('Road reopened: ' + p[2], 'Action'); }).catch(fail); });
+      U.confirm((p[0] === 'detour' ? 'End ' : 'Reopen ') + p[2] + '?', 'This ends the ' + ({ block: 'road block', detour: 'detour' }[p[0]] || 'closure') + ' on the county Road Closures layer now.', p[0] === 'detour' ? 'End detour' : 'Reopen road', function () { CP.arc.roads.reopen(p[0], +p[1]).then(function () { done((p[0] === 'detour' ? 'Detour ended: ' : 'Road reopened: ') + p[2], 'Action'); }).catch(fail); });
     };
+    act.endRoute = function (a) { var p = a.split('|'); U.confirm('End evacuation route ' + E(p[1]) + '?', 'Takes it off the county Evacuation Routes layer.', 'End route', function () { CP.arc.routes.end(+p[0]).then(function () { done('Evacuation route ended: ' + p[1], 'Public Info'); }).catch(fail); }); };
     act.saveShelter = function (oid) {
       var tr = document.querySelector('tr[data-oid="' + oid + '"]'); var g = function (n) { var el = tr.querySelector('[name="' + n + '"]'); return el ? el.value : ''; };
       var a = { status: g('status'), capacity: g('capacity') === '' ? null : +g('capacity'), occupancy: g('occupancy') === '' ? null : +g('occupancy'), publicview: g('publicview') };

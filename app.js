@@ -8,7 +8,7 @@
   var NAV = [
     ['Incident', [['dash', 'Overview', 'dash'], ['brief', 'Situation', 'brief'], ['map', 'Map', 'map'], ['log', 'Activity Log', 'log'], ['monitor', 'EOC Monitor', 'eye']]],
     ['People & Resources', [['org', 'People & Roles', 'org'], ['resources', 'Resources', 'truck'], ['assign', 'Teams & Areas', 'list', 3], ['messages', 'Requests & Messages', 'req'], ['facilities', 'Facilities', 'flag']]],
-    ['Community', [['roads', 'Roads & Evacuations', 'warn'], ['shelters', 'Shelters & Distribution', 'build'], ['field', 'Field Reports', 'pin'], ['da', 'Damage Assessment', 'home'], ['lifelines', 'Lifelines', 'lifeline'], ['checklist', 'EOC Checklist', 'check'], ['public', 'Public Updates', 'news']]],
+    ['Community', [['impact', 'Affected Area', 'target'], ['roads', 'Roads & Evacuations', 'warn'], ['shelters', 'Shelters & Distribution', 'build'], ['field', 'Field Reports', 'pin'], ['da', 'Damage Assessment', 'home'], ['lifelines', 'Lifelines', 'lifeline'], ['checklist', 'EOC Checklist', 'check'], ['public', 'Public Updates', 'news']]],
     ['Planning', [['objectives', 'Shift Plan', 'target', 3], ['safety', 'Safety', 'shield', 3], ['comms', 'Radio & Contacts', 'radio', 3], ['medical', 'Medical Plan', 'med', 3]]],
     ['Reports', [['status', 'Status Reports', 'report'], ['forms', 'Reports & Forms', 'forms']]],
     ['Setup', [['arc', 'Connections', 'cloud'], ['settings', 'Settings', 'gear']]]
@@ -193,7 +193,9 @@
       units: ['cadUnits', function (f) { var a = f.attributes, gm = f.geometry; return gm && L.marker([gm.y, gm.x], { icon: CP.map.dotIcon('#2FBF71', 12) }).bindPopup('<b>' + E(a.UnitID) + '</b><br>' + E(a.StatusName || '') + '<br>' + E(a.DeptName || '')); }],
       caltopo: ['caltopo', function (f) { var a = f.attributes, gm = f.geometry; return gm && L.marker([gm.y, gm.x], { icon: CP.map.dotIcon('#7fe3ab', 11) }).bindPopup('<b>' + E(a.unit_name || a.device) + '</b><br>' + E(a.status || '')); }],
       nws: ['nws', function (f) { var gm = f.geometry, a = f.attributes; return gm && gm.rings && L.polygon(gm.rings.map(function (r) { return r.map(function (q) { return [q[1], q[0]]; }); }), { color: '#F28C28', weight: 1.5, fillOpacity: .12 }).bindPopup('<b>' + E(a.Event) + '</b><br>' + E(a.Severity || '')); }],
-      notices: ['notices', function (f) { var gm = f.geometry, a = f.attributes; return gm && gm.rings && L.polygon(gm.rings.map(function (r) { return r.map(function (q) { return [q[1], q[0]]; }); }), { color: '#c77dff', weight: 2, fillOpacity: .15 }).bindPopup('<b>' + E(a.zonename || 'Evacuation zone') + '</b><br>' + E(a.evactype || '')); }] };
+      notices: ['notices', function (f) { var gm = f.geometry, a = f.attributes; return gm && gm.rings && L.polygon(gm.rings.map(function (r) { return r.map(function (q) { return [q[1], q[0]]; }); }), { color: '#c77dff', weight: 2, fillOpacity: .15 }).bindPopup('<b>' + E(a.zonename || 'Evacuation zone') + '</b><br>' + E(a.evactype || '')); }],
+      affected: ['affected', function (f) { var gm = f.geometry, a = f.attributes; return gm && gm.rings && L.polygon(gm.rings.map(function (r) { return r.map(function (q) { return [q[1], q[0]]; }); }), { color: '#FDB833', weight: 2, fillOpacity: .1, dashArray: '6 4' }).bindPopup('<b>Impacted area</b><br>' + E(a.description || a.incidentnm || '')); }],
+      routes: ['routes', function (f) { var gm = f.geometry, a = f.attributes; return gm && gm.paths && L.polyline(gm.paths.map(function (r) { return r.map(function (q) { return [q[1], q[0]]; }); }), f._k === 'detour' ? { color: '#FDB833', weight: 5, dashArray: '8 6' } : { color: '#2FBF71', weight: 5 }).bindPopup('<b>' + (f._k === 'detour' ? 'Detour: ' + E(a.street || '') : 'Evacuation route: ' + E(a.routenm || '')) + '</b><br>' + E(a.description || '')); }] };
     Object.keys(async).forEach(function (k) {
       if (ov[k]) { m.removeLayer(ov[k]); delete ov[k]; }
       if (!lay[k]) return;

@@ -35,6 +35,13 @@
       houseChecksEdit: B + 'survey123_3c05a771c9124f6096c7de50b40201b5/FeatureServer/0',
       stormRespEdit: B + 'survey123_87946e73db344d4da8e41655a205e6e7/FeatureServer/0',
       blocks: B + 'RoadClosures_ad0e8a3412044da3bf1b9d6ebdb3c97e/FeatureServer/0',
+      detours: B + 'RoadClosures_ad0e8a3412044da3bf1b9d6ebdb3c97e/FeatureServer/2',
+      incLines: B + 'Incidents_468a9f8a8b8e4b2a9c4102a1d00243f1/FeatureServer/1',
+      affected: B + 'AffectedArea_468a9f8a8b8e4b2a9c4102a1d00243f1/FeatureServer/0',
+      evacRoutes: B + 'PreestablishedEvacuations_468a9f8a8b8e4b2a9c4102a1d00243f1/FeatureServer/0',
+      critInfra: B + 'CriticalInfrastructure_ad0e8a3412044da3bf1b9d6ebdb3c97e/FeatureServer/0',
+      addresses: B + 'E911_Address/FeatureServer/1',
+      structures: 'https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0',
       vdot: B + 'VDOT_Incidents__SmarterRoads/FeatureServer/0',
       caltopo: B + 'CalTopo_Live_Locations/FeatureServer/0',
       nws: 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/NWS_Watches_Warnings_v1/FeatureServer/6'
@@ -409,8 +416,9 @@
       var now = Date.now();
       var c = await arc.query(arc.L.closures, "activeincid='Yes'", { geom: true, order: 'starttime DESC' });
       var b = await arc.query(arc.L.blocks, "activeincid='Yes'", { geom: true, order: 'starttime DESC' }).catch(function () { return []; });
+      var d = await arc.query(arc.L.detours, "activeincid='Yes'", { geom: true, order: 'starttime DESC' }).catch(function () { return []; });
       function keep(f) { var e = f.attributes.endtime; return !e || e > now; }
-      return { closures: c.filter(keep), blocks: b.filter(keep) };
+      return { closures: c.filter(keep), blocks: b.filter(keep), detours: d.filter(keep) };
     },
     close: function (a, latlngs) {
       return addOne(arc.L.closures, { closureid: ('CP' + CP.uid()).slice(0, 50), street: cut(a.street, 150), direction: a.direction || 'Both Directions', reason: a.reason || 'Hazard', laneimpact: a.lanes || 'All Lanes',
@@ -419,7 +427,12 @@
     block: function (a, ll) {
       return addOne(arc.L.blocks, { blockid: ('CP' + CP.uid()).slice(0, 50), street: cut(a.street, 150), reason: a.reason || 'Hazard', accessallowed: a.access || 'No Access', description: cut(a.desc, 4000), starttime: ms(a.start) || Date.now(), endtime: ms(a.end), activeincid: 'Yes', streetoverride: 'No' }, pt(ll[0], ll[1]));
     },
-    reopen: function (kind, oid) { return arc.updOne(kind === 'block' ? arc.L.blocks : arc.L.closures, oid, { endtime: Date.now(), activeincid: 'No' }); }
+    detour: function (a, latlngs) {
+      var at = { detourid: ('CP' + CP.uid()).slice(0, 50), street: cut(a.street, 150), description: cut(a.desc, 4000), starttime: Date.now(), endtime: ms(a.end), url: cut(a.url, 1000), activeincid: 'Yes' };
+      if (a.closureGlobalId) at.closureglobalid = a.closureGlobalId;
+      return addOne(arc.L.detours, at, line(latlngs));
+    },
+    reopen: function (kind, oid) { return arc.updOne(kind === 'block' ? arc.L.blocks : kind === 'detour' ? arc.L.detours : arc.L.closures, oid, { endtime: Date.now(), activeincid: 'No' }); }
   };
   arc.evac = {
     list: function () { return arc.query(arc.L.notices, "activeincid='Yes'", { geom: true, order: 'dateissued DESC', extra: { maxAllowableOffset: 0.0002 } }); },
@@ -452,6 +465,115 @@
       parts.forEach(function (p) { out = out.concat(p); });
       return out.sort(function (a, b) { return (b.attributes.CreationDate || 0) - (a.attributes.CreationDate || 0); });
     }
+  };
+
+  // ---------- evacuation routes, incident lines, critical infrastructure ----------
+  arc.routes = {
+    list: function () { return arc.query(arc.L.evacRoutes, "activeincid='Yes'", { geom: true, order: 'startdate DESC' }); },
+    add: function (inc, a, latlngs) { return addOne(arc.L.evacRoutes, { incidentid: inc.number.slice(0, 30), incidentnm: cut(inc.name, 255), routeid: ('CP' + CP.uid()).slice(0, 30), routenm: cut(a.name, 255), roadclass: a.roadclass || 'Unknown', contraflow: a.contraflow ? 'Yes' : 'No', startdate: Date.now(), activeincid: 'Yes', description: cut(a.desc, 1000) }, line(latlngs)); },
+    end: function (oid) { return arc.updOne(arc.L.evacRoutes, oid, { activeincid: 'No', enddate: Date.now() }); }
+  };
+  arc.incLines = {
+    list: function (inc) { return arc.query(arc.L.incLines, "activeincid='Yes' AND incidentid=" + sq(inc.number.slice(0, 30)), { geom: true }); },
+    add: function (inc, a, latlngs) { return addOne(arc.L.incLines, { incidentid: inc.number.slice(0, 30), incidentnm: cut(inc.name, 255), incidenttp: TYPE_OK.indexOf(inc.type) >= 0 ? inc.type : 'Other', reptime: Date.now(), description: cut(a.desc, 500), locdesc: cut(a.name, 500), status: 'Open', activeincid: 'Yes', publicview: a.pub ? 'Yes' : 'No' }, line(latlngs)); },
+    end: function (oid) { return arc.updOne(arc.L.incLines, oid, { activeincid: 'No', status: 'Closed' }); }
+  };
+  arc.critInfra = {
+    SECTORS: ['Emergency Services', 'Healthcare and Public Health', 'Water and Wastewater Systems', 'Energy', 'Communications', 'Transportation Systems', 'Government Facilities', 'Commercial Facilities', 'Food and Agriculture', 'Dams', 'Chemical Sector', 'Critical Manufacturing', 'Financial Services', 'Information Technology', 'Other'],
+    add: function (a, ll) { return addOne(arc.L.critInfra, { name: cut(a.name, 250), facilityid: ('CP' + CP.uid()).slice(0, 100), facilitytype: cut(a.type, 250), sector: a.sector || 'Other', fulladdr: cut(a.address, 250), county: 'Botetourt', state: 'VA', pocname: cut(a.poc, 150), pocphone: cut(a.phone, 15), comments: cut(a.comments, 500), latitude: ll[0], longitude: ll[1] }, pt(ll[0], ll[1])); }
+  };
+
+  // ---------- affected area: what's inside, population, Business Analyst reports ----------
+  function ringOf(latlngs) { var r = latlngs.map(function (p) { return [+p[1], +p[0]]; }); var a = r[0], b = r[r.length - 1]; if (a[0] !== b[0] || a[1] !== b[1]) r.push([a[0], a[1]]); return r; }
+  function areaGeom(latlngs) { return { rings: [ringOf(latlngs)], spatialReference: { wkid: 4326 } }; }
+  arc.areaGeom = areaGeom;
+  function within(layer, latlngs, o) {
+    o = o || {};
+    var p = { where: o.where || '1=1', geometry: areaGeom(latlngs), geometryType: 'esriGeometryPolygon', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outSR: 4326 };
+    if (o.stats) { p.outStatistics = o.stats; p.groupByFieldsForStatistics = o.group || ''; }
+    else { p.outFields = o.fields || '*'; p.returnGeometry = !!o.geom; p.resultRecordCount = o.n || 500; }
+    return arc.req(layer + '/query', p, true).then(function (r) { return r.features || []; });
+  }
+  arc.impact = {
+    // circle around a point, radius in miles -> [[lat,lng],...]
+    circle: function (lat, lng, miles) {
+      var out = [], R = 3958.8, d = miles / R, la = lat * Math.PI / 180, lo = lng * Math.PI / 180;
+      for (var i = 0; i < 64; i++) { var b = i / 64 * 2 * Math.PI; var la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b)); var lo2 = lo + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2)); out.push([+(la2 * 180 / Math.PI).toFixed(6), +(lo2 * 180 / Math.PI).toFixed(6)]); }
+      return out;
+    },
+    // free: county addresses, structures, and county EM layers inside the area
+    inside: async function (latlngs) {
+      var L = arc.L, none = function () { return []; };
+      var r = await Promise.all([
+        within(L.addresses, latlngs, { stats: [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], group: 'Type' }).catch(none),
+        within(L.structures, latlngs, { stats: [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }, { statisticType: 'sum', onStatisticField: 'POP_MEDIAN', outStatisticFieldName: 'pop' }], group: 'OCC_CLS' }).catch(none),
+        within(L.shelters, latlngs, { fields: 'OBJECTID,facname,fulladdr,status,capacity,occupancy', geom: true }).catch(none),
+        within(L.pods, latlngs, { fields: 'OBJECTID,name,fulladdr,status', geom: true }).catch(none),
+        within(L.facilities, latlngs, { fields: '*', geom: true }).catch(none),
+        within(L.critInfra, latlngs, { fields: 'OBJECTID,name,facilitytype,sector,fulladdr,pocname,pocphone', geom: true }).catch(none),
+        within(L.closures, latlngs, { where: "activeincid='Yes'", fields: 'OBJECTID,street,description' }).catch(none),
+        within(L.blocks, latlngs, { where: "activeincid='Yes'", fields: 'OBJECTID,street,description' }).catch(none),
+        within(L.cad, latlngs, { fields: '*', geom: true }).catch(none)
+      ]);
+      var addr = {}; r[0].forEach(function (f) { var a = f.attributes; addr[a.Type || a.TYPE || 'Unspecified'] = a.n || a.N || 0; });
+      var res = 0, mh = 0, bus = 0, other = 0, tot = 0;
+      Object.keys(addr).forEach(function (k) { var n = addr[k]; tot += n; if (/MH|MOBILE|TRAILER/i.test(k)) mh += n; else if (/RES|STY|SFD|DWELL|APART|APT|DUPLEX|TOWN|CONDO|HOUSE/i.test(k)) res += n; else if (/BUSINESS|COMMER|INDUST|OFFICE|STORE|RETAIL/i.test(k)) bus += n; else other += n; });
+      var st = {}, stTot = 0, pop = 0; r[1].forEach(function (f) { var a = f.attributes, n = a.n || a.N || 0; st[a.OCC_CLS || 'Unclassified'] = n; stTot += n; pop += a.pop || a.POP || 0; });
+      return { asof: Date.now(), addr: { total: tot, residences: res, mobileHomes: mh, businesses: bus, other: other, byType: addr }, structures: { total: stTot, byClass: st, popEst: Math.round(pop) },
+        shelters: r[2].map(function (f) { var a = f.attributes; return { name: a.facname, addr: a.fulladdr, status: a.status, cap: a.capacity, occ: a.occupancy }; }),
+        pods: r[3].map(function (f) { var a = f.attributes; return { name: a.name, addr: a.fulladdr, status: a.status }; }),
+        facilities: r[4].map(function (f) { var a = f.attributes; return { name: a.facname || a.name || a.facilitytype || 'Facility', type: a.factype || a.facilitytype || a.type || '', status: a.status || '' }; }),
+        critical: r[5].map(function (f) { var a = f.attributes; return { name: a.name, type: a.facilitytype, sector: a.sector, addr: a.fulladdr, poc: [a.pocname, a.pocphone].filter(Boolean).join(' ') }; }),
+        closures: r[6].map(function (f) { return f.attributes.street; }).concat(r[7].map(function (f) { return f.attributes.street + ' (road block)'; })),
+        cad: r[8].length };
+    },
+    // GeoEnrichment (uses ArcGIS credits): key population numbers for the area
+    VARS: [['AtRisk.TOTPOP_CY', 'pop', 'Population'], ['AtRisk.TOTHH_CY', 'hh', 'Households'], ['KeyUSFacts.TOTHU_CY', 'hu', 'Housing units'], ['DaytimePopulation.DPOP_CY', 'daypop', 'Daytime population'],
+      ['AtRisk.SENIORS_CY', 'age65', 'Age 65+'], ['Health.POP0_CY', 'age0_4', 'Age 0–4'], ['AtRisk.ACSHHDIS', 'hhDis', 'Households with a disability'], ['AtRisk.ACSHHBPOV', 'hhPov', 'Households below poverty'],
+      ['vehiclesavailable.ACSOVEH0', 'noVehOwn', ''], ['vehiclesavailable.ACSRVEH0', 'noVehRent', '']],
+    enrich: async function (latlngs) {
+      var G = 'https://geoenrich.arcgis.com/arcgis/rest/services/World/geoenrichmentserver/GeoEnrichment/';
+      var r = await arc.req(G + 'enrich', { studyAreas: [{ geometry: areaGeom(latlngs) }], analysisVariables: arc.impact.VARS.map(function (v) { return v[0]; }), returnGeometry: false }, true);
+      var fs = r.results && r.results[0] && r.results[0].value && r.results[0].value.FeatureSet && r.results[0].value.FeatureSet[0];
+      var a = fs && fs.features && fs.features[0] && fs.features[0].attributes; if (!a) throw new Error((r.messages && r.messages[0] && r.messages[0].description) || 'No population data returned for this area.');
+      var out = { asof: Date.now() }; arc.impact.VARS.forEach(function (v) { var k = v[0].split('.')[1]; out[v[1]] = a[k] != null ? Math.round(a[k]) : null; });
+      out.hhNoVeh = (out.noVehOwn || 0) + (out.noVehRent || 0); delete out.noVehOwn; delete out.noVehRent;
+      return out;
+    },
+    // Business Analyst infographic templates: suggested Esri ones, then the county's own
+    SUGGESTED: [['at-risk-population', 'At Risk Population'], ['emergency-information', 'Emergency Information'], ['community-risk-profile', 'Community Risk Profile'], ['fire-district-profile', 'Fire District Profile'], ['key-facts', 'Key Facts'], ['demographic-summary', 'Demographic Summary'], ['whats-in-my-community', "What's in My Community?"]],
+    templates: async function () {
+      var out = [], G = 'https://geoenrich.arcgis.com/arcgis/rest/services/World/geoenrichmentserver/GeoEnrichment/';
+      try {
+        var self = await arc.req(arc.portal + '/sharing/rest/community/self');
+        var s = await arc.req(arc.portal + '/sharing/rest/search', { q: 'type:"Report Template" AND orgid:' + self.orgId, num: 100, sortField: 'title' });
+        (s.results || []).forEach(function (r) { out.push({ id: 'item:' + r.id, title: r.title, group: 'County templates' }); });
+      } catch (e) { console.warn(e); }
+      var have = {}; arc.impact.SUGGESTED.forEach(function (x) { out.push({ id: x[0], title: x[1], group: 'Suggested for emergencies' }); have[x[0]] = 1; });
+      try {
+        var st = await arc.req(G + 'Infographics/Standard/US');
+        (st.reports || []).forEach(function (r) { if (!have[r.reportID]) out.push({ id: r.reportID, title: (r.metadata && r.metadata.title) || r.reportID, group: 'All Esri infographics' }); });
+      } catch (e) { console.warn(e); }
+      return out;
+    },
+    // runs the report and returns a Blob (pdf | html | xlsx). Uses ArcGIS credits.
+    report: async function (latlngs, reportId, format, title, subtitle) {
+      var G = 'https://geoenrich.arcgis.com/arcgis/rest/services/World/geoenrichmentserver/GeoEnrichment/createReport';
+      var t = await token(); if (!t) throw new Error('Sign in with ArcGIS first.');
+      var rep = reportId.indexOf('item:') === 0 ? JSON.stringify({ itemid: reportId.slice(5) }) : reportId;
+      var p = new URLSearchParams({ f: 'bin', format: format || 'pdf', report: rep, token: t, langCode: 'en-us',
+        studyAreas: JSON.stringify([{ geometry: areaGeom(latlngs), attributes: { AREA_DESC: subtitle || title || '' } }]),
+        reportFields: JSON.stringify({ title: title || '', subtitle: subtitle || '', library: 'Botetourt County Emergency Management' }) });
+      var res = await fetch(G, { method: 'POST', body: p });
+      var ct = res.headers.get('content-type') || '';
+      if (/json|text\/plain/.test(ct)) { var j = await res.json().catch(function () { return {}; }); throw new Error((j.error && (j.error.message + (j.error.details && j.error.details.length ? ': ' + j.error.details.join(' ') : ''))) || 'Report failed.'); }
+      if (!res.ok) throw new Error('Report failed (' + res.status + ').');
+      return await res.blob();
+    },
+    // the county "Impacted Area" layer (dashboards and public maps)
+    areas: function (inc) { return arc.query(arc.L.affected, "activeincid='Yes'", { geom: true }); },
+    publish: function (inc, latlngs, desc) { return addOne(arc.L.affected, { incidentid: inc.number.slice(0, 30), incidentnm: cut(inc.name, 255), description: cut(desc, 1000), activeincid: 'Yes' }, poly(latlngs)); },
+    unpublish: function (oid) { return arc.updOne(arc.L.affected, oid, { activeincid: 'No' }); }
   };
 
   // ---------- live feeds ----------
@@ -518,6 +640,8 @@
     if (name === 'caltopo') return arc.query(L.caltopo, '1=1', { geom: true });
     if (name === 'nws') { var b = CP.COUNTY.bbox; return arc.query(L.nws, '1=1', { geom: true, fields: 'Event,Severity,End_', extra: { geometry: b.xmin + ',' + b.ymin + ',' + b.xmax + ',' + b.ymax, geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', maxAllowableOffset: 0.005 } }); }
     if (name === 'notices') return arc.query(L.notices, "activeincid='Yes'", { geom: true, extra: { maxAllowableOffset: 0.0005 } });
+    if (name === 'affected') return arc.query(L.affected, "activeincid='Yes'", { geom: true, extra: { maxAllowableOffset: 0.0005 } });
+    if (name === 'routes') { var p2 = await Promise.all([arc.query(L.evacRoutes, "activeincid='Yes'", { geom: true }).catch(function () { return []; }), arc.query(L.detours, "activeincid='Yes'", { geom: true }).catch(function () { return []; })]); p2[0].forEach(function (f) { f._k = 'route'; }); p2[1].forEach(function (f) { f._k = 'detour'; }); return p2[0].concat(p2[1]); }
     return [];
   };
 })(window.CP);

@@ -2,7 +2,9 @@
 
 Incident management for **Botetourt County Emergency Management**.
 
-One record per incident fills every ICS form (201, 202, 203, 204, 205, 205A, 206, 207, 208, 209, 211, 213, 213RR, 214, 215, 215A, 221) and the Incident Action Plan, and updates the county ArcGIS Online EM layers (Incidents, Incident Facilities, Lifeline Status, Public Message, SitRep, Damage Assessment).
+One record per incident fills every ICS form (201, 202, 203, 204, 205, 205A, 206, 207, 208, 209, 211, 213, 213RR, 214, 215, 215A, 221) and the Incident Action Plan, and updates the county ArcGIS Online EM layers (Incidents, Incident Lines, Incident Facilities, Impacted Area, Road Closures, Road Blocks, Detours, Notices & Evacuations, Evacuation Routes, Shelters, Distribution Sites, Critical Infrastructure, Lifeline Status, Public Message, SitRep, Damage Assessment).
+
+The **Affected Area** page replaces the old EM Information Manager impact tools: pick or draw an area, count the homes and buildings in it, list what's inside, get Esri population numbers, and run Business Analyst infographics (PDF, Excel or interactive) for it.
 
 Live app: https://bocoem.github.io/command-post/
 
