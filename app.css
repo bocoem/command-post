@@ -342,7 +342,7 @@ table.t.ro td{padding:9px 8px}
 /* CAD calls side panel */
 .calls{width:0;flex:none;overflow:hidden;background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column;transition:width .2s}
 body.calls-open .calls{width:370px}
-.callstab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:800;writing-mode:vertical-rl;display:flex;align-items:center;gap:8px;padding:14px 7px;background:#12294a;border:1px solid var(--line2);border-right:0;border-radius:10px 0 0 10px;color:var(--text);font:700 12.5px var(--cond);letter-spacing:2px;cursor:pointer;box-shadow:-4px 0 14px rgba(0,0,0,.35)}
+.callstab{position:fixed;right:0;top:calc(50% - 90px);transform:translateY(-50%);z-index:800;writing-mode:vertical-rl;display:flex;align-items:center;gap:8px;padding:14px 7px;background:#12294a;border:1px solid var(--line2);border-right:0;border-radius:10px 0 0 10px;color:var(--text);font:700 12.5px var(--cond);letter-spacing:2px;cursor:pointer;box-shadow:-4px 0 14px rgba(0,0,0,.35)}
 .callstab:hover{background:#18365e}
 .callstab .ic{transform:rotate(90deg);color:var(--gold)}
 .callstab b{background:var(--gold);color:#0B1A2B;border-radius:9px;padding:6px 2px;font:800 11px var(--mono);letter-spacing:0}
@@ -372,3 +372,18 @@ body.calls-open .callstab{right:370px}
 .cact{display:flex;gap:5px;align-items:center;margin-top:8px;flex-wrap:wrap}
 @media (max-width:860px){body.calls-open .calls{position:fixed;right:0;top:0;bottom:0;width:92vw;z-index:950}body.calls-open .callstab{right:92vw}}
 @media print{.calls,.callstab{display:none!important}}
+
+/* Live apps panel */
+.apps{width:0;flex:none;overflow:hidden;background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column;transition:width .2s}
+body.apps-open .apps{width:46vw}
+body.apps-open.apps-wide .apps{width:68vw}
+.appstab{top:calc(50% + 80px)}
+.appstab .ic{transform:none}
+body.apps-open .appstab,body.apps-open .callstab{right:46vw}
+body.apps-open.apps-wide .appstab,body.apps-open.apps-wide .callstab{right:68vw}
+.appsnote{font-size:12px;color:var(--muted);padding:6px 12px;border-bottom:1px solid #16304d}.appsnote:empty{display:none}
+.appframes{flex:1;position:relative;background:#0d1b2a}
+.appframes iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#0d1b2a}
+.chead a.ibtn{display:inline-grid}
+@media (max-width:860px){body.apps-open .apps{position:fixed;right:0;top:0;bottom:0;width:100vw!important;z-index:950}body.apps-open .appstab,body.apps-open .callstab{display:none}}
+@media print{.apps,.appstab{display:none!important}}
