@@ -71,7 +71,7 @@
   O.paint = function () {
     if (!O.box) return;
     var n = O.counts();
-    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', n.pout ? n.pout.toLocaleString() : 0], ['wx', 'Weather', n.nws]];
+    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['wx', 'Weather', n.nws]];
     O.box.querySelector('#owBar').innerHTML = tabs.map(function (x) { return '<button class="' + (O.tab === x[0] ? 'on' : '') + '" data-act="owTab" data-a="' + x[0] + '">' + x[1] + (x[2] !== '' ? ' <b>' + x[2] + '</b>' : '') + '</button>'; }).join('') +
       '<span class="owasof">' + (O.err ? '<span title="' + E(O.err) + '" style="color:#ffb3b8">⚠ </span>' : '') + (O.asof ? 'Updated ' + O.asof : 'Loading…') + ' <button class="ibtn" data-act="owRefresh" title="Refresh now">' + I('refresh') + '</button></span>';
     var mapEl = O.box.querySelector('#owMap'), list = O.box.querySelector('#owList');
@@ -119,9 +119,10 @@
       var a = f.attributes, lat = a.latitude || (f.geometry && f.geometry.y), lng = a.longitude || (f.geometry && f.geometry.x); if (lat == null) return;
       g.vdot.addLayer(L.marker([lat, lng], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="owdia" style="background:' + COL.vdot + '"></div>' }) }).bindPopup(pop(a.event_type, [['Road', a.road], ['County', a.county], ['Lanes', a.lane_status], ['Severity', a.severity], ['Since', t(a.start_time)], ['', a.description]])));
     });
+    var stale = O.powerStale();
     O.d.power.forEach(function (f) {
-      var a = f.attributes, p = (a.percent_out || 0) * 100; if (!f.geometry) return;
-      var col = p >= 10 ? '#F0444C' : p >= 2 ? '#F28C28' : p > 0 ? '#ffd27a' : '#2FBF71';
+      var a = f.attributes, p = stale ? 0 : (a.percent_out || 0) * 100; if (!f.geometry) return;
+      var col = stale ? '#93A9C3' : p >= 10 ? '#F0444C' : p >= 2 ? '#F28C28' : p > 0 ? '#ffd27a' : '#2FBF71';
       var lyr = CP.map.esri(f.geometry, { color: col, weight: 1, fillColor: col, fillOpacity: p > 0 ? 0.22 : 0.05 });
       if (lyr) g.power.addLayer(lyr.bindPopup(pop(a.localitylabel || a.name, [['Customers out', (a.customersout || 0).toLocaleString()], ['Tracked', (a.customerstracked || 0).toLocaleString()], ['Percent out', p.toFixed(2) + '%'], ['Updated', t(a.lastupdateddatetime)]])));
     });
@@ -139,6 +140,7 @@
     if (leg) leg.innerHTML = '<div class="owlegh">Layers</div>' + LAYERS.map(function (l) { return '<label><input type="checkbox" data-act-change="owLayer" data-a="' + l.k + '"' + (O.on[l.k] ? ' checked' : '') + '><i style="background:' + l.c + '"></i>' + l.n + '</label>'; }).join('');
   };
 
+  O.powerStale = function () { var m = 0; O.d.power.forEach(function (f) { m = Math.max(m, f.attributes.lastupdateddatetime || 0); }); return m && Date.now() - m > 6 * 3600e3 ? m : 0; };
   O.listHtml = function (tab) {
     var h = '';
     if (tab === 'fire' || tab === 'law') {
@@ -165,7 +167,8 @@
     }
     if (tab === 'power') {
       var p = O.d.power.slice().sort(function (x, y) { return (/^Botetourt/.test(y.attributes.name) ? 1e9 : 0) + (y.attributes.customersout || 0) - (/^Botetourt/.test(x.attributes.name) ? 1e9 : 0) - (x.attributes.customersout || 0); });
-      return '<div class="ownote">Customers without power, Botetourt and neighbors (VDEM).</div><table class="owtab"><tr><th>Locality</th><th>Out</th><th>%</th><th>Updated</th></tr>' + p.map(function (f) { var a = f.attributes; return '<tr' + (/^Botetourt/.test(a.name) ? ' class="me"' : '') + '><td>' + E(a.localitylabel || a.name) + '</td><td>' + (a.customersout || 0).toLocaleString() + '</td><td>' + ((a.percent_out || 0) * 100).toFixed(2) + '</td><td>' + t(a.lastupdateddatetime) + '</td></tr>'; }).join('') + '</table>';
+      var st = O.powerStale();
+      return (st ? '<div class="owcard" style="border-left-color:#F0444C"><b>Outage feed is out of date</b><div class="owd">The VDEM power-outage layer last updated ' + new Date(st).toLocaleString() + '. These numbers are not current; check the utility outage maps directly.</div></div>' : '') + '<div class="ownote">Customers without power, Botetourt and neighbors (VDEM).</div><table class="owtab"><tr><th>Locality</th><th>Out</th><th>%</th><th>Updated</th></tr>' + p.map(function (f) { var a = f.attributes; return '<tr' + (/^Botetourt/.test(a.name) ? ' class="me"' : '') + '><td>' + E(a.localitylabel || a.name) + '</td><td>' + (a.customersout || 0).toLocaleString() + '</td><td>' + ((a.percent_out || 0) * 100).toFixed(2) + '</td><td>' + t(a.lastupdateddatetime) + '</td></tr>'; }).join('') + '</table>';
     }
     if (tab === 'wx') {
       h = '<div class="ownote">Weather warnings for Botetourt County</div>' + (O.d.nws.length ? O.d.nws.map(function (f) { var a = f.attributes; return '<div class="owcard" style="border-left-color:#ffd27a"><div class="owt"><b>' + E(a.Event) + '</b><span>' + E(a.Severity || '') + '</span></div><div class="owa">Until ' + t(a.End_) + '</div></div>'; }).join('') : '<div class="owempty">No active watches or warnings.</div>');
