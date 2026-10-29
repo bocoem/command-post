@@ -4,7 +4,7 @@
   var I = CP.ui.icon, E = CP.esc;
   var X = 'https://experience.arcgis.com/experience/';
   var LIST = [
-    { k: 'overwatch', n: 'Overwatch', d: 'Live CAD, VDOT, power, weather', u: X + '299778f2f57a472eb478ac1bf21bb424', sign: true },
+    { k: 'overwatch', n: 'Overwatch', d: 'Live CAD, VDOT, power, weather', u: X + '299778f2f57a472eb478ac1bf21bb424', native: true },
     { k: 'stormwatch', n: 'Stormwatch', d: 'Public storm reports', u: X + 'c8f438b974da4e2b9d9fd01893687ec4' },
     { k: 'responder', n: 'Stormwatch Responder', d: 'Responder storm reports', u: X + '0f7a1564b1db45c2adcb469b56973330' },
     { k: 'eoc', n: 'EOC app', d: 'SitReps, lifelines, checklists', u: X + '0ed836c463984dcc86ab3e1a6d36831a', sign: true }
@@ -27,14 +27,16 @@
     var a = LIST.find(function (x) { return x.k === P.cur; }) || LIST[0];
     el.querySelectorAll('#appsSw button').forEach(function (b) { b.classList.toggle('on', b.dataset.a === a.k); });
     el.querySelector('#appsNew').href = a.u;
-    el.querySelector('#appsNote').innerHTML = a.sign ? 'County sign-in app. If it stays on the loading bars, your browser is blocking the sign-in inside Command Post. <a href="#" data-act="appsBeside" data-a="' + a.k + '">Open it beside Command Post</a>.' : '';
+    el.querySelector('#appsNote').innerHTML = a.native ? 'Live Overwatch picture, loaded with your Command Post sign-in. <a href="' + a.u + '" target="_blank" rel="noopener">Open the full Overwatch app</a>.' : a.sign ? 'County sign-in app. If it stays on the loading bars, your browser is blocking the sign-in inside Command Post. <a href="#" data-act="appsBeside" data-a="' + a.k + '">Open it beside Command Post</a>.' : '';
     if (P.open) {
       var box = el.querySelector('#appFrames');
+      if (!P.made[a.k] && a.native) { var nb = document.createElement('div'); nb.dataset.k = a.k; nb.className = 'appnative'; box.appendChild(nb); P.made[a.k] = nb; CP.ow.mount(nb); }
       if (!P.made[a.k]) { var f = document.createElement('iframe'); f.src = a.u; f.dataset.k = a.k; f.title = a.n; f.setAttribute('allow', 'geolocation; fullscreen; clipboard-write'); box.appendChild(f); P.made[a.k] = f;
         if (a.sign) { var ov = document.createElement('div'); ov.className = 'appstall'; ov.dataset.k = a.k; ov.style.display = 'none';
           ov.innerHTML = '<div><b>' + E(a.n) + ' needs your county sign-in</b><p>Browsers block ArcGIS sign-in inside another site, so ' + E(a.n) + ' may not load in this panel. Open it in its own window, docked beside Command Post.</p><button class="btn pri" data-act="appsBeside" data-a="' + a.k + '">Open beside Command Post</button> <button class="btn" data-act="appsWait" data-a="' + a.k + '">Keep waiting</button></div>';
           box.appendChild(ov); setTimeout(function () { if (!ov.dataset.dismiss) { ov.dataset.show = '1'; P.paint(); } }, 12000); } }
-      Object.keys(P.made).forEach(function (k) { P.made[k].style.display = k === a.k ? 'block' : 'none'; });
+      Object.keys(P.made).forEach(function (k) { P.made[k].style.display = k === a.k ? (P.made[k].tagName === 'DIV' ? 'flex' : 'block') : 'none'; });
+      if (a.native && CP.ow.map) setTimeout(function () { CP.ow.map.invalidateSize(); }, 280);
       box.querySelectorAll('.appstall').forEach(function (o) { o.style.display = (o.dataset.k === a.k && o.dataset.show && !o.dataset.dismiss) ? 'flex' : 'none'; });
     }
   };
@@ -56,6 +58,7 @@
   CP.extendAppsActs = function (act) {
     act.appsToggle = function () { P.toggle(); };
     act.appsShow = function (k) { P.cur = k; CP.store.setPref('appsCur', k); P.paint(); };
+    act.appsShow0 = act.appsShow; act.appsShow = function (k) { act.appsShow0(k); if (k === 'overwatch' && CP.ow.box) { CP.ow.paint(); CP.ow.refresh(); } };
     act.appsBeside = function (k) { P.beside(k || P.cur); };
     act.appsWait = function (k) { var o = document.querySelector('.appstall[data-k="' + k + '"]'); if (o) o.dataset.dismiss = '1'; P.paint(); };
     act.appsWide = function () { P.wide = !P.wide; CP.store.setPref('appsWide', P.wide); P.paint(); };

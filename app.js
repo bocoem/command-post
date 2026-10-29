@@ -570,6 +570,7 @@
   if (CP.extendCallActs) CP.extendCallActs(act, app.change);
   if (CP.extendEocActs) CP.extendEocActs(act, app.change);
   if (CP.extendAppsActs) CP.extendAppsActs(act);
+  if (CP.extendOwActs) CP.extendOwActs(act, app.change);
   act.actions = function () { U.modal('What do you need to do?', CP.views.qaGrid(3), [], { wide: true, nofocus: true }); };
   act.mode = function (m) { var inc = app.inc; if (m === 'quick') { CP.setPath(inc, 'showAll', false); if (inc.complexity <= 3) CP.setPath(inc, 'complexity', 4); } else CP.setPath(inc, 'showAll', true); app.log('Switched to ' + m + ' mode', 'Note'); app.commit(true); };
   function packetList(k) {
