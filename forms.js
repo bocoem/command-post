@@ -410,23 +410,23 @@
 
   // ---------- registry ----------
   CP.FORMS = [
-    { no: '201', t: 'Incident Briefing', d: 'Initial briefing and transfer of command: map, situation, objectives, actions, org and resources.', small: true, f: F['201'] },
-    { no: '202', t: 'Incident Objectives', d: 'Objectives, command emphasis and IAP contents for the operational period.', iap: true, f: F['202'] },
-    { no: '203', t: 'Organization Assignment List', d: 'Who fills each ICS position.', iap: true, f: F['203'] },
-    { no: '204', t: 'Assignment List', d: 'One per division or group: resources, work assignment, comms.', iap: true, f: F['204'] },
-    { no: '205', t: 'Radio Communications Plan', d: 'Channels, talkgroups and assignments.', iap: true, f: F['205'] },
-    { no: '205A', t: 'Communications List', d: 'Phone and contact methods for everyone on the incident.', iap: true, f: F['205A'] },
-    { no: '206', t: 'Medical Plan', d: 'Aid stations, EMS transport, hospitals and procedures.', iap: true, f: F['206'] },
-    { no: '207', t: 'Organization Chart', d: 'Visual org chart built from the org list.', iap: true, f: F['207'] },
-    { no: '208', t: 'Safety Message/Plan', d: 'Safety message and site safety plan status.', iap: true, f: F['208'] },
-    { no: '209', t: 'Incident Status Summary', d: 'Status report to VDEM/EOC with live shelter, damage and resource totals.', f: F['209'] },
-    { no: '211', t: 'Incident Check-In List', d: 'Every resource checked in, with times and assignments.', small: true, f: F['211'] },
-    { no: '213', t: 'General Message', d: 'Formal messages with reply.', small: true, f: F['213'] },
-    { no: '213RR', t: 'Resource Request', d: 'Resource orders through Logistics and Finance.', f: F['213RR'] },
-    { no: '214', t: 'Activity Log', d: 'Unit or individual activity log from the incident log.', small: true, f: F['214'] },
-    { no: '215', t: 'Operational Planning Worksheet', d: 'Resource needs by division: required, have, need.', f: F['215'] },
-    { no: '215A', t: 'IAP Safety Analysis', d: 'Hazards and mitigations by incident area.', f: F['215A'] },
-    { no: '221', t: 'Demobilization Check-Out', d: 'Release checklist for each demobilizing resource.', f: F['221'] }
+    { no: '201', plain: 'Briefing packet', t: 'Incident Briefing', d: 'Initial briefing and transfer of command: map, situation, objectives, actions, org and resources.', small: true, f: F['201'] },
+    { no: '202', plain: 'Shift goals', t: 'Incident Objectives', d: 'Objectives, command emphasis and IAP contents for the operational period.', iap: true, f: F['202'] },
+    { no: '203', plain: 'Who is assigned', t: 'Organization Assignment List', d: 'Who fills each ICS position.', iap: true, f: F['203'] },
+    { no: '204', plain: 'Team assignment sheets', t: 'Assignment List', d: 'One per division or group: resources, work assignment, comms.', iap: true, f: F['204'] },
+    { no: '205', plain: 'Radio plan', t: 'Radio Communications Plan', d: 'Channels, talkgroups and assignments.', iap: true, f: F['205'] },
+    { no: '205A', plain: 'Contact list', t: 'Communications List', d: 'Phone and contact methods for everyone on the incident.', iap: true, f: F['205A'] },
+    { no: '206', plain: 'Medical plan', t: 'Medical Plan', d: 'Aid stations, EMS transport, hospitals and procedures.', iap: true, f: F['206'] },
+    { no: '207', plain: 'Org chart', t: 'Organization Chart', d: 'Visual org chart built from the org list.', iap: true, f: F['207'] },
+    { no: '208', plain: 'Safety message', t: 'Safety Message/Plan', d: 'Safety message and site safety plan status.', iap: true, f: F['208'] },
+    { no: '209', plain: 'VDEM status report', t: 'Incident Status Summary', d: 'Status report to VDEM/EOC with live shelter, damage and resource totals.', f: F['209'] },
+    { no: '211', plain: 'Check-in sheet', t: 'Incident Check-In List', d: 'Every resource checked in, with times and assignments.', small: true, f: F['211'] },
+    { no: '213', plain: 'Message', t: 'General Message', d: 'Formal messages with reply.', small: true, f: F['213'] },
+    { no: '213RR', plain: 'Resource request', t: 'Resource Request', d: 'Resource orders through Logistics and Finance.', f: F['213RR'] },
+    { no: '214', plain: 'Activity log', t: 'Activity Log', d: 'Unit or individual activity log from the incident log.', small: true, f: F['214'] },
+    { no: '215', plain: 'Resource needs', t: 'Operational Planning Worksheet', d: 'Resource needs by division: required, have, need.', f: F['215'] },
+    { no: '215A', plain: 'Hazard analysis', t: 'IAP Safety Analysis', d: 'Hazards and mitigations by incident area.', f: F['215A'] },
+    { no: '221', plain: 'Release checkout', t: 'Demobilization Check-Out', d: 'Release checklist for each demobilizing resource.', f: F['221'] }
   ];
   CP.FORM = {}; CP.FORMS.forEach(function (f) { CP.FORM[f.no] = f; });
 

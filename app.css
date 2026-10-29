@@ -329,3 +329,12 @@ table.t.ro td{padding:9px 8px}
   #printroot .ics-page{box-shadow:none;margin:0;page-break-after:always;break-after:page;min-height:11in;height:11in;overflow:hidden}
   #printroot .ics-page:last-child{page-break-after:auto;break-after:auto}
 }
+
+/* quick actions */
+.qa{display:grid;gap:8px}
+.qab{position:relative;display:flex;align-items:center;gap:10px;padding:12px 12px;border-radius:11px;border:1px solid var(--line2);background:#0d2136;color:var(--text);cursor:pointer;text-align:left;font:700 13.5px var(--cond);letter-spacing:.6px;text-transform:uppercase;line-height:1.15;transition:border-color .15s,background .15s,transform .05s}
+.qab:hover{border-color:var(--gold);background:#12304f}
+.qab:active{transform:translateY(1px)}
+.qab .ic{width:22px;height:22px;color:var(--gold)}
+.qab.arc .ic:first-child{color:#8fb2ff}
+.qab i{position:absolute;right:7px;top:6px;opacity:.55}.qab i .ic{width:13px;height:13px;color:#8fb2ff}

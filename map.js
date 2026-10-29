@@ -62,6 +62,23 @@
     map.on('click', click); map.on('dblclick', dbl);
     return { finish: finish, count: function () { return pts.length; } };
   };
+  M.drawLine = function (map, done) {
+    var pts = [], line = L.polyline([], { color: '#ff4d58', weight: 5 }).addTo(map), marks = L.layerGroup().addTo(map);
+    map.getContainer().style.cursor = 'crosshair'; map.doubleClickZoom.disable();
+    function click(e) { pts.push([e.latlng.lat, e.latlng.lng]); line.setLatLngs(pts); marks.addLayer(L.circleMarker(e.latlng, { radius: 4, color: '#ff4d58' })); }
+    function finish(cancel) { map.off('click', click); map.off('dblclick', dbl); map.getContainer().style.cursor = ''; line.remove(); marks.remove(); map.doubleClickZoom.enable(); done(cancel ? null : pts); }
+    function dbl(e) { L.DomEvent.stop(e); finish(false); }
+    map.on('click', click); map.on('dblclick', dbl);
+    return { finish: finish, count: function () { return pts.length; } };
+  };
+  // Esri JSON (WGS84) -> Leaflet layer
+  M.esri = function (g, style) {
+    if (!g) return null;
+    if (g.paths) return L.polyline(g.paths.map(function (p) { return p.map(function (q) { return [q[1], q[0]]; }); }), style || { color: '#ff4d58', weight: 5 });
+    if (g.rings) return L.polygon(g.rings.map(function (p) { return p.map(function (q) { return [q[1], q[0]]; }); }), style || { color: '#c77dff', weight: 2, fillOpacity: .15 });
+    if (g.x != null) return L.marker([g.y, g.x], { icon: (style && style.icon) || M.dotIcon('#FDB833', 12) });
+    return null;
+  };
   M.pick = function (map, done) {
     map.getContainer().style.cursor = 'crosshair';
     map.once('click', function (e) { map.getContainer().style.cursor = ''; done(e.latlng); });

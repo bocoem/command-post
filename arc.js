@@ -32,6 +32,9 @@
       stormDisp: B + 'survey123_25c0b913f91447e88a85ccf562bdfcbb_results/FeatureServer/0',
       stormPub: B + 'survey123_8249fcd3b5db4db3a982ab6f4e65acb2_results/FeatureServer/0',
       houseChecks: B + 'survey123_3c05a771c9124f6096c7de50b40201b5_results/FeatureServer/0',
+      houseChecksEdit: B + 'survey123_3c05a771c9124f6096c7de50b40201b5/FeatureServer/0',
+      stormRespEdit: B + 'survey123_87946e73db344d4da8e41655a205e6e7/FeatureServer/0',
+      blocks: B + 'RoadClosures_ad0e8a3412044da3bf1b9d6ebdb3c97e/FeatureServer/0',
       vdot: B + 'VDOT_Incidents__SmarterRoads/FeatureServer/0',
       caltopo: B + 'CalTopo_Live_Locations/FeatureServer/0',
       nws: 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/NWS_Watches_Warnings_v1/FeatureServer/6'
@@ -111,6 +114,7 @@
   arc.del = function (l, ids) { return edits(l, 'deletes', ids); };
   function sq(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
   arc.sq = sq;
+  arc.toLayerSR = function (l, g) { return toLayerSR(l, g); };
   function ms(iso) { return iso ? new Date(iso).getTime() : null; }
   function cut(s, n) { s = s == null ? '' : String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
   // geometry: layers here are Web Mercator; send WGS84 with spatialReference so the server projects it
@@ -131,6 +135,7 @@
     if (w !== 3857 && w !== 102100) return g;
     var out = { spatialReference: { wkid: 102100, latestWkid: 3857 } };
     if (g.rings) out.rings = g.rings.map(function (r) { return r.map(function (p) { return merc(p[0], p[1]); }); });
+    else if (g.paths) out.paths = g.paths.map(function (r) { return r.map(function (p) { return merc(p[0], p[1]); }); });
     else { var m = merc(g.x, g.y); out.x = m[0]; out.y = m[1]; }
     return out;
   }
@@ -363,6 +368,63 @@
     var at = { incident_name: cut(inc.name, 150), active: inc.status === 'Closed' ? 'No' : 'Yes', incident_start: ms(inc.start), notes: cut('Activated from Command Post · ' + inc.number, 1000) };
     var d = inc.eoc.declaration_status; at.fema_declaration = /Federal/.test(d) ? 'dr' : /State/.test(d) ? 'state' : /Local/.test(d) ? 'local' : 'none';
     return 'damage assessment ' + await upsert(arc.L.daConfig, 'incident_name', at.incident_name, at);
+  };
+
+  // ---------- direct editing of county operational layers ----------
+  function line(latlngs) { return { paths: [latlngs.map(function (p) { return [p[1], p[0]]; })], spatialReference: { wkid: 4326 } }; }
+  function oidOf(a) { return a.OBJECTID != null ? a.OBJECTID : a.objectid != null ? a.objectid : a.FID; }
+  arc.oidOf = oidOf;
+  async function addOne(layer, attrs, geom) { var f = { attributes: attrs }; if (geom) f.geometry = await toLayerSR(layer, geom); var r = await arc.add(layer, [f]); return r[0].objectId; }
+  arc.addOne = addOne;
+  arc.updOne = function (layer, oid, attrs) { var a = Object.assign({ OBJECTID: oid }, attrs); return arc.update(layer, [{ attributes: a }]); };
+  arc.roads = {
+    list: async function () {
+      var now = Date.now();
+      var c = await arc.query(arc.L.closures, "activeincid='Yes'", { geom: true, order: 'starttime DESC' });
+      var b = await arc.query(arc.L.blocks, "activeincid='Yes'", { geom: true, order: 'starttime DESC' }).catch(function () { return []; });
+      function keep(f) { var e = f.attributes.endtime; return !e || e > now; }
+      return { closures: c.filter(keep), blocks: b.filter(keep) };
+    },
+    close: function (a, latlngs) {
+      return addOne(arc.L.closures, { closureid: ('CP' + CP.uid()).slice(0, 50), street: cut(a.street, 150), direction: a.direction || 'Both Directions', reason: a.reason || 'Hazard', laneimpact: a.lanes || 'All Lanes',
+        accessallowed: a.access || 'No Access', description: cut(a.desc, 4000), starttime: ms(a.start) || Date.now(), endtime: ms(a.end), altroute: cut(a.alt, 4000), pocname: cut(a.poc, 150), pocphone: cut(a.phone, 15), activeincid: 'Yes', streetoverride: 'No' }, line(latlngs));
+    },
+    block: function (a, ll) {
+      return addOne(arc.L.blocks, { blockid: ('CP' + CP.uid()).slice(0, 50), street: cut(a.street, 150), reason: a.reason || 'Hazard', accessallowed: a.access || 'No Access', description: cut(a.desc, 4000), starttime: ms(a.start) || Date.now(), endtime: ms(a.end), activeincid: 'Yes', streetoverride: 'No' }, pt(ll[0], ll[1]));
+    },
+    reopen: function (kind, oid) { return arc.updOne(kind === 'block' ? arc.L.blocks : arc.L.closures, oid, { endtime: Date.now(), activeincid: 'No' }); }
+  };
+  arc.evac = {
+    list: function () { return arc.query(arc.L.notices, "activeincid='Yes'", { geom: true, order: 'dateissued DESC', extra: { maxAllowableOffset: 0.0002 } }); },
+    add: function (inc, a, rings) {
+      return addOne(arc.L.notices, { incidentid: inc.number.slice(0, 30), incidentnm: cut(inc.name, 255), description: cut(a.desc, 1000), evactype: a.level, startdate: Date.now(), dateissued: Date.now(), activeincid: 'Yes', publicview: a.pub ? 'Yes' : 'No',
+        agency: 'Botetourt County Emergency Management', zonename: cut(a.zone, 256), preestablishedzone: 'No', agencyurl: cut(a.url, 255) }, poly(rings));
+    },
+    set: function (oid, level) { var a = { evactype: level }; if (level === 'Clear') { a.activeincid = 'No'; a.enddate = Date.now(); } return arc.updOne(arc.L.notices, oid, a); }
+  };
+  arc.sites = {
+    list: async function () {
+      var s = await arc.query(arc.L.shelters, '1=1', { geom: true, fields: 'OBJECTID,facilityid,facname,fulladdr,status,capacity,occupancy,allowpets,publicview,pocname,pocphone', order: 'facname' });
+      var p = await arc.query(arc.L.pods, '1=1', { geom: true, fields: 'OBJECTID,name,fulladdr,status,publicview,water,food,ice,tarps,comfortkits,pocname,pocphone,incidentnm', order: 'name' });
+      return { shelters: s, pods: p };
+    },
+    updShelter: function (oid, a) { var at = {}; ['status', 'capacity', 'occupancy', 'publicview', 'allowpets'].forEach(function (k) { if (a[k] !== undefined) at[k] = a[k]; }); if (a.status === 'Open') at.opendate = Date.now(); if (a.status === 'Closed') at.closedate = Date.now(); return arc.updOne(arc.L.shelters, oid, at); },
+    addShelter: function (a, ll) { return addOne(arc.L.shelters, { facilityid: ('CP' + CP.uid()).slice(0, 20), facname: cut(a.name, 255), fulladdr: cut(a.address, 250), agency: cut(a.agency || 'Botetourt County Emergency Management', 255), status: a.status || 'Open', publicview: a.pub ? 'Yes' : 'No', capacity: num(a.capacity), occupancy: num(a.occupancy) || 0, allowpets: a.pets ? 'Yes' : 'No', pocname: cut(a.poc, 255), pocphone: cut(a.phone, 15), opendate: Date.now() }, pt(ll[0], ll[1])); },
+    updPod: function (oid, a) { return arc.updOne(arc.L.pods, oid, a); },
+    addPod: function (inc, a, ll) { var at = { name: cut(a.name, 255), fulladdr: cut(a.address, 255), status: a.status || 'Open', publicview: a.pub ? 'Yes' : 'No', incidentnm: cut(inc.name, 255), incidentid: inc.number.slice(0, 30), pocname: cut(a.poc, 255), pocphone: cut(a.phone, 15), notes: cut(a.notes, 500) }; ['water', 'food', 'ice', 'tarps', 'comfortkits'].forEach(function (k) { at[k] = a[k] ? 'Yes' : 'No'; }); return addOne(arc.L.pods, at, pt(ll[0], ll[1])); }
+  };
+  arc.field = {
+    STORM_TYPES: [['impassable_road', 'Impassable road'], ['Water in Road', 'Water in road'], ['debris_side_road', 'Debris on side of road'], ['risk_to_traffic', 'Risk to traffic'], ['traffic_accident', 'Traffic accident'], ['Snow Report', 'Snow report'], ['Situation Update', 'Situation update'], ['other', 'Other']],
+    HOUSE_TYPES: ['No Needs', 'Medical Needs-Good For 24 Hours', 'Medical Needs-Good for 12 Hours', 'Medical Needs-Needs Attention', 'Needs Evacuation', 'Evacuated', 'Vacant Residence', 'Vacant Building', 'other'],
+    storm: function (a, ll) { return addOne(arc.L.stormRespEdit, { type: a.type, type_other: cut(a.other, 255), comments: cut(a.comments, 1000), name: cut(a.name, 255), phone_contact: cut(a.phone, 255) }, pt(ll[0], ll[1])); },
+    house: function (a, ll) { return addOne(arc.L.houseChecksEdit, { responderteam_name: cut(a.team, 255), resident_name: cut(a.resident, 255), resident_phone_number: cut(a.phone, 255), number_of_residents_at_this_add: num(a.count), type: a.type, type_other: cut(a.other, 255), comments: cut(a.comments, 1000) }, pt(ll[0], ll[1])); },
+    recent: async function (days) {
+      var since = "CreationDate >= TIMESTAMP '" + new Date(Date.now() - (days || 3) * 86400000).toISOString().slice(0, 19).replace('T', ' ') + "'";
+      var L = arc.L, out = [];
+      var parts = await Promise.all([[L.stormResp, 'Responder'], [L.stormDisp, 'Dispatch'], [L.stormPub, 'Public'], [L.houseChecks, 'House check']].map(function (x) { return arc.query(x[0], since, { geom: true, order: 'CreationDate DESC', n: 300 }).then(function (f) { return f.map(function (g) { g._src = x[1]; return g; }); }).catch(function () { return []; }); }));
+      parts.forEach(function (p) { out = out.concat(p); });
+      return out.sort(function (a, b) { return (b.attributes.CreationDate || 0) - (a.attributes.CreationDate || 0); });
+    }
   };
 
   // ---------- live feeds ----------

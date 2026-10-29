@@ -6,12 +6,12 @@
   CP.me = CP.store.prefs().me || {};
 
   var NAV = [
-    ['Command', [['dash', 'Overview', 'dash'], ['brief', 'Briefing · 201', 'brief'], ['objectives', 'Objectives · 202', 'target', 3], ['org', 'Organization', 'org']]],
-    ['Operations', [['resources', 'Resources · 211', 'truck'], ['assign', 'Assignments · 204', 'list', 3], ['map', 'Map', 'map'], ['facilities', 'Facilities', 'flag']]],
-    ['Planning', [['log', 'Activity Log · 214', 'log'], ['status', 'SitRep · 209', 'report'], ['forms', 'Forms & IAP', 'forms']]],
-    ['Logistics', [['messages', 'Requests · 213RR', 'req'], ['comms', 'Comms · 205', 'radio', 3], ['medical', 'Medical · 206', 'med', 3]]],
-    ['Safety & Public', [['safety', 'Safety · 215A/208', 'shield', 3], ['public', 'Public Info', 'news'], ['lifelines', 'Lifelines', 'lifeline', 3]]],
-    ['System', [['arc', 'ArcGIS', 'cloud'], ['settings', 'Incident Settings', 'gear']]]
+    ['Incident', [['dash', 'Overview', 'dash'], ['brief', 'Situation', 'brief'], ['map', 'Map', 'map'], ['log', 'Activity Log', 'log']]],
+    ['People & Resources', [['org', 'People & Roles', 'org'], ['resources', 'Resources', 'truck'], ['assign', 'Teams & Areas', 'list', 3], ['messages', 'Requests & Messages', 'req'], ['facilities', 'Facilities', 'flag']]],
+    ['Community', [['roads', 'Roads & Evacuations', 'warn'], ['shelters', 'Shelters & Distribution', 'build'], ['field', 'Field Reports', 'pin'], ['lifelines', 'Lifelines', 'lifeline'], ['public', 'Public Updates', 'news']]],
+    ['Planning', [['objectives', 'Shift Plan', 'target', 3], ['safety', 'Safety', 'shield', 3], ['comms', 'Radio & Contacts', 'radio', 3], ['medical', 'Medical Plan', 'med', 3]]],
+    ['Reports', [['status', 'Status Reports', 'report'], ['forms', 'Reports & Forms', 'forms']]],
+    ['Setup', [['arc', 'Connections', 'cloud'], ['settings', 'Settings', 'gear']]]
   ];
   var MINCX = {}; NAV.forEach(function (g) { g[1].forEach(function (n) { if (n[3]) MINCX[n[0]] = n[3]; }); });
   app.visible = function (v) { var inc = app.inc; if (!inc) return true; return !MINCX[v] || inc.showAll || inc.complexity <= MINCX[v]; };
@@ -47,8 +47,8 @@
     var op = CP.curOP(inc);
     ib.innerHTML = '<div class="ibar"><div style="min-width:0"><div class="nm" title="' + E(inc.name) + '">' + E(inc.name) + '</div><div class="no">' + E(inc.number) + ' · ' + E(inc.type) + '</div></div>' +
       '<span class="chip gold">Type ' + inc.complexity + '</span>' + (inc.status === 'Closed' ? '<span class="chip mute">Closed</span>' : '<span class="chip ok"><span class="dot"></span>Active ' + CP.elapsed(inc.start) + '</span>') +
-      (op ? '<span class="chip">OP ' + op.n + ' · ' + CP.fmtTime(op.start) + '–' + CP.fmtTime(op.end) + '</span>' : '') + '<span class="chip blue">' + E(inc.eoc.eoc_status) + '</span>' +
-      '<span class="sp"></span>' + sync + '<button class="btn sm" data-act="quicklog">' + I('plus') + 'Log</button><button class="btn sm ghost" data-act="home" title="All incidents">' + I('home') + '</button></div>';
+      (op ? '<span class="chip">Shift ' + op.n + ' · ' + CP.fmtTime(op.start) + '–' + CP.fmtTime(op.end) + '</span>' : '') + '<span class="chip blue">' + E(inc.eoc.eoc_status) + '</span>' +
+      '<span class="sp"></span>' + sync + '<button class="btn sm pri" data-act="actions">' + I('plus') + 'Action</button><button class="btn sm" data-act="quicklog">' + I('log') + 'Log</button><button class="btn sm ghost" data-act="home" title="All incidents">' + I('home') + '</button></div>';
     nav.innerHTML = navHtml();
   };
   function navHtml() {
@@ -61,7 +61,7 @@
       if (!items.length) return;
       h += '<div class="grp">' + g[0] + '</div>' + items.map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '" class="' + (app.view === n[0] ? 'on' : '') + '">' + I(n[2]) + E(n[1]) + (cnt[n[0]] ? '<span class="ct">' + cnt[n[0]] + '</span>' : '') + '</a>'; }).join('');
     });
-    if (hidden) h += '<div class="hidden-note">' + hidden + ' IAP modules hidden for a Type ' + inc.complexity + ' incident. <a href="#" data-act="showAll">Show all</a></div>';
+    if (hidden) h += '<div class="hidden-note">Quick mode: ' + hidden + ' planning pages hidden. <a href="#" data-act="showAll">Switch to Full mode</a></div>';
     return h;
   };
 
@@ -322,7 +322,7 @@
       inc.updatedBy = CP.me.name || '';
       if (cx <= 3) inc.eoc.eoc_status = 'Partial Activation';
       CP.store.put(inc);
-      app.open(inc.id, 'dash').then(function () { if (CP.arc.status === 'on') app.pushRemote(); U.toast('Incident started. ICS 201 is ready on the Forms page.', 'ok'); });
+      app.open(inc.id, 'dash').then(function () { if (CP.arc.status === 'on') app.pushRemote(); U.toast('Incident started. The briefing packet is ready in Reports.', 'ok'); });
     } }], { sticky: true, onOpen: function (bg) {
       bg.querySelector('#qscx').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; cx = +b.dataset.v; bg.querySelectorAll('#qscx button').forEach(function (x) { x.classList.toggle('on', x === b); }); });
       setTimeout(function () { if (!window.L) return; var m = CP.map.create(bg.querySelector('#qsmap'), {}); var mk = null; m.on('click', function (e) { ll = e.latlng; if (mk) mk.setLatLng(ll); else mk = L.marker(ll, { icon: CP.map.pinIcon('#FDB833', '★', 30) }).addTo(m); bg.querySelector('#qsll').textContent = 'Location: ' + ll.lat.toFixed(5) + ', ' + ll.lng.toFixed(5); }); }, 50);
@@ -485,7 +485,8 @@
   act.publishSitrep = async function () {
     if (!CP.arc.signedIn()) { act.saveSitrep(); return U.toast('Saved locally. Sign in to publish to the county SitRep layer.', '', 5000); }
     var sr = app.ui.sr; sr.ts = CP.now();
-    try { if (!CP.arc.live.asof) await CP.arc.refreshLive(app.inc); var res = await CP.arc.push.sitrep(app.inc, sr); sr.posted = true; markPushed('sitrep', res); U.toast(res + ' to the county SitRep layer.', 'ok'); }
+    try { if (!CP.arc.live.asof) await CP.arc.refreshLive(app.inc); var res = await CP.arc.push.sitrep(app.inc, sr); sr.posted = true; markPushed('sitrep', res); U.toast(res + ' to the county SitRep layer.', 'ok');
+      try { var lr = await CP.arc.push.lifelines(app.inc); markPushed('lifelines', lr); } catch (e2) { U.toast('Lifelines not updated: ' + E(e2.message), 'err', 5000); } }
     catch (e) { U.toast('SitRep not published: ' + E(e.message), 'err', 7000); }
     act.saveSitrep();
   };
@@ -560,6 +561,21 @@
     i.click();
   };
   act.deleteLocal = function () { U.confirm('Remove from this device?', 'This removes this device\'s copy of <b>' + E(app.inc.name) + '</b>. Shared copies in ArcGIS are not affected.', 'Remove', function () { CP.store.remove(app.inc.id); app.closeIncident(); }, true); };
+
+  if (CP.extendActs) CP.extendActs(act);
+  if (CP.extendChange) CP.extendChange(app.change);
+  act.actions = function () { U.modal('What do you need to do?', CP.views.qaGrid(3), [], { wide: true, nofocus: true }); };
+  act.mode = function (m) { var inc = app.inc; if (m === 'quick') { CP.setPath(inc, 'showAll', false); if (inc.complexity <= 3) CP.setPath(inc, 'complexity', 4); } else CP.setPath(inc, 'showAll', true); app.log('Switched to ' + m + ' mode', 'Note'); app.commit(true); };
+  function packetList(k) {
+    var inc = app.inc;
+    if (k === 'all') { var l = ['201']; if (inc.complexity <= 3 || inc.showAll) l = l.concat(['202', '203', '204', '205', '205A', '206', '207', '208', '215', '215A']); l = l.concat(['209', '211', '214']); if (A(inc.messages).length) l.push('213'); if (A(inc.requests).length) l.push('213RR'); if (A(inc.resources).some(function (r) { return r.demob; })) l.push('221'); return l; }
+    if (k === 'iap') { var op = CP.curOP(inc), it = op.iapItems || {}; return ['cover', '202'].concat(['203', '204', '205', '205A', '206', '207', '208'].filter(function (x) { return it[x]; })).concat(app.mapImg(inc) ? ['map'] : []); }
+    var p = CP.views.PACKETS.find(function (x) { return x.k === k; }); return p ? p.forms : ['201'];
+  }
+  function packetName(k) { var p = CP.views.PACKETS.find(function (x) { return x.k === k; }); return p ? p.n : 'Report'; }
+  act.packet = function (k) { if (k === 'iap') return act.iap(CP.curOP(app.inc).id); app.preview(packetName(k), packetList(k), {}); };
+  act.packetPrint = function (k) { app.print(packetList(k), {}); };
+  act.packetDl = function (k) { app.downloadHtml(app.inc.number + ' ' + packetName(k), packetList(k), {}); };
 
   // ---------- boot ----------
   app.boot = async function () {

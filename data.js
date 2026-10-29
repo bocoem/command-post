@@ -176,7 +176,7 @@ window.CP = window.CP || {};
         need12: '', need24: '', need48: '', need72: '', needAfter: '', strategic: '', nextActions: '', finalSize: '', completion: '',
         demobStart: '', costToDate: '', costFinal: '', remarks: '', lshRemarks: '', threatMgmt: {}, cooperating: '', sentTo: 'VDEM Region 6 / VEOC',
         dmg: {}, pub: {}, resp: {} },
-      arc: { linked: false, pushed: {} }
+      arc: { linked: false, pushed: {}, auto: { incident: true, facilities: true } }, links: []
     };
     CP.LIFELINES.forEach(function (l) { inc.lifelines[l.key] = { status: 'Minimal Impact', desc: '' }; });
     inc.opPeriods.push(CP.newOP(1, start, o.opHours || 12));
