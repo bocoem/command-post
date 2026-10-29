@@ -96,7 +96,7 @@
     return out;
   };
   var FLOOD = { 'Major Flooding': ['#c21bd6', 4], 'Moderate Flooding': ['#F0444C', 3], 'Minor Flooding': ['#F28C28', 2], 'Action': ['#ffd27a', 1], 'Near Flood Stage': ['#ffd27a', 1] };
-  function flood(s) { var n = s.nws; if (!n) return null; var w = [n.status, n.f24, n.f48].map(function (x) { return FLOOD[x] ? x : null; }).filter(Boolean).sort(function (a, b) { return FLOOD[b][1] - FLOOD[a][1]; })[0]; return { now: n.status || '', worst: w || '', col: w ? FLOOD[w][0] : '#2FBF71' }; }
+  function flood(s) { var n = s.nws; if (!n) return null; var w = [n.status, n.f24, n.f48].map(function (x) { return FLOOD[x] ? x : null; }).filter(Boolean).sort(function (a, b) { return FLOOD[b][1] - FLOOD[a][1]; })[0]; return { now: n.status || '', worst: w || '', col: w ? FLOOD[w][0] : '#3D9BFF' }; }
   O.gaugeList = function () {
     return O.d.gauges.map(function (s) { s.dc = toCounty(s.lat, s.lng); return s; }).filter(function (s) { return s.dc == null || s.dc <= 12; })
       .sort(function (a, b) { var fa = flood(a), fb = flood(b), wa = fa && fa.worst ? FLOOD[fa.worst][1] : 0, wb = fb && fb.worst ? FLOOD[fb.worst][1] : 0; return (wb - wa) || ((a.dc || 0) - (b.dc || 0)); });
