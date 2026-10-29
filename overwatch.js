@@ -49,12 +49,15 @@
       rwx: a.query(SRC.rwx, "station_name LIKE 'SAL%' OR road LIKE 'I-81%'", { geom: true, n: 300, fields: 'station_name,road,direction,air_temp_f,surface_temp_f,surface_status,black_ice_signal,obs_time,is_stale,latitude,longitude' }),
       cp: a.own ? a.query(a.own.url + '/0', "status<>'Closed'", { geom: true, n: 100, fields: 'incident_name,incident_type,status,complexity,ic_name,location_desc' }) : Promise.resolve([])
     };
-    jobs.gauges = O.loadGauges();
     var errs = [];
     await Promise.all(Object.keys(jobs).map(function (k) { return jobs[k].then(function (r) { O.d[k] = r; }).catch(function (e) { errs.push(k + ': ' + e.message); }); }));
     if (!O.county) a.query(SRC.county, '1=1', { geom: true, n: 1, fields: 'OBJECTID' }).then(function (r) { O.county = r[0] && r[0].geometry; O.draw(); }).catch(function () {});
     O.asof = new Date().toTimeString().slice(0, 5); O.err = errs.join(' · ');
     O.paint();
+    if (!O.gLoading && (!O.gAt || Date.now() - O.gAt > 5 * 60000)) {
+      O.gLoading = true;
+      O.loadGauges().then(function (g) { O.d.gauges = g; O.gAt = Date.now(); O.gErr = ''; }).catch(function (e) { O.gErr = e.message; }).then(function () { O.gLoading = false; O.paint(); });
+    }
   };
 
   // ---- river & rain gauges: USGS live readings + NWS flood status ----
@@ -224,6 +227,8 @@
       h = '<div class="ownote">Weather warnings for Botetourt County</div>' + (O.d.nws.length ? O.d.nws.map(function (f) { var a = f.attributes; return '<div class="owcard" style="border-left-color:#ffd27a"><div class="owt"><b>' + E(a.Event) + '</b><span>' + E(a.Severity || '') + '</span></div><div class="owa">Until ' + t(a.End_) + '</div></div>'; }).join('') : '<div class="owempty">No active watches or warnings.</div>');
       var gl = O.gaugeList(), rivers = gl.filter(function (x) { return x.stage != null || x.flow != null; }), rains = gl.filter(function (x) { return x.rain; });
       var where = function (x) { return x.dc == null ? '' : x.dc === 0 ? '<span class="owin">In county</span>' : Math.round(x.dc) + ' mi out'; };
+      if (!O.gAt) h += '<div class="ownote" style="margin-top:14px">River &amp; rain gauges</div><div class="owempty">' + (O.gErr ? 'Gauges could not load: ' + E(O.gErr) : 'Loading gauges from USGS…') + '</div>';
+      else {
       h += '<div class="ownote" style="margin-top:14px">River gauges (' + rivers.length + ')</div>';
       h += rivers.length ? '<table class="owtab"><tr><th>Gauge</th><th>Stage</th><th>Flow</th><th>Flood</th><th></th></tr>' + rivers.map(function (x) {
         var fl = flood(x), tr = x.trend == null ? '' : x.trend > 0.05 ? ' <span style="color:#F28C28">▲</span>' : x.trend < -0.05 ? ' <span style="color:#93A9C3">▼</span>' : '';
@@ -233,7 +238,8 @@
       h += rains.length ? '<table class="owtab"><tr><th>Gauge</th><th>1 h</th><th>6 h</th><th>24 h</th><th></th></tr>' + rains.sort(function (a, b) { return b.rain.h24 - a.rain.h24; }).map(function (x) {
         return '<tr' + (x.rain.h1 >= 0.5 ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + where(x) + ' · ' + t(x.t) + '</small></td><td>' + x.rain.h1.toFixed(2) + '"</td><td>' + x.rain.h6.toFixed(2) + '"</td><td>' + x.rain.h24.toFixed(2) + '"</td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>';
       }).join('') + '</table>' : '<div class="owempty">No rain gauges reporting.</div>';
-      h += '<div class="dim" style="font-size:11px;margin-top:6px">USGS live readings, NWS flood status and forecast. Gauges within 12 miles of the county line.</div>';
+      h += '<div class="dim" style="font-size:11px;margin-top:6px">USGS live readings, NWS flood status and forecast. Gauges within 12 miles of the county line. Updated ' + new Date(O.gAt).toTimeString().slice(0, 5) + '.</div>';
+      }
       var r = O.d.rwx.filter(function (f) { return f.attributes.is_stale !== 'Yes'; });
       if (r.length) h += '<div class="ownote" style="margin-top:14px">VDOT road weather stations (I-81 / Salem)</div><table class="owtab"><tr><th>Station</th><th>Air</th><th>Road</th><th>Surface</th></tr>' + r.slice(0, 40).map(function (f) { var a = f.attributes, ice = /ice/i.test(a.black_ice_signal || '') && !/no ice/i.test(a.black_ice_signal || ''); return '<tr' + (ice ? ' class="me"' : '') + '><td>' + E((a.road || '') + ' ' + (a.direction || '')) + '<br><small>' + E(a.station_name || '') + '</small></td><td>' + (a.air_temp_f != null ? Math.round(a.air_temp_f) + '°' : '') + '</td><td>' + (a.surface_temp_f != null ? Math.round(a.surface_temp_f) + '°' : '') + '</td><td>' + E(a.surface_status || '') + (ice ? ' ⚠' : '') + '</td></tr>'; }).join('') + '</table>';
       return h;
