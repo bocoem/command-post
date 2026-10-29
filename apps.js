@@ -27,12 +27,25 @@
     var a = LIST.find(function (x) { return x.k === P.cur; }) || LIST[0];
     el.querySelectorAll('#appsSw button').forEach(function (b) { b.classList.toggle('on', b.dataset.a === a.k); });
     el.querySelector('#appsNew').href = a.u;
-    el.querySelector('#appsNote').innerHTML = a.sign ? 'If it asks you to sign in, use <b>Sign in</b> inside the panel (it opens a small ArcGIS window). Or <a href="' + a.u + '" target="_blank" rel="noopener">open it in a new tab</a>.' : '';
+    el.querySelector('#appsNote').innerHTML = a.sign ? 'County sign-in app. If it stays on the loading bars, your browser is blocking the sign-in inside Command Post. <a href="#" data-act="appsBeside" data-a="' + a.k + '">Open it beside Command Post</a>.' : '';
     if (P.open) {
       var box = el.querySelector('#appFrames');
-      if (!P.made[a.k]) { var f = document.createElement('iframe'); f.src = a.u; f.dataset.k = a.k; f.title = a.n; f.setAttribute('allow', 'geolocation; fullscreen; clipboard-write'); box.appendChild(f); P.made[a.k] = f; }
+      if (!P.made[a.k]) { var f = document.createElement('iframe'); f.src = a.u; f.dataset.k = a.k; f.title = a.n; f.setAttribute('allow', 'geolocation; fullscreen; clipboard-write'); box.appendChild(f); P.made[a.k] = f;
+        if (a.sign) { var ov = document.createElement('div'); ov.className = 'appstall'; ov.dataset.k = a.k; ov.style.display = 'none';
+          ov.innerHTML = '<div><b>' + E(a.n) + ' needs your county sign-in</b><p>Browsers block ArcGIS sign-in inside another site, so ' + E(a.n) + ' may not load in this panel. Open it in its own window, docked beside Command Post.</p><button class="btn pri" data-act="appsBeside" data-a="' + a.k + '">Open beside Command Post</button> <button class="btn" data-act="appsWait" data-a="' + a.k + '">Keep waiting</button></div>';
+          box.appendChild(ov); setTimeout(function () { if (!ov.dataset.dismiss) { ov.dataset.show = '1'; P.paint(); } }, 12000); } }
       Object.keys(P.made).forEach(function (k) { P.made[k].style.display = k === a.k ? 'block' : 'none'; });
+      box.querySelectorAll('.appstall').forEach(function (o) { o.style.display = (o.dataset.k === a.k && o.dataset.show && !o.dataset.dismiss) ? 'flex' : 'none'; });
     }
+  };
+  P.beside = function (k) {
+    var a = LIST.find(function (x) { return x.k === k; }) || LIST[0];
+    var sw = screen.availWidth || 1600, sh = screen.availHeight || 900, w = Math.round(sw * 0.45);
+    var win = window.open(a.u, 'bcem_' + a.k, 'popup,width=' + w + ',height=' + sh + ',left=' + (sw - w) + ',top=0');
+    if (!win) { window.open(a.u, '_blank', 'noopener'); return; }
+    try { window.moveTo(0, 0); window.resizeTo(sw - w, sh); } catch (e) {}
+    win.focus(); if (P.open) { P.open = false; P.paint(); }
+    CP.ui.toast(a.n + ' opened in its own window on the right');
   };
   P.toggle = function (k) {
     if (k) { P.cur = k; P.open = true; } else P.open = !P.open;
@@ -43,6 +56,8 @@
   CP.extendAppsActs = function (act) {
     act.appsToggle = function () { P.toggle(); };
     act.appsShow = function (k) { P.cur = k; CP.store.setPref('appsCur', k); P.paint(); };
+    act.appsBeside = function (k) { P.beside(k || P.cur); };
+    act.appsWait = function (k) { var o = document.querySelector('.appstall[data-k="' + k + '"]'); if (o) o.dataset.dismiss = '1'; P.paint(); };
     act.appsWide = function () { P.wide = !P.wide; CP.store.setPref('appsWide', P.wide); P.paint(); };
     var ct = act.callsToggle; act.callsToggle = function () { if (P.open) { P.open = false; P.paint(); } ct(); };
   };

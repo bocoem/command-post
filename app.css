@@ -387,3 +387,8 @@ body.apps-open.apps-wide .appstab,body.apps-open.apps-wide .callstab{right:68vw}
 .chead a.ibtn{display:inline-grid}
 @media (max-width:860px){body.apps-open .apps{position:fixed;right:0;top:0;bottom:0;width:100vw!important;z-index:950}body.apps-open .appstab,body.apps-open .callstab{display:none}}
 @media print{.apps,.appstab{display:none!important}}
+
+.appstall{position:absolute;inset:0;z-index:2;align-items:center;justify-content:center;background:rgba(10,23,36,.92);padding:24px}
+.appstall>div{max-width:380px;background:#0f2236;border:1px solid #24405e;border-left:4px solid #FDB833;border-radius:8px;padding:18px 20px;color:#e6edf5}
+.appstall b{font-family:Montserrat,sans-serif;font-size:15px;display:block;margin-bottom:6px}
+.appstall p{font-size:13px;line-height:1.45;color:#b8c6d6;margin:0 0 14px}
