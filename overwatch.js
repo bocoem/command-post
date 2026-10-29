@@ -25,14 +25,15 @@
     { k: 'vdot', n: 'VDOT incidents', c: COL.vdot, on: true },
     { k: 'power', n: 'Power outages', c: '#c77dff', on: true },
     { k: 'nws', n: 'Weather warnings', c: '#ffd27a', on: true },
-    { k: 'river', n: 'River gauges', c: '#3D9BFF', on: true },
-    { k: 'rain', n: 'Rain gauges', c: '#2FBF71', on: true },
+    { k: 'river', n: 'River gauges', c: '#3D9BFF', on: false },
+    { k: 'rain', n: 'Rain gauges', c: '#2FBF71', on: false },
+    { k: 'air', n: 'Air quality sensors', c: '#9b7bff', on: true },
     { k: 'radar', n: 'Radar (loop)', c: '#7CFC9A', on: true },
     { k: 'cp', n: 'Command Post incidents', c: COL.cp, on: true }
   ];
-  var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [], gauges: [] }, asof: '', err: '', on: {}, timer: null };
+  var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [], gauges: [], air: [] }, asof: '', err: '', on: {}, timer: null };
   LAYERS.forEach(function (l) { O.on[l.k] = l.on; });
-  try { var pr = CP.store.prefs(); if (pr.owOn) Object.assign(O.on, pr.owOn); O.tab = pr.owTab || 'map'; } catch (e) {}
+  try { var pr = CP.store.prefs(); if (pr.owOn2) Object.assign(O.on, pr.owOn2); O.tab = pr.owTab || 'map'; } catch (e) {}
 
   function t(ms) { if (!ms) return ''; var d = new Date(ms); return (Date.now() - ms < 864e5 ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + d.toTimeString().slice(0, 5); }
   function ago(ms) { if (!ms) return ''; var m = Math.round((Date.now() - ms) / 60000); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' m'; }
@@ -56,6 +57,10 @@
     if (O.on.radar && O.map) O.radarValid();
     O.asof = new Date().toTimeString().slice(0, 5); O.err = errs.join(' · ');
     O.paint();
+    if (!O.aLoading && (!O.aAt || Date.now() - O.aAt > 10 * 60000)) {
+      O.aLoading = true;
+      O.loadAir().then(function (x) { O.d.air = x; O.aAt = Date.now(); O.aErr = ''; }).catch(function (e) { O.aErr = e.message; O.aAt = Date.now(); }).then(function () { O.aLoading = false; O.paint(); });
+    }
     if (!O.gLoading && (!O.gAt || Date.now() - O.gAt > 5 * 60000)) {
       O.gLoading = true;
       O.loadGauges().then(function (g) { O.d.gauges = g; O.gAt = Date.now(); O.gErr = ''; }).catch(function (e) { O.gErr = e.message; }).then(function () { O.gLoading = false; O.paint(); });
@@ -102,6 +107,28 @@
       .sort(function (a, b) { var fa = flood(a), fb = flood(b), wa = fa && fa.worst ? FLOOD[fa.worst][1] : 0, wb = fb && fb.worst ? FLOOD[fb.worst][1] : 0; return (wb - wa) || ((a.dc || 0) - (b.dc || 0)); });
   };
 
+  // ---- air quality: PurpleAir outdoor sensors, EPA US-wide correction, AQI ----
+  var AQI_BP = [[0, 9.0, 0, 50], [9.1, 35.4, 51, 100], [35.5, 55.4, 101, 150], [55.5, 125.4, 151, 200], [125.5, 225.4, 201, 300], [225.5, 325.4, 301, 500]];
+  var AQI_CAT = [[50, 'Good', '#00e400'], [100, 'Moderate', '#ffff00'], [150, 'Unhealthy for sensitive groups', '#ff7e00'], [200, 'Unhealthy', '#ff0000'], [300, 'Very unhealthy', '#8f3f97'], [1e9, 'Hazardous', '#7e0023']];
+  function epa(pm, rh) { if (pm == null) return null; var v = pm <= 343 ? 0.524 * pm - 0.0862 * (rh == null ? 50 : rh) + 5.75 : 0.46 * pm + 3.93e-4 * pm * pm + 2.97; return Math.max(0, v); }
+  function aqi(pm) { if (pm == null) return null; pm = Math.floor(pm * 10) / 10; for (var i = 0; i < AQI_BP.length; i++) { var b = AQI_BP[i]; if (pm <= b[1]) return Math.round((b[3] - b[2]) / (b[1] - b[0]) * (pm - b[0]) + b[2]); } return 500; }
+  function aqiCat(v) { for (var i = 0; i < AQI_CAT.length; i++) if (v <= AQI_CAT[i][0]) return AQI_CAT[i]; return AQI_CAT[5]; }
+  O.airKey = null; // '' = none saved
+  O.loadAir = async function () {
+    if (O.airKey == null) O.airKey = await CP.arc.settings.get('purpleair_read_key').catch(function () { return ''; });
+    if (!O.airKey) return [];
+    var u = 'https://api.purpleair.com/v1/sensors?fields=name,latitude,longitude,pm2.5_cf_1,pm2.5_60minute,humidity,last_seen,confidence&location_type=0&max_age=7200&nwlng=-80.35&nwlat=37.95&selng=-79.35&selat=37.15';
+    var r = await fetch(u, { headers: { 'X-API-Key': O.airKey } });
+    var j = await r.json();
+    if (!r.ok || j.error) throw new Error((j.description || j.error || ('HTTP ' + r.status)));
+    var F = j.fields, ix = function (n) { return F.indexOf(n); };
+    return (j.data || []).map(function (d) {
+      var rh = d[ix('humidity')], now = epa(d[ix('pm2.5_cf_1')], rh), hr = epa(d[ix('pm2.5_60minute')], rh);
+      return { id: d[ix('sensor_index')], name: d[ix('name')], lat: d[ix('latitude')], lng: d[ix('longitude')], pm: now, pm60: hr, aqi: aqi(now), aqi60: aqi(hr), rh: rh, seen: d[ix('last_seen')] * 1000, conf: d[ix('confidence')] };
+    }).filter(function (x) { return x.lat != null && x.aqi != null; });
+  };
+  O.airList = function () { return O.d.air.map(function (s) { s.dc = toCounty(s.lat, s.lng); return s; }).filter(function (s) { return s.dc == null || s.dc <= 12; }).sort(function (a, b) { return ((a.dc ? 1 : 0) - (b.dc ? 1 : 0)) || (b.aqi - a.aqi); }); };
+
   O.mount = function (box) {
     O.box = box; box.classList.add('ow');
     box.innerHTML = '<div class="owbar" id="owBar"></div><div class="owbody"><div class="owmap" id="owMap"></div><div class="owlist" id="owList"></div></div>';
@@ -120,7 +147,7 @@
   O.paint = function () {
     if (!O.box) return;
     var n = O.counts();
-    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['water', 'Water', O.gAt ? (O.gaugeList().filter(function (x) { var f = flood(x); return f && f.worst; }).length || '') : ''], ['wx', 'Weather', n.nws]];
+    var tabs = [['map', 'Map', ''], ['fire', 'Fire & EMS', n.fire], ['law', 'Sheriff', n.law], ['vdot', 'VDOT', n.vdot], ['power', 'Power', O.powerStale() ? '!' : (n.pout ? n.pout.toLocaleString() : 0)], ['water', 'Water', O.gAt ? (O.gaugeList().filter(function (x) { var f = flood(x); return f && f.worst; }).length || '') : ''], ['air', 'Air', O.d.air.length ? Math.max.apply(null, O.airList().filter(function (x) { return x.dc === 0; }).map(function (x) { return x.aqi; }).concat([0])) || '' : ''], ['wx', 'Weather', n.nws]];
     O.box.querySelector('#owBar').innerHTML = tabs.map(function (x) { return '<button class="' + (O.tab === x[0] ? 'on' : '') + '" data-act="owTab" data-a="' + x[0] + '">' + x[1] + (x[2] !== '' ? ' <b>' + x[2] + '</b>' : '') + '</button>'; }).join('') +
       '<span class="owasof">' + (O.err ? '<span title="' + E(O.err) + '" style="color:#ffb3b8">⚠ </span>' : '') + (O.asof ? 'Updated ' + O.asof : 'Loading…') + ' <button class="ibtn" data-act="owRefresh" title="Refresh now">' + I('refresh') + '</button></span>';
     var mapEl = O.box.querySelector('#owMap'), list = O.box.querySelector('#owList');
@@ -213,6 +240,11 @@
       var html = '<div class="owgauge' + (rainOnly ? ' rain' : '') + '" style="border-color:' + col + '">' + lbl + '</div>';
       g[rainOnly ? 'rain' : 'river'].addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: null, html: html }) }).bindPopup(pop(s.name, [['Stage', s.stage != null ? s.stage.toFixed(2) + ' ft' + (s.trend != null ? (s.trend > 0.05 ? ' ▲ rising' : s.trend < -0.05 ? ' ▼ falling' : ' steady') : '') : ''], ['Flow', s.flow != null ? Math.round(s.flow).toLocaleString() + ' cfs' : ''], ['NWS status', fl ? fl.now : ''], ['Forecast', fl && fl.worst && fl.worst !== fl.now ? fl.worst : ''], ['Rain 1 h / 6 h / 24 h', s.rain ? s.rain.h1.toFixed(2) + ' / ' + s.rain.h6.toFixed(2) + ' / ' + s.rain.h24.toFixed(2) + ' in' : ''], ['Reading', t(s.t)]]) + '<br><a href="' + (s.nws && s.nws.url || 'https://waterdata.usgs.gov/monitoring-location/' + s.id + '/') + '" target="_blank" rel="noopener">Gauge page ↗</a>'));
     });
+    O.airList().forEach(function (s) {
+      var c = aqiCat(s.aqi);
+      g.air.addLayer(L.marker([s.lat, s.lng], { icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div class="owaqi" style="background:' + c[2] + ';color:' + (s.aqi > 100 && s.aqi <= 150 || s.aqi <= 100 ? '#0B1A2B' : '#fff') + '">' + s.aqi + '</div>' }) })
+        .bindPopup(pop(s.name, [['AQI now', s.aqi + ' — ' + c[1]], ['AQI 1-hour avg', s.aqi60 != null ? s.aqi60 + ' — ' + aqiCat(s.aqi60)[1] : ''], ['PM2.5 (EPA-corrected)', s.pm != null ? s.pm.toFixed(1) + ' µg/m³' : ''], ['Humidity', s.rh != null ? s.rh + '%' : ''], ['Last reading', t(s.seen)]]) + '<br><a href="https://map.purpleair.com/?select=' + s.id + '" target="_blank" rel="noopener">PurpleAir page ↗</a>'));
+    });
     LAYERS.forEach(function (l) { var on = O.on[l.k]; if (on && !O.map.hasLayer(g[l.k])) g[l.k].addTo(O.map); if (!on && O.map.hasLayer(g[l.k])) O.map.removeLayer(g[l.k]); });
     O.radar();
     var leg = O.box.querySelector('#owLeg');
@@ -249,6 +281,17 @@
       var st = O.powerStale();
       return (st ? '<div class="owcard" style="border-left-color:#F0444C"><b>Outage feed is out of date</b><div class="owd">The VDEM power-outage layer last updated ' + new Date(st).toLocaleString() + '. These numbers are not current; check the utility outage maps directly.</div></div>' : '') + '<div class="ownote">Customers without power, Botetourt and neighbors (VDEM).</div><table class="owtab"><tr><th>Locality</th><th>Out</th><th>%</th><th>Updated</th></tr>' + p.map(function (f) { var a = f.attributes; return '<tr' + (/^Botetourt/.test(a.name) ? ' class="me"' : '') + '><td>' + E(a.localitylabel || a.name) + '</td><td>' + (a.customersout || 0).toLocaleString() + '</td><td>' + ((a.percent_out || 0) * 100).toFixed(2) + '</td><td>' + t(a.lastupdateddatetime) + '</td></tr>'; }).join('') + '</table>';
     }
+    if (tab === 'air') {
+      if (O.airKey === '') return '<div class="owcard" style="border-left-color:#9b7bff"><b>Connect PurpleAir</b><div class="owd" style="margin:6px 0 10px">Paste your PurpleAir <b>READ</b> API key. It is saved in Command Post\'s private ArcGIS service, so only signed-in county users can use it; it is never put in the public code.</div><div class="row"><input class="in" id="paKey" type="password" placeholder="PurpleAir READ key" autocomplete="off" style="flex:1"><button class="btn pri" data-act="owAirKey">Save</button></div></div>';
+      if (!O.aAt) return '<div class="owempty">Loading air quality sensors…</div>';
+      if (O.aErr) return '<div class="owcard" style="border-left-color:#F0444C"><b>PurpleAir could not load</b><div class="owd">' + E(O.aErr) + '</div><div class="row" style="margin-top:8px"><button class="btn sm" data-act="owAirReset">Enter a different key</button></div></div>';
+      var al = O.airList();
+      if (!al.length) return '<div class="owempty">No outdoor PurpleAir sensors reporting nearby.</div>';
+      return '<div class="ownote">Air quality sensors (' + al.length + ')</div><table class="owtab"><tr><th>Sensor</th><th>AQI now</th><th>1 h</th><th>PM2.5</th><th></th></tr>' + al.map(function (x) {
+        var c = aqiCat(x.aqi), c60 = x.aqi60 != null ? aqiCat(x.aqi60) : null;
+        return '<tr' + (x.aqi > 100 ? ' class="me"' : '') + '><td>' + E(x.name) + '<br><small>' + (x.dc == null ? '' : x.dc === 0 ? '<span class="owin">In county</span>' : Math.round(x.dc) + ' mi out') + ' · ' + t(x.seen) + '</small></td><td><span class="owaqi sm" style="background:' + c[2] + '">' + x.aqi + '</span> <small>' + c[1] + '</small></td><td>' + (c60 ? '<span class="owaqi sm" style="background:' + c60[2] + '">' + x.aqi60 + '</span>' : '') + '</td><td>' + (x.pm != null ? x.pm.toFixed(1) : '') + '</td><td><button class="ibtn" data-act="owZoom" data-a="' + x.lat + ',' + x.lng + '" title="Show on map">' + I('pin') + '</button></td></tr>';
+      }).join('') + '</table><div class="dim" style="font-size:11px;margin-top:6px">PurpleAir outdoor sensors with the EPA correction applied (the same adjustment the AirNow Fire &amp; Smoke Map uses), shown on the EPA AQI scale. Updated ' + new Date(O.aAt).toTimeString().slice(0, 5) + ', every 10 minutes.</div>';
+    }
     if (tab === 'water') {
       h = '';
       var gl = O.gaugeList(), rivers = gl.filter(function (x) { return x.stage != null || x.flow != null; }), rains = gl.filter(function (x) { return x.rain; });
@@ -283,6 +326,12 @@
     act.owZoom = function (ll) { var p = ll.split(',').map(Number); O.tab = 'map'; O.paint(); setTimeout(function () { O.map.setView(p, 16); }, 80); };
     act.owRadPlay = function () { O.rad.play = !O.rad.play; O.radarShow(O.rad.i); O.radarRun(); };
     chg.owRadSeek = function (el) { O.rad.play = false; O.radarShow(+el.value); clearTimeout(O.rad.timer); };
-    chg.owLayer = function (el) { var k = el.dataset.a; O.on[k] = el.checked; CP.store.setPref('owOn', O.on); O.draw(); };
+    act.owAirKey = async function () {
+      var v = (document.getElementById('paKey') || {}).value || ''; v = v.trim(); if (!v) return CP.ui.toast('Paste the key first.');
+      try { await CP.arc.settings.set('purpleair_read_key', v); O.airKey = v; O.aAt = 0; O.aErr = ''; CP.ui.toast('PurpleAir key saved for county users.', 'ok'); O.paint(); O.refresh(); }
+      catch (e) { CP.ui.toast('Could not save: ' + E(e.message), 'err', 7000); }
+    };
+    act.owAirReset = function () { O.airKey = ''; O.aErr = ''; O.paint(); };
+    chg.owLayer = function (el) { var k = el.dataset.a; O.on[k] = el.checked; CP.store.setPref('owOn2', O.on); O.draw(); };
   };
 })(window.CP);

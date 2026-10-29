@@ -183,6 +183,33 @@
       d.drawingInfo = { renderer: { type: 'simple', symbol: { type: 'esriSMS', style: 'esriSMSDiamond', color: [253, 184, 51, 255], size: 14, outline: { color: [11, 26, 43, 255], width: 1.5 } } } }; }
     return d;
   }
+  // ---------- shared settings (CP_Settings table in Command Post's own service; only signed-in county users can read it) ----------
+  arc.settings = {
+    _id: null,
+    table: async function (create) {
+      if (!arc.own) throw new Error('Not connected to ArcGIS');
+      if (arc.settings._id != null) return arc.own.url + '/' + arc.settings._id;
+      var svc = await arc.req(arc.own.url, {});
+      var t = (svc.tables || []).find(function (x) { return x.name === 'CP_Settings'; });
+      if (!t && create) {
+        var admin = arc.own.url.replace('/rest/services/', '/rest/admin/services/');
+        var ids = (svc.layers || []).concat(svc.tables || []).map(function (x) { return x.id; });
+        var id = Math.max.apply(null, ids.concat([2])) + 1;
+        var r = await arc.req(admin + '/addToDefinition', { addToDefinition: { tables: [layerDef(id, 'CP_Settings', 'Table', [fld('skey', 'String', 64, 'Setting'), fld('svalue', 'String', 4000, 'Value')])] } }, true);
+        if (!r.success) throw new Error('Could not add the settings table (only the service owner can do this the first time)');
+        t = { id: id };
+      }
+      if (!t) return null;
+      arc.settings._id = t.id; return arc.own.url + '/' + t.id;
+    },
+    get: async function (k) { var u = await arc.settings.table(false); if (!u) return ''; var f = await arc.query(u, "skey='" + k.replace(/'/g, "''") + "'", { fields: 'OBJECTID,svalue', n: 1 }); return f.length ? f[0].attributes.svalue || '' : ''; },
+    set: async function (k, v) {
+      var u = await arc.settings.table(true);
+      var f = await arc.query(u, "skey='" + k.replace(/'/g, "''") + "'", { fields: 'OBJECTID', n: 1 });
+      if (f.length) return arc.update(u, [{ attributes: { OBJECTID: f[0].attributes.OBJECTID, svalue: v } }]);
+      return arc.add(u, [{ attributes: { skey: k, svalue: v } }]);
+    }
+  };
   arc.createOwn = async function () {
     var u = arc.user.username, name = arc.serviceName;
     var cp = { name: name, serviceDescription: 'Command Post incident management records (Botetourt County EM).', hasStaticData: false, maxRecordCount: 2000, supportedQueryFormats: 'JSON', capabilities: 'Create,Delete,Query,Update,Editing,ChangeTracking',

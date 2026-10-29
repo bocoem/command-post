@@ -422,3 +422,6 @@ body.apps-open.apps-wide .appstab,body.apps-open.apps-wide .callstab{right:68vw}
 
 .owrad{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:500;background:rgba(10,23,36,.92);border:1px solid #24405e;border-radius:6px;padding:4px 10px;display:none;align-items:center;gap:8px;font:600 11.5px 'JetBrains Mono',monospace;color:#e6edf5}
 .owrad .ibtn{color:#FDB833;font-size:11px;width:22px}.owrad input{width:110px;accent-color:#FDB833}.owrad i{color:#93A9C3;font-style:normal}.owrad b{color:#7CFC9A}
+
+.owaqi{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 10.5px 'JetBrains Mono',monospace;color:#0B1A2B;border:2px solid #0B1A2B;box-shadow:0 0 0 1px rgba(255,255,255,.7)}
+.owaqi.sm{display:inline-flex;width:auto;min-width:24px;height:18px;border-radius:9px;padding:0 5px;font-size:10.5px;border-width:1px;box-shadow:none;vertical-align:middle}
