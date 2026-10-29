@@ -64,9 +64,9 @@
   function miles(a, b, c, d) { var R = 3958.8, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); }
   function inRings(lat, lng, rings) { var ins = false; (rings || []).forEach(function (p) { for (var i = 0, j = p.length - 1; i < p.length; j = i++) { var yi = p[i][1], xi = p[i][0], yj = p[j][1], xj = p[j][0]; if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) ins = !ins; } }); return ins; }
   function toCounty(lat, lng) {
-    var g = O.county; if (!g || !g.rings) return null;
-    if (inRings(lat, lng, g.rings)) return 0;
-    var best = 1e9; g.rings.forEach(function (p) { for (var i = 0; i < p.length; i += 3) { var d = miles(lat, lng, p[i][1], p[i][0]); if (d < best) best = d; } }); return best;
+    var g = O.county, rr = g && (g.rings || g.paths); if (!rr) return null;
+    if (inRings(lat, lng, rr)) return 0;
+    var best = 1e9; rr.forEach(function (p) { for (var i = 0; i < p.length; i += 3) { var d = miles(lat, lng, p[i][1], p[i][0]); if (d < best) best = d; } }); return best;
   }
   function nice(n) { return String(n || '').toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\bVa\b/, 'VA').replace(/\bWv\b/, 'WV').replace(/\b(Nr|Bl|At|Near|Above|Below)\b/g, function (m) { return m.toLowerCase(); }); }
   O.loadGauges = async function () {
