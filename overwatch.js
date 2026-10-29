@@ -27,13 +27,13 @@
     { k: 'nws', n: 'Weather warnings', c: '#ffd27a', on: true },
     { k: 'river', n: 'River gauges', c: '#3D9BFF', on: false },
     { k: 'rain', n: 'Rain gauges', c: '#2FBF71', on: false },
-    { k: 'air', n: 'Air quality (EPA + PurpleAir)', c: '#9b7bff', on: true },
+    { k: 'air', n: 'Air quality (EPA + PurpleAir)', c: '#9b7bff', on: false },
     { k: 'radar', n: 'Radar (loop)', c: '#7CFC9A', on: true },
     { k: 'cp', n: 'Command Post incidents', c: COL.cp, on: true }
   ];
   var O = CP.ow = { tab: 'map', d: { calls: [], units: [], vdot: [], power: [], nws: [], rwx: [], cp: [], gauges: [], air: [], airnow: [] }, asof: '', err: '', on: {}, timer: null };
   LAYERS.forEach(function (l) { O.on[l.k] = l.on; });
-  try { var pr = CP.store.prefs(); if (pr.owOn2) Object.assign(O.on, pr.owOn2); O.tab = pr.owTab || 'map'; } catch (e) {}
+  try { var pr = CP.store.prefs(); if (pr.owOn3) Object.assign(O.on, pr.owOn3); O.tab = pr.owTab || 'map'; } catch (e) {}
 
   function t(ms) { if (!ms) return ''; var d = new Date(ms); return (Date.now() - ms < 864e5 ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + d.toTimeString().slice(0, 5); }
   function ago(ms) { if (!ms) return ''; var m = Math.round((Date.now() - ms) / 60000); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' m'; }
@@ -348,6 +348,6 @@
       catch (e) { CP.ui.toast('Could not save: ' + E(e.message), 'err', 7000); }
     };
     act.owAirReset = function () { O.airKey = ''; O.aErr = ''; O.paint(); };
-    chg.owLayer = function (el) { var k = el.dataset.a; O.on[k] = el.checked; CP.store.setPref('owOn2', O.on); O.draw(); };
+    chg.owLayer = function (el) { var k = el.dataset.a; O.on[k] = el.checked; CP.store.setPref('owOn3', O.on); O.draw(); };
   };
 })(window.CP);

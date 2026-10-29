@@ -4,10 +4,11 @@
   var I = CP.ui.icon, E = CP.esc;
   var X = 'https://experience.arcgis.com/experience/';
   var LIST = [
-    { k: 'overwatch', n: 'Overwatch', d: 'Live CAD, VDOT, power, weather', u: X + '299778f2f57a472eb478ac1bf21bb424', native: true }
+    { k: 'overwatch', n: 'Overwatch', d: 'Live CAD, VDOT, power, weather', u: X + '299778f2f57a472eb478ac1bf21bb424', native: true },
+    { k: 'responder', n: 'Stormwatch Responder', d: 'Responder storm reports', u: X + '0f7a1564b1db45c2adcb469b56973330' }
   ];
   var P = CP.liveApps = { open: false, cur: 'overwatch', wide: false, made: {} };
-  try { var pr = CP.store.prefs(); P.cur = 'overwatch'; P.wide = !!pr.appsWide; } catch (e) {}
+  try { var pr = CP.store.prefs(); P.cur = pr.appsCur === 'responder' ? 'responder' : 'overwatch'; P.wide = !!pr.appsWide; } catch (e) {}
 
   P.paint = function () {
     var el = document.getElementById('apps'); if (!el) return;
