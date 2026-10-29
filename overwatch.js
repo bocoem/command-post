@@ -68,7 +68,7 @@
     if (inRings(lat, lng, rr)) return 0;
     var best = 1e9; rr.forEach(function (p) { for (var i = 0; i < p.length; i += 3) { var d = miles(lat, lng, p[i][1], p[i][0]); if (d < best) best = d; } }); return best;
   }
-  function nice(n) { return String(n || '').toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\bVa\b/, 'VA').replace(/\bWv\b/, 'WV').replace(/\b(Nr|Bl|At|Near|Above|Below)\b/g, function (m) { return m.toLowerCase(); }); }
+  function nice(n) { return String(n || '').toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\bVa\b/, 'VA').replace(/\bWv\b/, 'WV').replace(/\b(Nr|Bl|At|Near|Above|Below|In)\b/g, function (m) { return m.toLowerCase(); }).replace(/'S\b/g, "'s").replace(/\s+at\s*,?\s*$/i, '').replace(/\s+/g, ' ').trim(); }
   O.loadGauges = async function () {
     var j = await fetch(SRC.usgs).then(function (r) { return r.json(); });
     var nws = await CP.arc.query(SRC.nwsg, "org='NOAA'", { geom: true, n: 200, fields: 'stationid,name,status,status_24h,status_48h,stage_ft,stationurl,graphurl,lastupdate', extra: { geometry: '-80.25,37.20,-79.40,37.95', geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects' } }).catch(function () { return []; });
