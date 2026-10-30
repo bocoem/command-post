@@ -61,12 +61,12 @@
       '<button class="btn big pri" style="width:100%" data-cb="start">' + I('play') + 'Start command board</button></section>';
     h += '<section class="card"><h3>' + I('radio') + 'From an active CAD call</h3><p class="dim" style="margin-top:0">Tap a call to fill the address and bring its units onto the board.</p>' +
       (cad === undefined ? '<div class="empty">Loading CAD…</div>' : !cad || !cad.length ? '<div class="dim">No active CAD calls' + (A.signedIn() ? '' : ' (sign in to see CAD)') + '.</div>' : cad.slice(0, 20).map(function (c) { return '<button class="cbcad' + (CB.cadPick && CB.cadPick.callid === c.callid ? ' on' : '') + '" data-cb="cad" data-a="' + E(c.callid) + '"><b>' + E(c.type || c.cat || 'Call') + '</b><span>' + E(c.addr || '') + '</span><i>' + E((c.units || []).map(function (u) { return u.id; }).join(' ') || 'no units yet') + '</i></button>'; }).join('')) + '</section>';
-    h += '<section class="card"><h3>' + I('list') + 'Open a running incident</h3>' + (l === undefined ? '<div class="empty">Loading incidents…</div>' : !l || !l.length ? '<div class="dim">No open incidents' + (A.signedIn() ? '' : ' (sign in to see shared incidents)') + '.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(CP.fmtDT(new Date(x.start_time).toISOString())) + '</i></button>'; }).join('')) + '</section></div></div>';
+    h += '<section class="card"><h3>' + I('list') + 'Open a running incident</h3>' + (l === undefined ? '<div class="empty">Loading incidents…</div>' : !l || !l.length ? '<div class="dim">No open incidents' + (A.signedIn() ? '' : ' (sign in to see shared incidents)') + '.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(CP.fmtDT(new Date(x.start_time).toISOString())) + '</i></button>'; }).join('')) + ((CB.closedList || []).length ? '<div class="cbsub" style="margin-top:14px">Closed in the last 3 days</div>' + CB.closedList.map(function (x) { return '<button class="cbcad closed" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>Closed ' + E(CP.fmtDT(new Date(x.closed_time).toISOString())) + '</span><i>open for the report</i></button>'; }).join('') : '') + '</section></div></div>';
     return h;
   }
   async function loadLists() {
     if (!A.signedIn()) { CB.list = []; CB.cad = []; return; }
-    try { var r = await A.listRemote(); CB.list = r.filter(function (x) { return x.status !== 'Closed'; }).sort(function (a, b) { return (b.start_time || 0) - (a.start_time || 0); }).slice(0, 25); } catch (e) { CB.list = CP.store.list().filter(function (x) { return x.status !== 'Closed'; }).map(function (x) { return { incident_key: x.id, incident_name: x.name, incident_number: x.number, incident_type: x.type, start_time: Date.parse(x.start) }; }); }
+    try { var r = await A.listRemote(); CB.closedList = r.filter(function (x) { return x.status === 'Closed' && x.closed_time && Date.now() - x.closed_time < 3 * 864e5; }).slice(0, 8); CB.list = r.filter(function (x) { return x.status !== 'Closed'; }).sort(function (a, b) { return (b.start_time || 0) - (a.start_time || 0); }).slice(0, 25); } catch (e) { CB.list = CP.store.list().filter(function (x) { return x.status !== 'Closed'; }).map(function (x) { return { incident_key: x.id, incident_name: x.name, incident_number: x.number, incident_type: x.type, start_time: Date.parse(x.start) }; }); }
     try {
       var f = await A.query(A.L.cad, '1=1', { geom: true, order: 'calldate DESC', n: 60, fields: 'callid,callcat,calltype,fulladdr,city,calldate,agency' });
       var u = await A.query(A.L.cadUnits, "CFSNumber IS NOT NULL AND CFSNumber<>'' AND CFSNumber<>'0'", { fields: 'UnitID,StatusName,UnitTypeDesc,DeptName,CFSNumber', n: 1000 }).catch(function () { return []; });
@@ -144,7 +144,7 @@
       var us = unitsIn(a.id), sup = a.reportTo || '', par = kv('par_' + a.id, null), can = a.cbCan || '';
       return '<div class="cbasg' + (a.staging ? ' stg' : a.division ? ' div' : '') + (CB.sel ? ' target' : '') + '" data-cb="drop" data-a="' + a.id + '"><div class="cbah"><b>' + E(aName(a)) + '</b>' + (sup ? '<span>' + E(sup) + '</span>' : '') + '<button class="ibtn" data-cb="amenu" data-a="' + a.id + '" title="Assignment options">' + I('menu') + '</button></div>' +
         '<div class="cbau">' + (us.length ? us.map(tile).join('') : '<div class="dim">' + (CB.sel ? 'Tap to assign here' : 'No units') + '</div>') + '</div>' +
-        (can || a.work ? '<div class="cbcan">' + E(can || a.work).slice(0, 140) + '</div>' : '') + (par ? '<div class="cbpok">' + I('check') + 'PAR ' + E(since(par)) + ' ago</div>' : '') + '</div>';
+        (can || a.work ? '<div class="cbcan">' + E(can || a.work).slice(0, 140) + '</div>' : '') + (par ? '<div class="cbpok">' + I('check') + 'PAR ' + Math.round((Date.now() - new Date(par).getTime()) / 60000) + ' min ago</div>' : '') + '</div>';
     }).join('') + '<button class="cbasg cbnew" data-cb="newasg">' + I('plus') + 'Add division / group</button></section>';
     // benchmarks + log
     h += '<section class="cbside"><div class="cbh">' + I('check') + 'Benchmarks</div>' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '"><span>' + I(m.t ? 'check' : 'clock') + E(m.label) + '</span><i>' + (m.t ? E(CP.fmtTime(m.t)) + ' · +' + Math.round((new Date(m.t) - new Date(i.start)) / 60000) + ' min' : 'tap when done') + '</i></button>'; }).join('') +
@@ -172,6 +172,16 @@
     return h;
   }
 
+  // ---------- incident closed: a clear end state ----------
+  function closedScreen() {
+    var i = inc(), mins = Math.round((new Date(i.closed || Date.now()) - new Date(i.start)) / 60000);
+    return '<div class="cbclosed"><div class="cbclosedin"><svg viewBox="0 0 24 24" width="84" height="84" fill="none" stroke="#2FBF71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M7.5 12.5l3 3 6-6"></path></svg>' +
+      '<div class="k">INCIDENT CLOSED</div><h1>' + E(i.location.desc || i.name) + '</h1>' +
+      '<p>' + E(i.number) + ' · command terminated ' + E(CP.fmtDT(i.closed || CP.now())) + ' · ' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + (i.exercise ? ' · PRACTICE' : '') + '</p>' +
+      '<p class="dim">All units released. The record is saved in Command Post' + (A.status === 'on' ? ' and county ArcGIS.' : ' and will send to ArcGIS when this device is back online.') + '</p>' +
+      '<div class="cbclosedbtns"><button class="btn big pri" data-cb="home">' + I('home') + 'Command Board home</button><button class="btn big" data-cb="report">' + I('print') + 'Incident report</button><a class="btn big" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener">' + I('link') + 'Open in Command Post</a><button class="btn big ghost" data-cb="reopen">Reopen incident</button></div></div></div>';
+  }
+
   // ---------- render ----------
   function render() {
     var m = document.getElementById('cbmain'); if (!m) return;
@@ -179,7 +189,7 @@
     if (!inc()) { m.innerHTML = startScreen(); return; }
     var y = window.scrollY;
     var force = new URLSearchParams(location.search).get('view');
-    m.innerHTML = (force === '0' ? false : phone()) ? phoneView() : board();
+    m.innerHTML = inc().status === 'Closed' ? closedScreen() : (force === '0' ? false : phone()) ? phoneView() : board();
     document.body.classList.toggle('practice', !!inc().exercise); CP.practice = !!inc().exercise;
     paintSync(); window.scrollTo(0, y);
   }
@@ -348,6 +358,9 @@
     commit('Moved to Command Post (full ICS). Units, assignments and log carried over.', 'Decision', true);
     window.open('index.html?incident=' + encodeURIComponent(i.id) + '&view=dash', '_blank');
   }
+  act.home = function () { CB.inc = null; CB.sel = null; history.replaceState(null, '', location.pathname); CB.list = undefined; CB.cad = undefined; render(); loadLists().then(render); };
+  act.report = function () { report(); };
+  act.reopen = function () { CP.setPath(inc(), 'status', 'Active'); CP.setPath(inc(), 'closed', ''); commit('Incident reopened', 'Decision'); };
   act.tocp = function (a, el, e) { e && e.preventDefault(); toCP(); };
   function phoneLink() {
     var url = location.origin + location.pathname + '?incident=' + encodeURIComponent(inc().id) + '&view=1', img = '';
@@ -377,7 +390,7 @@
   // ---------- boot ----------
   CB.boot = async function () {
     CP.me = CP.store.prefs().me || {};
-    document.getElementById('app').innerHTML = '<header class="hdr cbhdr"><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock ops"><div class="k">' + E(CP.BRAND) + ' · BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t">COMMAND BOARD</div></div><span class="sp" style="flex:1"></span>' + CP.beaconMark() + '</header><main id="cbmain" class="cbwrap"></main>';
+    document.getElementById('app').innerHTML = '<header class="hdr cbhdr"><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock ops"><div class="k">' + E(CP.BRAND) + ' · BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t">COMMAND BOARD</div></div><span class="sp" style="flex:1"></span><button class="btn cbhome" data-cb="home" title="Command Board home: all open incidents">' + I('home') + 'Home</button>' + CP.beaconMark() + '</header><main id="cbmain" class="cbwrap"></main>';
     try { if (await A.handleRedirect() === 'away') return; } catch (e) {}
     var qs = new URLSearchParams(location.search), want = qs.get('incident');
     render();

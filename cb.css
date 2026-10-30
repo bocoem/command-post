@@ -61,3 +61,12 @@
 .cbreport{background:#fff;color:#111;border-radius:8px;padding:16px;max-height:65vh;overflow:auto;font:13px/1.4 Arial,sans-serif}
 .cbreport h1{font:800 18px Arial;margin:2px 0}.cbreport h2{font:700 13px Arial;margin:14px 0 6px;border-bottom:2px solid #0B1A2B;text-transform:uppercase}.cbreport .k{font:700 10px Arial;letter-spacing:2px;color:#555}.cbreport .sub{color:#444;margin-bottom:8px}
 .cbreport table{width:100%;border-collapse:collapse;margin-bottom:6px}.cbreport th,.cbreport td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top}.cbreport th{background:#eef1f5}.cbreport .foot{font-size:11px;color:#666;margin-top:12px}
+/* incident closed end state */
+.cbclosed{display:flex;justify-content:center;padding:40px 12px}
+.cbclosedin{max-width:760px;width:100%;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:36px 28px}
+.cbclosedin .k{font:800 14px var(--cond);letter-spacing:3px;color:var(--green);margin-top:10px}
+.cbclosedin h1{font:800 34px var(--cond);margin:6px 0 8px}
+.cbclosedin p{font-size:16px;margin:4px 0}
+.cbclosedbtns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:22px}
+.cbhome{margin-right:10px}
+.cbcad.closed{opacity:.8;border-style:dashed}
