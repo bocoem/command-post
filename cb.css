@@ -484,3 +484,56 @@ body.cbdragging .cbasg[data-a]{border-color:var(--gold)}
 .cbcallpin::after{content:'';position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);border:6px solid transparent;border-bottom:0;border-top-color:inherit}
 .cbscratch{display:flex;align-items:center;gap:8px;font-size:13px;color:#9fb2c9;padding:0 4px}
 .cbbody .cbfire{flex:none}
+/* ===== manual alignment: prompts, mayday checklist, requests, weather, safety ===== */
+.cbaddrt{cursor:pointer;min-width:0}
+.cbcmd{display:inline-block;font-style:normal;font:800 12px var(--cond);letter-spacing:1.5px;text-transform:uppercase;color:#121212;background:linear-gradient(180deg,#ffd166,var(--t-gold));border-radius:6px;padding:2px 7px;margin-right:8px;vertical-align:4px}
+.cbstaff{display:block;font-size:12px;color:#9fb2c9;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cbwx{display:inline-flex;align-items:center;gap:4px;color:#bfe0ff;margin-right:10px;font-weight:600}
+.cbwx i{font-style:normal;display:inline-block;font-size:11px;color:#5aa9ff}
+.cbwxrow{margin:6px 0 2px;font-size:13px}
+.cbsafe{display:flex;flex-direction:column;gap:5px;min-width:150px}
+.cbbody .cbsafe .cbmay{flex:1;min-height:0}
+.cbet{min-height:30px;border-radius:10px;border:1px solid rgba(255,176,32,.6);background:rgba(255,176,32,.12);color:#ffd27a;font:800 12px var(--cond);letter-spacing:1.2px;text-transform:uppercase;cursor:pointer}
+.cbet.on{background:#ffb020;color:#121212}
+.cbetbar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;background:repeating-linear-gradient(135deg,rgba(255,176,32,.30) 0 14px,rgba(255,176,32,.16) 14px 28px);border:1px solid #ffb020;color:#fff;font:700 15px var(--cond);letter-spacing:.6px;animation:cbflash 1.6s infinite}
+.cbetbar b{font-size:16px;letter-spacing:1.5px}
+.cbprompts{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.cbprompt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between;padding:8px 10px;border-radius:12px;border:1px solid var(--t-edge2);background:rgba(78,161,255,.10)}
+.cbprompt.warn{border-color:rgba(255,176,32,.6);background:linear-gradient(90deg,rgba(255,176,32,.18),rgba(255,176,32,.05))}
+.cbprompt.red{border-color:rgba(255,59,71,.7);background:linear-gradient(90deg,rgba(255,59,71,.24),rgba(255,59,71,.06));box-shadow:0 0 18px rgba(255,59,71,.18)}
+.cbprompt .t{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;flex:1 1 300px}
+.cbprompt .t .ic{flex:none;width:18px;height:18px}
+.cbprompt.red .t .ic{color:#ff8a8a}.cbprompt.warn .t .ic{color:#ffd27a}
+.cbprompt .a{display:flex;flex-wrap:wrap;gap:5px}
+.cbprompt .btn.sm{min-height:36px}
+.cbprmore{border:0;background:transparent;color:#9fb2c9;font:700 12px var(--sans);cursor:pointer;text-align:left;padding:2px 4px}
+.cbmaypanel{border-radius:14px;border:2px solid #ff3b47;background:linear-gradient(180deg,rgba(120,10,20,.55),rgba(40,6,12,.6));padding:10px;margin-bottom:8px;box-shadow:0 0 30px rgba(255,59,71,.35)}
+.cbmayh{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px}
+.cbmayh b{font:800 20px var(--cond);letter-spacing:2px;color:#fff}.cbmayh span{flex:1;color:#ffd0d3;font-size:13px}
+.cbmayck{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.cbmayck button{display:flex;align-items:center;gap:6px;text-align:left;min-height:40px;padding:5px 8px;border-radius:9px;border:1px solid rgba(255,140,150,.35);background:rgba(0,0,0,.25);color:#ffe3e5;font:600 12.5px var(--sans);cursor:pointer}
+.cbmayck button .ic{flex:none;width:15px;height:15px}
+.cbmayck button span{flex:1}.cbmayck button i{font-style:normal;font-size:11px;color:#9fe8bf}
+.cbmayck button.on{border-color:#2fd27a;background:rgba(47,210,122,.18);color:#d9ffe9}
+.cbgrab{margin-top:8px;font-size:12px;color:#ffd0d3}.cbgrab b{color:#fff;margin-right:6px;letter-spacing:1px}
+.cbreqs{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:4px}
+.cbreq{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-height:44px;padding:5px 8px;border-radius:9px;border:1px solid var(--t-edge2);background:rgba(255,255,255,.04);color:#e8eef7;cursor:pointer;text-align:left;min-width:0}
+.cbreq b{font:700 12.5px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}.cbreq span{font-size:11px;color:#9fb2c9}
+.cbreq.st-requested{border-color:rgba(255,176,32,.6)}.cbreq.st-requested span{color:#ffd27a}
+.cbreq.st-dispatched,.cbreq.st-enroute{border-color:rgba(78,161,255,.6)}.cbreq.st-enroute span,.cbreq.st-dispatched span{color:#bfe0ff}
+.cbreq.st-onscene{border-color:rgba(47,210,122,.6)}.cbreq.st-onscene span{color:#9fe8bf}
+.cbreq.st-cancelled,.cbreq.st-released{opacity:.5}
+.cbreq.add{flex-direction:row;align-items:center;justify-content:center;gap:5px;border-style:dashed;color:var(--t-gold)}
+.cbreqh{margin:8px 0;font-size:13px;display:flex;flex-direction:column;gap:3px}.cbreqh .mono{color:var(--gold)}
+.cbbtns.c3{grid-template-columns:repeat(3,1fr)}
+.cbtrig{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cbtrig .t-red span{color:#ff8a8a}.cbtrig .t-yellow span{color:#ffd27a}.cbtrig .t-green span{color:#9fe8bf}.cbtrig .t-black span{color:#c9d1db}
+.cblel{margin:8px 0;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);font-size:13px;color:#9fb2c9}.cblel b{display:block;font:800 30px var(--mono);color:#fff}
+.cbgasref{display:flex;flex-direction:column;gap:6px;font-size:13px;margin-top:6px}
+.cbwind{transform:translate(-50%,-50%);display:inline-flex;flex-direction:column;align-items:center;gap:0;color:#bfe0ff;text-shadow:0 1px 4px #000}
+.cbwind i{font-style:normal;font-size:26px;transform:rotate(calc(var(--r) - 90deg));color:#5aa9ff}
+.cbwind b{font:800 11px var(--cond);background:rgba(10,18,32,.85);padding:1px 6px;border-radius:8px;border:1px solid rgba(90,169,255,.6)}
+.cbride button[data-chip]{min-height:40px;font-size:13.5px;font-family:var(--sans);font-weight:700}
+.cbride button[data-chip].on{background:linear-gradient(180deg,#ffd166,var(--t-gold));color:#121212;border-color:var(--t-gold)}
+@media (max-width:999px){.cbbody .cbfire{backdrop-filter:none;-webkit-backdrop-filter:none}.cbmayck,.cbreqs{grid-template-columns:1fr}.cbtrig{grid-template-columns:1fr 1fr}}
+.cbcolS .cbmarks{grid-template-columns:1fr}.cbcolS .cbmark span{white-space:normal;overflow:visible}.cbcolS .cbmark i{display:inline;margin-left:auto}
