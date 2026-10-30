@@ -261,8 +261,31 @@
     R.ms = Date.now() - t0; R.t = Date.now();
     return R;
   };
+  // the daily check runs inside BEACON: the first time each day an EM admin opens EM Ops, it runs and saves the result
+  // to Command Post's shared settings, so EM Ops and Command Post can show a red banner to every EM user. No dedicated computer needed.
+  H.save = async function (R) {
+    var bad = R.filter(function (r) { return !r.ok && !/^This device/.test(r.what); }).map(function (r) { return { what: r.what, fix: r.fix }; });
+    var last = { t: Date.now(), by: (A.user || {}).username || '', n: R.filter(function (r) { return !/^This device/.test(r.what); }).length, bad: bad };
+    OPS.healthLast = last; CP.healthLast = last;
+    try { await A.settings.set('health_last', JSON.stringify(last)); } catch (e) { console.warn('health save', e); }
+    return last;
+  };
+  H.checkAndSave = async function () { var R = await H.check(); await H.save(R); return R; };
+  H.auto = async function () {
+    if (!A.signedIn() || A.status !== 'on') return;
+    var last = null; try { last = JSON.parse(await A.settings.get('health_last') || 'null'); } catch (e) {}
+    OPS.healthLast = CP.healthLast = last; OPS.paintChrome();
+    if (OPS.isAdmin() && (!last || Date.now() - last.t > 20 * 3600e3)) { await H.checkAndSave().catch(function (e) { console.warn('auto health', e); }); OPS.paintChrome(); }
+  };
+  H.badge = function () {
+    var l = OPS.healthLast; if (!l) return '';
+    var days = Math.floor((Date.now() - l.t) / 864e5);
+    if (l.bad && l.bad.length) return '<a class="chip red" href="#setup" data-act="go" data-a="setup" title="' + E(l.bad.map(function (b) { return b.what; }).join(' · ')) + '">' + I('warn') + 'Health: ' + l.bad.length + ' need attention</a>';
+    if (days >= 3) return '<a class="chip gold" href="#setup" data-act="go" data-a="setup">' + I('clock') + 'Health check ' + days + ' days old</a>';
+    return '';
+  };
   H.panel = function () {
-    var r = OPS.load('health', H.check, 10 * 60000);
+    var r = OPS.load('health', H.checkAndSave, 10 * 60000);
     var h = '<div class="card" style="margin-top:14px" id="healthCard"><h3>' + I('shield') + 'Health check<span class="x"><button class="btn sm" data-act="healthRun">' + I('refresh') + 'Run now</button></span></h3>';
     if (r === undefined) return h + '<div class="empty">' + I('refresh') + ' Checking services, sharing, protection and this device…</div></div>';
     if (r && r._err) return h + '<div class="warnbox">' + E(CP.friendly(r._err)) + '</div></div>';

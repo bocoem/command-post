@@ -194,6 +194,13 @@
     try { var m = await A.checkRemote(inc()); if (m) { CB.inc = m; CP.store.put(m); render(); } } catch (e) {}
   }, 5000);
 
+  // ---------- dialogs (no browser pop-ups: they are blocked in the BEACON pane and on some tablets) ----------
+  function ask(title, fields, label, cb) {
+    U.modal(title, fields.map(function (f, i) { return '<label class="f"><span>' + E(f.l) + '</span><input class="in big" name="q' + i + '" value="' + E(f.v || '') + '"></label>'; }).join(''),
+      [{ label: 'Cancel', cls: 'ghost' }, { label: label || 'Save', cls: 'pri', fn: function (bg) { var v = fields.map(function (f, i) { return (bg.querySelector('[name="q' + i + '"]').value || '').trim(); }); if (!v[0]) { U.toast('Fill it in first', 'err'); return false; } cb(v); } }]);
+  }
+  function sure(title, text, label, cb) { setTimeout(function () { U.confirm(title, E(text), label, cb, true); }, 30); }
+
   // ---------- actions ----------
   var act = {};
   act.signin = function () { A.signIn(); };
@@ -229,7 +236,7 @@
       if (k === 'onscene') { r.status = 'Checked In'; r.assign = ''; if (!r.arrived) r.arrived = CP.now(); r.u = CP.now(); CP.touch(inc(), 'resources'); commit(r.name + ' on scene', 'Resource'); }
       else if (k === 'oos') { r.status = 'Out of Service'; r.u = CP.now(); CP.touch(inc(), 'resources'); commit(r.name + ' out of service', 'Resource'); }
       else if (k === 'release') { r.status = 'Released'; r.assign = ''; r.released = CP.now(); r.u = CP.now(); CP.touch(inc(), 'resources'); commit(r.name + ' released', 'Resource'); }
-      else if (k === 'rename') { var n = prompt('Unit name', r.name); if (n) { r.name = n.toUpperCase(); var ag = prompt('Agency', r.agency || ''); if (ag != null) r.agency = ag; r.u = CP.now(); CP.touch(inc(), 'resources'); commit(null); } }
+      else if (k === 'rename') setTimeout(function () { ask('Rename ' + r.name, [{ l: 'Unit', v: r.name }, { l: 'Agency', v: r.agency || '' }], 'Save', function (v) { r.name = v[0].toUpperCase(); r.agency = v[1]; r.u = CP.now(); CP.touch(inc(), 'resources'); commit(null); }); }, 30);
       else render();
     });
   }
@@ -242,9 +249,9 @@
       var b = e.target.closest('[data-am]'); if (!b) return; e.preventDefault(); var k = b.dataset.am; U.closeModal();
       if (k === 'can') return canReport(a);
       if (k === 'par') { setKV('par_' + a.id, CP.now()); commit('PAR ' + aName(a) + ': all accounted (' + unitsIn(a.id).map(function (r) { return r.name; }).join(', ') + ')', 'Safety'); }
-      if (k === 'rename') { var n = prompt('Name', aName(a)); if (n) { ['division', 'group', 'staging', 'branch'].forEach(function (f) { if (a[f]) a[f] = n; }); a.u = CP.now(); CP.touch(inc(), 'assignments'); commit(null); } }
+      if (k === 'rename') setTimeout(function () { ask('Rename', [{ l: 'Name', v: aName(a) }], 'Save', function (v) { ['division', 'group', 'staging', 'branch'].forEach(function (f) { if (a[f]) a[f] = v[0]; }); a.u = CP.now(); CP.touch(inc(), 'assignments'); commit(null); }); }, 30);
       if (k === 'free') { unitsIn(a.id).forEach(function (r) { r.assign = ''; r.status = 'Checked In'; r.u = CP.now(); }); CP.touch(inc(), 'resources'); commit('Units released from ' + aName(a), 'Resource'); }
-      if (k === 'del') { if (!confirm('Remove ' + aName(a) + '? Its units become unassigned.')) return; unitsIn(a.id).forEach(function (r) { r.assign = ''; r.status = 'Checked In'; r.u = CP.now(); }); a.del = true; a.u = CP.now(); CP.touch(inc(), 'assignments'); CP.touch(inc(), 'resources'); commit(aName(a) + ' removed', 'Action'); }
+      if (k === 'del') sure('Remove ' + aName(a) + '?', 'Its units become unassigned.', 'Remove', function () { unitsIn(a.id).forEach(function (r) { r.assign = ''; r.status = 'Checked In'; r.u = CP.now(); }); a.del = true; a.u = CP.now(); CP.touch(inc(), 'assignments'); CP.touch(inc(), 'resources'); commit(aName(a) + ' removed', 'Action'); });
     });
   };
   act.newasg = function () {
@@ -257,12 +264,12 @@
   };
   act.mark = function (id) {
     var m = CP.byId(inc().cbMarks, id); if (!m) return;
-    if (m.t) { if (!confirm('Clear "' + m.label + '"?')) return; m.t = ''; m.by = ''; m.u = CP.now(); CP.touch(inc(), 'cbMarks'); return commit('Benchmark cleared: ' + m.label, 'Note'); }
+    if (m.t) return sure('Clear this benchmark?', m.label, 'Clear', function () { m.t = ''; m.by = ''; m.u = CP.now(); CP.touch(inc(), 'cbMarks'); commit('Benchmark cleared: ' + m.label, 'Note'); });
     m.t = CP.now(); m.by = CP.me.name || ''; m.u = CP.now(); CP.touch(inc(), 'cbMarks');
     if (/under control/i.test(m.label) && kv('cond') !== 'Under control') setKV('cond', 'Under control');
     commit('BENCHMARK: ' + m.label + ' (' + since(inc().start) + ' into the incident)', 'Event');
   };
-  act.addmark = function () { var n = prompt('Benchmark'); if (!n) return; inc().cbMarks = inc().cbMarks || []; inc().cbMarks.push({ id: CP.uid(), label: n, t: '', by: '', u: CP.now() }); CP.touch(inc(), 'cbMarks'); commit(null); };
+  act.addmark = function () { ask('Add benchmark', [{ l: 'Benchmark' }], 'Add', function (v) { inc().cbMarks = inc().cbMarks || []; inc().cbMarks.push({ id: CP.uid(), label: v[0], t: '', by: '', u: CP.now() }); CP.touch(inc(), 'cbMarks'); commit(null); }); };
   act.par = function () {
     var list = asgs().filter(function (a) { return unitsIn(a.id).length; }), every = +kv('parEvery', 20);
     var bg = U.modal('PAR · Personnel Accountability', '<div class="cbmenu">' + list.map(function (a) { return '<label class="cbparrow"><input type="checkbox" data-pa="' + a.id + '"> <b>' + E(aName(a)) + '</b> <span class="dim">' + E(unitsIn(a.id).map(function (r) { return r.name; }).join(', ')) + '</span></label>'; }).join('') + '</div>' +
@@ -284,7 +291,7 @@
         if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
       } }]);
   };
-  act.mayclear = function () { var m = kv('mayday', null); if (!m || !confirm('Clear the MAYDAY? Only when the member is out and accounted for.')) return; setKV('mayday', null); commit('MAYDAY cleared after ' + since(m.t) + ': ' + (m.who || ''), 'Safety'); };
+  act.mayclear = function () { var m = kv('mayday', null); if (!m) return; sure('Clear the MAYDAY?', 'Only when the member is out and accounted for.', 'Clear MAYDAY', function () { setKV('mayday', null); commit('MAYDAY cleared after ' + since(m.t) + ': ' + (m.who || ''), 'Safety'); }); };
   function canReport(a) {
     U.modal('CAN report' + (a ? ' · ' + aName(a) : ''), '<label class="f"><span>Conditions</span><input class="in" name="c" placeholder="What you see"></label><label class="f"><span>Actions</span><input class="in" name="a" placeholder="What you are doing"></label><label class="f"><span>Needs</span><input class="in" name="n" placeholder="What you need"></label>',
       [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log it', cls: 'pri', fn: function (b) { var t = ['C: ' + U.val(b, 'c'), 'A: ' + U.val(b, 'a'), 'N: ' + U.val(b, 'n')].filter(function (x) { return x.length > 3; }).join(' · '); if (!t) return false; if (a) { a.cbCan = t; a.u = CP.now(); CP.touch(inc(), 'assignments'); } commit('CAN' + (a ? ' ' + aName(a) : '') + ': ' + t, 'Communication'); } }]);
@@ -292,17 +299,42 @@
   act.can = function () { canReport(null); };
   act.note = function () { U.modal('Log entry', '<textarea class="in" id="cbNote" style="min-height:90px"></textarea><div class="cbmenu grid" style="margin-top:8px">' + ['Command transferred', 'Requested 2nd alarm', 'Utilities on scene', 'Fire marshal requested', 'Red Cross requested', 'Occupants accounted for'].map(function (q) { return '<button data-q="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log', cls: 'pri', fn: function (b) { var t = b.querySelector('#cbNote').value.trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); } }], { onOpen: function (b) { b.addEventListener('click', function (e) { var q = e.target.closest('[data-q]'); if (!q) return; e.preventDefault(); var n = b.querySelector('#cbNote'); n.value = (n.value ? n.value + '. ' : '') + q.dataset.q; }); } }); };
   act.more = function () {
-    var bg = U.modal('More', '<div class="cbmenu">' + [['ic', 'Transfer command (new IC)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], ['phonelink', 'Phone view link / QR'], ['tocp', 'Move to Command Post (full ICS)'], ['close', 'Terminate command / close incident'], ['exit', 'Back to board list']].map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], ['phonelink', 'Phone view link / QR'], ['tocp', 'Move to Command Post (full ICS)'], [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list']].map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-mo]'); if (!b) return; e.preventDefault(); var k = b.dataset.mo; U.closeModal();
-      if (k === 'ic') { var n = prompt('New Incident Commander (name / unit)'); if (!n) return; var p = CP.person(inc(), 'IC'); if (p) { p.name = n; p.u = CP.now(); } else CP.addItem(inc(), 'org', { pos: 'IC', label: '', name: n, agency: '', phone: '', radio: '', email: '', checkin: CP.now() }); CP.touch(inc(), 'org'); commit('Command transferred to ' + n, 'Decision'); }
+      if (k === 'ic') setTimeout(function () { ask('Transfer command', [{ l: 'New Incident Commander (name / unit)' }], 'Transfer', function (v) { var n = v[0], p = CP.person(inc(), 'IC'); if (p) { p.name = n; p.u = CP.now(); } else CP.addItem(inc(), 'org', { pos: 'IC', label: '', name: n, agency: '', phone: '', radio: '', email: '', checkin: CP.now() }); CP.touch(inc(), 'org'); commit('Command transferred to ' + n, 'Decision'); }); }, 30);
       if (k === 'upgrade') upgrade();
       if (k === 'phonelink') phoneLink();
       if (k === 'tocp') toCP();
-      if (k === 'close') { if (!confirm('Terminate command and close this incident?')) return; CP.setPath(inc(), 'status', 'Closed'); CP.setPath(inc(), 'closed', CP.now()); units().forEach(function (r) { r.status = 'Released'; r.released = CP.now(); r.u = CP.now(); }); CP.touch(inc(), 'resources'); commit('Command terminated. Incident closed after ' + since(inc().start) + '.', 'Decision'); }
+      if (k === 'close') sure('Terminate command?', 'Releases every unit and closes the incident. The incident report opens next.', 'Terminate command', function () { var all = units(); all.forEach(function (r) { r.status = 'Released'; r.released = CP.now(); r.u = CP.now(); }); CP.touch(inc(), 'resources'); log('Command terminated. ' + all.length + ' unit(s) released. Incident closed after ' + since(inc().start) + '.', 'Decision'); CP.setPath(inc(), 'status', 'Closed'); CP.setPath(inc(), 'closed', CP.now()); commit(null); setTimeout(report, 300); });
+      if (k === 'report') report();
+      if (k === 'reopen') { CP.setPath(inc(), 'status', 'Active'); CP.setPath(inc(), 'closed', ''); commit('Incident reopened', 'Decision'); }
       if (k === 'exit') { CB.inc = null; history.replaceState(null, '', location.pathname); CB.list = undefined; render(); loadLists().then(render); }
     });
   };
+  // ---------- incident report: everything that happened, ready to print or save as PDF ----------
+  function report() {
+    var i = inc(), all = AL(i.resources), lg = AL(i.log), dur = function (a, b) { if (!a) return ''; var m = Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 60000); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min'; };
+    var row = function (c) { return '<tr>' + c.map(function (x) { return '<td>' + E(x == null ? '' : x) + '</td>'; }).join('') + '</tr>'; };
+    var tbl = function (h, rows) { return '<table><thead><tr>' + h.map(function (x) { return '<th>' + E(x) + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table>'; };
+    var asgName = function (id) { var a = CP.byId(i.assignments, id); return a ? aName(a) : ''; };
+    var body = '<div class="k">BOTETOURT COUNTY EMERGENCY MANAGEMENT · ' + E(CP.BRAND) + ' COMMAND BOARD</div><h1>Incident report: ' + E(i.location.desc || i.name) + '</h1>' +
+      '<div class="sub">' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (i.exercise ? ' · PRACTICE' : '') + ' · Status ' + E(i.status) + '</div>' +
+      tbl(['Started', 'Closed', 'Duration', 'Incident Commander', 'Final strategy', 'Conditions', 'Units'], [row([CP.fmtDT(i.start), i.closed ? CP.fmtDT(i.closed) : 'Open', dur(i.start, i.closed || null), CP.personName(i, 'IC'), kv('mode', ''), kv('cond', ''), all.length])]) +
+      '<h2>Benchmarks</h2>' + tbl(['Benchmark', 'Time', 'Into incident', 'By'], marks().map(function (m) { return row([m.label, m.t ? CP.fmtTime(m.t) : 'not reached', m.t ? dur(i.start, m.t) : '', m.by]); })) +
+      '<h2>Units</h2>' + tbl(['Unit', 'Type', 'Agency', 'Arrived', 'Last assignment', 'Status', 'Released', 'Time on scene'], all.map(function (r) { return row([r.name, r.kind, r.agency, r.arrived || r.checkin ? CP.fmtTime(r.arrived || r.checkin) : '', asgName(r.assign) || (lg.slice().reverse().find(function (l) { return l.text.indexOf(r.name + ' assigned to ') === 0; }) || { text: '' }).text.replace(r.name + ' assigned to ', ''), r.status, r.released ? CP.fmtTime(r.released) : '', dur(r.arrived || r.checkin, r.released || i.closed || null)]); })) +
+      '<h2>Divisions & groups</h2>' + tbl(['Assignment', 'Supervisor', 'Task', 'Last CAN report'], asgs().map(function (a) { return row([aName(a), a.reportTo, a.work, a.cbCan]); })) +
+      '<h2>Safety: PAR and MAYDAY</h2>' + tbl(['Time', 'Entry'], lg.filter(function (l) { return /^(PAR|MAYDAY)/.test(l.text); }).map(function (l) { return row([CP.fmtTime(l.ts), l.text]); }).concat(lg.some(function (l) { return /^(PAR|MAYDAY)/.test(l.text); }) ? [] : [row(['', 'No PAR or MAYDAY recorded'])])) +
+      '<h2>Complete timeline</h2>' + tbl(['Time', 'Elapsed', 'Category', 'Entry', 'By'], lg.map(function (l) { return row([CP.fmtTime(l.ts), dur(i.start, l.ts), l.cat, l.text, l.author]); })) +
+      '<div class="foot">Generated ' + E(CP.fmtDT(CP.now())) + ' by ' + E(CP.me.name || '') + '. The same record is in Command Post (Reports: ICS 201, 211, 214) and in county ArcGIS (BOCO_Command_Post).</div>';
+    var css = '<style>body{font:12px/1.35 Arial,sans-serif;color:#111;margin:24px}h1{font:800 18px Arial;margin:2px 0}h2{font:700 13px Arial;margin:16px 0 6px;border-bottom:2px solid #0B1A2B;text-transform:uppercase;letter-spacing:.5px}.k{font:700 10px Arial;letter-spacing:2px;color:#555}.sub{color:#444;margin-bottom:10px}table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eef1f5;font-size:11px}.foot{margin-top:16px;font-size:10px;color:#666}@media print{button{display:none}}</style>';
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Incident report ' + E(i.number) + '</title>' + css + '</head><body>' + body + '</body></html>';
+    var fname = 'Incident report ' + i.number + ' ' + (i.location.desc || '').replace(/[^\w ,-]+/g, '').slice(0, 40) + '.html';
+    var bg = U.modal('Incident report', '<div class="cbreport">' + body + '</div>', [{ label: I('down') + 'Download', cls: 'ghost', fn: function () { U.download(fname, html, 'text/html'); return false; } }, { label: I('print') + 'Print / save as PDF', cls: 'pri', fn: function () {
+      var w = window.open('', '_blank'); if (w) { w.document.write(html + '<script>setTimeout(function(){print()},300)<\/script>'); w.document.close(); } else { U.download(fname, html, 'text/html'); U.toast('Downloaded. Open it and print to save a PDF.', 'ok', 6000); } return false; } }, { label: 'Close', cls: 'ghost' }], { wide: true });
+    return bg;
+  }
+
   function upgrade() {
     var T = TEMPLATES.structure, have = asgs().map(aName);
     T.assign.forEach(function (a) { if (have.indexOf(a[1]) >= 0) return; var o = { branch: '', division: '', group: '', staging: '', work: '', special: '', needs: [], reportTo: '' }; o[a[0]] = a[1]; CP.addItem(inc(), 'assignments', o); });

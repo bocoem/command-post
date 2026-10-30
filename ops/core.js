@@ -440,7 +440,7 @@
     var inc = OPS.inc; CP.practice = !!(inc && inc.exercise); document.body.classList.toggle('practice', CP.practice);
     document.getElementById('ibar').innerHTML = '<div class="ibar"><span class="dim" style="font:700 12px var(--cond);letter-spacing:1.6px">INCIDENT</span>' + sel +
       (inc && inc.exercise ? '<span class="chip practice">PRACTICE</span>' : '') + (inc ? '<span class="chip ' + (inc.status === 'Closed' ? 'mute' : 'ok') + '">' + (inc.status === 'Closed' ? 'Closed' : '<span class="dot"></span>Active ' + E(CP.elapsed(new Date(inc.start).toISOString()))) + '</span><a class="btn sm ghost" href="' + OPS.cpLink() + '" target="_blank" rel="noopener">' + I('link') + 'Command Post</a>' : '') +
-      '<span class="sp"></span>' + sync + (A.signedIn() ? '<span class="dim" style="font-size:13px">' + E(OPS.me()) + '</span>' : '<button class="btn sm pri" data-act="signin">Sign in with ArcGIS</button>') + '</div>';
+      '<span class="sp"></span>' + (OPS.harden && OPS.isAdmin && A.user && OPS.isAdmin() ? OPS.harden.badge() : '') + sync + (A.signedIn() ? '<span class="dim" style="font-size:13px">' + E(OPS.me()) + '</span>' : '<button class="btn sm pri" data-act="signin">Sign in with ArcGIS</button>') + '</div>';
     var nav = document.getElementById('nav');
     if (OPS.st.solo) { document.body.classList.add('solo'); nav.innerHTML = ''; return; }
     var h = '';
@@ -497,6 +497,7 @@
       if (!CP.me.name && A.user) { CP.me = Object.assign({}, CP.me, { name: A.user.name }); CP.store.setPref('me', CP.me); }
       if (A.user) { await Promise.all([OPS.findServices(), OPS.loadIncidents()]); }
       OPS.render();
+      if (OPS.harden) setTimeout(function () { OPS.harden.auto(); }, 3000);
     }
     // another tab or Command Post picked a different incident: follow it
     window.addEventListener('storage', function (ev) {

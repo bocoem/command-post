@@ -42,7 +42,9 @@
   app.paintChrome = function () {
     var inc = app.inc, ib = document.getElementById('ibar'), nav = document.getElementById('nav');
     if (!ib) return;
+    var hl = CP.healthLast, hbad = hl && hl.bad && hl.bad.length ? '<a class="chip red" href="ops.html#setup" target="_blank" rel="noopener" title="' + E(hl.bad.map(function (b) { return b.what; }).join(' · ')) + '">' + I('warn') + 'BEACON health: ' + hl.bad.length + ' need attention</a>' : '';
     var a = CP.arc, st = a.status, sync = !a.signedIn() ? '<span class="sync" title="Saved on this device only">' + I('cloud') + 'Local</span>' : st === 'on' ? '<span class="sync on" title="Shared through ArcGIS">' + I('cloud') + (app.saving ? 'Saving…' : 'Synced') + '</span>' : st === 'busy' ? '<span class="sync busy">' + I('cloud') + 'Connecting…</span>' : st === 'nosvc' ? '<span class="sync busy" title="Command Post service not set up">' + I('cloud') + 'Signed in · no service</span>' : '<span class="sync err" title="' + E(a.err) + '">' + I('cloud') + 'Offline</span>';
+    sync = hbad + sync;
     if (!inc) { CP.practice = false; document.body.classList.remove('practice'); ib.innerHTML = '<div class="ibar"><span class="nm" style="font-size:16px;color:var(--muted)">Incident board</span><span class="sp"></span>' + sync + (a.signedIn() ? '' : '<button class="btn sm" data-act="signin">Sign in</button>') + '</div>'; nav.innerHTML = navHtml(); return; }
     var op = CP.curOP(inc);
     CP.practice = !!inc.exercise; document.body.classList.toggle('practice', CP.practice);
@@ -623,6 +625,7 @@
       if (app.inc && CP.arc.status === 'on') { try { var r = await CP.arc.loadRemote(app.inc.id); if (r) { app.inc = CP.merge(app.inc, r); CP.store.put(app.inc); } else app.pushRemote(); } catch (e) {} }
       if (app._wantRemote && (!app.inc || app.inc.id !== app._wantRemote) && CP.arc.status === 'on') { try { await app.open(app._wantRemote, h && CP.views[h] ? h : 'dash'); } catch (e) {} }
       app.render(); app.loadRemoteList(); app.refreshLive(); if (CP.calls) CP.calls.refresh();
+      if (CP.arc.status === 'on' && (CP.arc.user.groups || []).some(function (g) { return /^BOCO Access 1/.test(g); })) CP.arc.settings.get('health_last').then(function (v) { try { CP.healthLast = JSON.parse(v || 'null'); } catch (e) {} app.paintChrome(); }).catch(function () {});
     }
     if (CP.calls) CP.calls.paint();
     if (CP.liveApps) CP.liveApps.paint();
