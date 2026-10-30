@@ -229,11 +229,17 @@
       '<span class="sp"></span><span class="sync on" id="cbSync"></span>' + (kv('mci') ? '' : '<button class="btn sm red" data-cb="mci">' + svg('mci') + 'Declare MCI</button>') + '<button class="btn sm" data-cb="can">' + I('msg') + 'CAN report</button><button class="btn sm" data-cb="note">' + I('log') + 'Log</button><button class="btn sm" data-cb="more">' + I('menu') + 'More</button><a class="btn sm pri" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener" data-cb="tocp">' + I('link') + 'Move to Command Post</a></div>';
     // units rack
     var free = units().filter(function (r) { return !r.assign; }), enr = free.filter(function (r) { return r.status === 'En Route'; }), avail = free.filter(function (r) { return r.status !== 'En Route'; });
-    h += '<div class="cbmain"><section class="cbrack"><div class="cbh">' + I('truck') + 'Units <span class="ct">' + units().length + '</span></div>' +
+    var trayU = avail.concat(enr), su = CB.sel ? CP.byId(i.resources, CB.sel) : null;
+    h += '<section class="cbtray' + (su ? ' picking' : '') + '"><div class="cbtrayh"><b>' + I('truck') + 'Units <span class="ct">' + units().length + '</span></b>' +
       '<div class="cbadd">' + KINDS.map(function (k) { return '<button data-cb="addk" data-a="' + k[0] + '" title="' + E(k[2]) + '">+' + k[0] + '</button>'; }).join('') + '</div>' +
-      respPanel() + '<div class="cbsub">On scene · not assigned</div>' + (avail.length ? avail.map(tile).join('') : '<div class="dim cbempty">Tap a unit type above, or a unit below to assign it.</div>') +
-      '<div class="cbsub">Responding</div>' + (enr.length ? enr.map(tile).join('') : '<div class="dim cbempty">—</div>') +
-      '<button class="btn sm ghost" style="width:100%;margin-top:8px" data-cb="cadunits">' + I('radio') + 'Pull units from CAD</button></section>';
+      '<button class="btn sm ghost" data-cb="cadunits">' + I('radio') + 'From CAD</button></div>' +
+      '<div class="cbtrayu">' + (avail.length ? avail.map(tile).join('') : '') + (enr.length ? '<span class="cbtraysep">Responding</span>' + enr.map(tile).join('') : '') +
+      (trayU.length ? '' : '<div class="dim cbempty">Every unit is assigned. Tap + to add one, or tap a unit in a division to move it.</div>') + '</div>' +
+      (su ? '<div class="cbqa"><div class="cbqal">Send <b>' + E(su.name) + '</b> to:</div><div class="cbqbs">' + asgs().map(function (a) { var al = asgLook(a); return '<button class="cbqb ' + al[1] + (su.assign === a.id ? ' cur' : '') + '" data-cb="qa" data-a="' + a.id + '">' + svg(al[0]) + '<span>' + E(aName(a)) + '</span><i>' + unitsIn(a.id).length + '</i></button>'; }).join('') +
+        (su.assign || su.status === 'En Route' ? '<button class="cbqb av" data-cb="qa" data-a="">' + I('check') + '<span>On scene, available</span></button>' : '') +
+        '<button class="cbqb ghost" data-cb="newasg">' + I('plus') + '<span>New division / group</span></button><button class="cbqb ghost" data-cb="unit" data-a="' + su.id + '">' + I('menu') + '<span>Unit options</span></button><button class="cbqb ghost" data-cb="desel"><span>Cancel</span></button></div></div>'
+        : '<div class="cbtip">Tap a unit to send it to a division or group' + (window.matchMedia && matchMedia('(pointer:fine)').matches ? ', or drag it' : '') + '.</div>') + '</section>';
+    h += '<div class="cbmain">';
     // assignments
     h += '<section class="cbgrid">' + asgs().map(function (a) {
       var us = unitsIn(a.id), sup = a.reportTo || '', par = kv('par_' + a.id, null), can = a.cbCan || '';
@@ -243,7 +249,7 @@
         (can || a.work ? '<div class="cbcan">' + E(can || a.work).slice(0, 140) + '</div>' : '') + (par ? '<div class="cbpok">' + I('check') + 'PAR ' + Math.round((Date.now() - new Date(par).getTime()) / 60000) + ' min ago</div>' : '') + '</div>';
     }).join('') + '<button class="cbasg cbnew" data-cb="newasg">' + I('plus') + 'Add division / group</button></section>';
     // benchmarks + log
-    h += '<section class="cbside">' + mciPanel() + '<div class="cbh">' + I('check') + 'Benchmarks</div>' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '"><span>' + I(m.t ? 'check' : 'clock') + E(m.label) + '</span><i>' + (m.t ? E(CP.fmtTime(m.t)) + ' · +' + Math.round((new Date(m.t) - new Date(i.start)) / 60000) + ' min' : 'tap when done') + '</i></button>'; }).join('') +
+    h += '<section class="cbside">' + respPanel() + mciPanel() + '<div class="cbh">' + I('check') + 'Benchmarks</div>' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '"><span>' + I(m.t ? 'check' : 'clock') + E(m.label) + '</span><i>' + (m.t ? E(CP.fmtTime(m.t)) + ' · +' + Math.round((new Date(m.t) - new Date(i.start)) / 60000) + ' min' : 'tap when done') + '</i></button>'; }).join('') +
       '<button class="btn xs ghost" data-cb="addmark">' + I('plus') + 'Benchmark</button>' +
       '<div class="cbh" style="margin-top:12px">' + I('log') + 'Activity</div><div class="cblog">' + AL(i.log).slice(-14).reverse().map(function (l) { return '<div><span class="mono">' + E(CP.fmtTime(l.ts)) + '</span> ' + E(l.text) + '</div>'; }).join('') + '</div></section></div>';
     return h;
@@ -264,7 +270,7 @@
     var on = CB.sel === r.id, st = r.status === 'En Route' ? 'enr' : r.status === 'Out of Service' ? 'oos' : r.assign ? 'asg' : 'av';
     var t = r.arrived || r.checkin; var mins = t ? Math.floor((Date.now() - new Date(t).getTime()) / 60000) : 0;
     var lk = unitLook(r);
-    return '<button class="cbunit ' + st + ' ' + lk[1] + (on ? ' sel' : '') + '" data-cb="unit" data-a="' + r.id + '">' + svg(lk[0]) + '<b>' + E(r.name) + '</b><span>' + E((r.kind || '').replace(/ \(.*\)/, '').replace('Overhead', 'Chief')) + (r.status === 'En Route' ? ' · resp.' : mins ? ' · ' + mins + 'm' : '') + '</span></button>';
+    return '<button class="cbunit ' + st + ' ' + lk[1] + (on ? ' sel' : '') + '" draggable="true" data-cb="unit" data-a="' + r.id + '">' + svg(lk[0]) + '<b>' + E(r.name) + '</b><span>' + E((r.kind || '').replace(/ \(.*\)/, '').replace('Overhead', 'Chief')) + (r.status === 'En Route' ? ' · resp.' : mins ? ' · ' + mins + 'm' : '') + '</span></button>';
   }
 
   // ---------- phone view (read-only, live) ----------
@@ -335,6 +341,13 @@
     if (CB.sel === id) { unitMenu(id); return; }
     CB.sel = id; render();
   };
+  act.qa = function (aid) { var r = CB.sel && CP.byId(inc().resources, CB.sel); CB.sel = null; if (r) moveUnit(r, aid || ''); else render(); };
+  act.desel = function () { CB.sel = null; render(); };
+  // drag a unit onto a division or group (mouse; tablets use tap)
+  document.addEventListener('dragstart', function (e) { var t = e.target.closest && e.target.closest('.cbunit[data-a]'); if (!t) return; CB.drag = t.dataset.a; try { e.dataTransfer.setData('text/plain', t.dataset.a); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} document.body.classList.add('cbdragging'); });
+  document.addEventListener('dragend', function () { CB.drag = null; document.body.classList.remove('cbdragging'); document.querySelectorAll('.cbover').forEach(function (n) { n.classList.remove('cbover'); }); });
+  document.addEventListener('dragover', function (e) { if (!CB.drag) return; var z = e.target.closest && e.target.closest('.cbasg[data-a],.cbtray'); if (!z) return; e.preventDefault(); document.querySelectorAll('.cbover').forEach(function (n) { if (n !== z) n.classList.remove('cbover'); }); z.classList.add('cbover'); });
+  document.addEventListener('drop', function (e) { if (!CB.drag) return; var z = e.target.closest && e.target.closest('.cbasg[data-a],.cbtray'); if (!z) return; e.preventDefault(); var r = CP.byId(inc().resources, CB.drag); CB.drag = null; CB.sel = null; document.body.classList.remove('cbdragging'); if (!r) return; var aid = z.classList.contains('cbtray') ? '' : z.dataset.a; if ((r.assign || '') === aid && aid) return render(); moveUnit(r, aid); });
   act.drop = function (aid, el, e) {
     if (e && e.target.closest('[data-cb="unit"],[data-cb="amenu"]')) return;
     if (!CB.sel) return;
@@ -379,7 +392,7 @@
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-na]'); if (!b) return; e.preventDefault(); var p = b.dataset.na.split('|'), n = p[1] || bg.querySelector('#naOther').value.trim(); if (!n) return;
       var o = { branch: '', division: '', group: '', staging: '', work: '', special: '', needs: [], reportTo: '' }; o[p[0] === 'Divisions' ? 'division' : p[0] === 'Staging' ? 'staging' : 'group'] = n;
-      CP.addItem(inc(), 'assignments', o); U.closeModal(); commit(n + ' established', 'Action');
+      var na = CP.addItem(inc(), 'assignments', o); U.closeModal(); var sr = CB.sel && CP.byId(inc().resources, CB.sel); CB.sel = null; if (sr && na) { log(n + ' established', 'Action'); moveUnit(sr, na.id); } else commit(n + ' established', 'Action');
     });
   };
   act.mark = function (id) {
