@@ -9,18 +9,106 @@
   var A = CP.arc, U = CP.ui, E = CP.esc, I = U.icon, AL = CP.alive;
   var CB = CP.cb = { inc: null, sel: null, list: null, saving: false };
   var TEMPLATES = {
-    alarm: { n: 'Fire alarm', type: 'Fire', assign: [['group', 'Investigation'], ['staging', 'Staging']],
+    alarm: { n: 'Fire alarm', type: 'Fire', icon: 'bell', assign: [['group', 'Investigation'], ['staging', 'Staging']],
       marks: ['Arrived · nothing showing', 'Investigation started', 'Panel checked / zone found', 'Cause found', 'Area clear · no fire', 'System reset or turned over to owner'] },
-    structure: { n: 'Structure fire', type: 'Fire', assign: [['group', 'Fire Attack'], ['group', 'Search'], ['group', 'Water Supply'], ['group', 'RIT'], ['group', 'Ventilation'], ['staging', 'Staging'], ['group', 'Rehab']],
+    structure: { n: 'Structure fire', type: 'Fire', icon: 'flame', assign: [['group', 'Fire Attack'], ['group', 'Search'], ['group', 'Water Supply'], ['group', 'RIT'], ['group', 'Ventilation'], ['staging', 'Staging'], ['group', 'Rehab']],
       marks: ['360 / size-up complete', 'Water supply established', 'Primary search all clear', 'Fire under control', 'Secondary search all clear', 'Utilities secured', 'Loss stopped', 'Overhaul complete'] },
-    vehicle: { n: 'Vehicle fire', type: 'Vehicle', assign: [['group', 'Fire Attack'], ['group', 'Traffic Control'], ['staging', 'Staging']], marks: ['Scene protected', 'Fire under control', 'Hazards mitigated', 'Overhaul complete'] },
-    brush: { n: 'Brush / wildland', type: 'Wildfire', assign: [['division', 'Division A'], ['division', 'Division Z'], ['group', 'Water Supply'], ['staging', 'Staging']], marks: ['Size-up / anchor point', 'Water supply established', 'Forward spread stopped', 'Contained', 'Mop-up complete'] },
-    other: { n: 'Other incident', type: 'Other', assign: [['staging', 'Staging']], marks: ['Scene size-up complete', 'Hazards identified', 'Incident stabilized', 'Scene cleared'] }
+    vehicle: { n: 'Vehicle fire', type: 'Vehicle', icon: 'flame', assign: [['group', 'Fire Attack'], ['group', 'Traffic Control'], ['staging', 'Staging']], marks: ['Scene protected', 'Fire under control', 'Hazards mitigated', 'Overhaul complete'] },
+    brush: { n: 'Brush / wildland', type: 'Wildfire', icon: 'leaf', assign: [['division', 'Division A'], ['division', 'Division Z'], ['group', 'Water Supply'], ['staging', 'Staging']], marks: ['Size-up / anchor point', 'Water supply established', 'Forward spread stopped', 'Contained', 'Mop-up complete'] },
+    mva: { n: 'Vehicle accident', type: 'Vehicle', icon: 'car', assign: [['group', 'Extrication'], ['group', 'Patient Care'], ['group', 'Traffic Control'], ['group', 'Fire Protection'], ['staging', 'Staging']],
+      marks: ['Scene size-up · vehicles & patients counted', 'Traffic blocked / scene protected', 'Vehicles stabilized', 'Hazards controlled (fluids, batteries, airbags)', 'Patient access', 'Extrication complete', 'All patients transported', 'Roadway cleared'] },
+    mci: { n: 'Mass casualty (MCI)', type: 'Other', icon: 'mci', assign: [['group', 'Triage'], ['group', 'Treatment'], ['group', 'Transport'], ['staging', 'Ambulance Staging']],
+      marks: ['MCI declared · level set', 'Triage started', 'Treatment area set up', 'Hospitals / RHCC notified', 'Triage complete', 'All RED transported', 'All patients transported'] },
+    hazard: { n: 'Hazard / investigation', type: 'Fire', icon: 'bell', assign: [['group', 'Investigation'], ['group', 'Hazard Control'], ['staging', 'Staging']],
+      marks: ['Arrived · size-up', 'Meter readings / area checked', 'Source found', 'Hazard controlled', 'Utility / owner notified', 'Released to owner'] },
+    rescue: { n: 'Rescue', type: 'Other', icon: 'rescue', assign: [['group', 'Rescue'], ['group', 'Patient Care'], ['group', 'Safety'], ['staging', 'Staging']],
+      marks: ['Size-up · victims located', 'Scene made safe', 'Access to victim', 'Victim removed', 'Patient care transferred', 'All personnel accounted for'] },
+    other: { n: 'Other incident', type: 'Other', icon: 'flag', assign: [['staging', 'Staging']], marks: ['Scene size-up complete', 'Hazards identified', 'Incident stabilized', 'Scene cleared'] }
   };
-  var ADD_ASSIGN = { Groups: ['Fire Attack', 'Search', 'Ventilation', 'Water Supply', 'RIT', 'Salvage', 'Overhaul', 'Utilities', 'Exposure', 'Medical', 'Rehab', 'Traffic Control', 'Investigation'], Divisions: ['Division 1', 'Division 2', 'Division 3', 'Roof', 'Basement', 'Side A', 'Side B', 'Side C', 'Side D'], Staging: ['Staging', 'Level 2 Staging'] };
-  var KINDS = [['E', 'Engine', 'Engine'], ['L', 'Ladder', 'Ladder/Truck'], ['T', 'Tanker', 'Tanker/Tender'], ['R', 'Rescue', 'Rescue'], ['M', 'Medic', 'Ambulance (ALS)'], ['BR', 'Brush', 'Brush Truck'], ['BC', 'Chief', 'Overhead (single person)'], ['PD', 'Police', 'Law Enforcement'], ['U', 'Other', 'Other']];
+  // Botetourt County fire call types and their current recommended responses (Current Fire Responses and Call Types.xlsx).
+  // [CAD call type, recommended response, template, note]
+  var CALLS = [
+    ['F - FIRE ALARM', '2 FD, 1 EMS', 'alarm'], ['TARGET FIRE ALARM', '3 FD, 1 EMS, COUNTY 12', 'alarm'],
+    ['F - STRUCTURE FIRE', '2 FD, 2 EMS, COUNTY 12', 'structure'], ['TARGET STRUCTURE', '3 FD, 2 EMS, COUNTY 12, COUNTY 11', 'structure'], ['F - WORKING FIRE', '2 FD, 2 EMS, COUNTY 12, ON-CALL, POWER COMPANY', 'structure', 'Working fire adds on-call and the power company'],
+    ['F - VEHICLE FIRE', '1 FD, 1 EMS', 'vehicle'], ['F - BRUSH / GRASS FIRE', '1 FD, 1 MU', 'brush', 'MU will change to 1 EMS'], ['F - BURN ILLEGALLY', '1 FD', 'brush'],
+    ['F - DUMPSTER FIRE', '1 FD, 1 EMS', 'vehicle'], ['F - OTHER FIRE', '1 FD, 1 EMS', 'vehicle'], ['F - SMOKE REPORT', '1 FD, 1 EMS', 'hazard'],
+    ['F - CARBON MONOXIDE', '1 FD, 1 MU', 'hazard', 'MU will change to 1 EMS'], ["F - NAT'L GAS LEAK", '2 FD, 1 EMS', 'hazard'], ['F - INSIDE FIRE HAZARD', '2 FD, 1 EMS', 'hazard'],
+    ['F - HAZMAT', '1 FD, 1 MU, COUNTY 11', 'hazard', 'MU will change to 1 EMS'], ['F - WIRES DOWN/TRANSFORMER', '1 FD', 'hazard'], ['F - FIRE SERVICE CALL', '1 FD', 'other'], ['F - FIRE STANDBY', '', 'other', 'No response plan'],
+    ['F - ELEVATOR RESCUE', '1 FD', 'rescue'],
+    ['MVC - ENTRAPMENT', '1 FD, 2 EMS, 1 SQUAD, COUNTY 12, VSP, LG', 'mva', 'LG as needed'], ['MVC - INJURY', '1 FD, 1 EMS, VSP', 'mva'], ['MVC - FD ONLY (NO PI)', '1 FD, VSP', 'mva'], ['MVC - VSP ONLY (NO PI)', 'VSP', 'mva'],
+    ['MVC - MCI/BUS', '2 FD, 3 EMS, 1 SQUAD, COUNTY 11, COUNTY 12, VSP, LG', 'mci', 'LG as needed'],
+    ['F - AIRPLANE CRASH', '1 FD, 2 EMS, COUNTY 12, COUNTY 11, VSP', 'mci'], ['F - TRAIN DERAILMENT', '1 FD, 1 MU, ON-CALL', 'mci', 'MU will change to 1 EMS'],
+    ['SOTT - SEARCH & RESCUE', '1 FD, SOTT, COUNTY 7, LE', 'rescue'], ['SOTT - TECHNICAL RESCUE', '1 FD, 1 SQUAD, 1 MU, SOTT, COUNTY 12, COUNTY 7', 'rescue', 'MU can change to 1 EMS'], ['SOTT - WATER RESCUE', '1 FD, 1 SQUAD, 1 MU, SOTT, COUNTY 12, COUNTY 7', 'rescue', 'MU can change to 1 EMS'],
+    ['BOMB SCARE', '1 DEP, 1 SGT, COUNTY 11', 'other', 'Then 2 MU, 1 RS, 2 FD (MU will change to 2 EMS)']
+  ];
+  function callFor(type) { var t = String(type || '').toUpperCase().replace(/\s+/g, ' ').trim(); if (!t) return null; var c = CALLS.find(function (x) { return x[0] === t; }) || CALLS.find(function (x) { return x[0].replace(/^F - /, '') === t.replace(/^F - /, ''); }) || CALLS.find(function (x) { return t.indexOf(x[0].replace(/^F - /, '').split(/[ \/(]/)[0]) >= 0 && x[0].replace(/^F - /, '').split(/[ \/(]/)[0].length > 3; }); return c || null; }
+  // response line -> slots: [{label, n, match}]
+  function slots(resp) {
+    return String(resp || '').split(/,\s*/).filter(Boolean).map(function (p) {
+      var m = /^(\d+)\s+(.+)$/.exec(p.trim()), n = m ? +m[1] : 1, l = (m ? m[2] : p).trim().toUpperCase();
+      var test = /^(FD)$/.test(l) ? function (r) { return /Engine|Ladder|Tanker|Brush/.test(r.kind); } : /^(EMS|MU)$/.test(l) ? function (r) { return /Ambulance/.test(r.kind); } : /^SQUAD$/.test(l) ? function (r) { return /Rescue/.test(r.kind); }
+        : /^VSP$/.test(l) ? function (r) { return /Law/.test(r.kind) && /^(VSP|TROOP|VA)/i.test(r.name || ''); } : /^(LE|DEP|SGT)$/.test(l) ? function (r) { return /Law/.test(r.kind); } : /^LG$/.test(l) ? function (r) { return /^HC|LG|LIFE/i.test(r.name); } : /^COUNTY (\d+)$/.test(l) ? (function (num) { return function (r) { return new RegExp('(^|\\D)' + num + '$').test((r.name || '').replace(/\s+/g, '')); }; })(l.split(' ')[1]) : null;
+      return { label: l, n: n, test: test };
+    });
+  }
+  var ADD_ASSIGN = { Groups: ['Fire Attack', 'Search', 'Ventilation', 'Water Supply', 'RIT', 'Salvage', 'Overhaul', 'Utilities', 'Exposure', 'Medical', 'Rehab', 'Traffic Control', 'Investigation', 'Extrication', 'Patient Care', 'Fire Protection', 'Landing Zone'], EMS: ['EMS Branch', 'Triage', 'Treatment', 'Transport', 'Ambulance Staging'], Divisions: ['Division 1', 'Division 2', 'Division 3', 'Roof', 'Basement', 'Side A', 'Side B', 'Side C', 'Side D'], Staging: ['Staging', 'Level 2 Staging'] };
+  var KINDS = [['E', 'Engine', 'Engine'], ['L', 'Ladder', 'Ladder/Truck'], ['T', 'Tanker', 'Tanker/Tender'], ['R', 'Rescue', 'Rescue'], ['M', 'Medic', 'Ambulance (ALS)'], ['BR', 'Brush', 'Brush Truck'], ['BC', 'Chief', 'Overhead (single person)'], ['S', 'Squad', 'Rescue'], ['A', 'Ambulance', 'Ambulance (BLS)'], ['HC', 'Helicopter', 'Other'], ['VSP', 'State Police', 'Law Enforcement'], ['PD', 'Police', 'Law Enforcement'], ['U', 'Other', 'Other']];
   var MODES = ['Investigating', 'Offensive', 'Defensive', 'Transitional', 'Marginal'];
   var COND = ['Nothing showing', 'Smoke showing', 'Fire showing', 'Working fire', 'Under control'];
+  // status buttons that fit the kind of incident (fire terms only on fires)
+  var SETS = {
+    fire: [MODES, COND],
+    mva: [['Size-up', 'Rescue', 'Stabilized', 'Recovery'], ['No injuries', 'Injuries', 'Entrapment', 'Rollover', 'Vehicle fire', 'Hazmat / fluids']],
+    mci: [['Size-up', 'Triage', 'Treatment', 'Transport', 'Recovery'], ['Patients still being found', 'All patients found', 'Patients being transported', 'All patients transported']],
+    rescue: [['Size-up', 'Rescue', 'Recovery'], ['Victim not located', 'Victim located', 'Access made', 'Victim removed']],
+    hazard: [['Investigating', 'Mitigating', 'Monitoring'], ['Nothing found', 'Readings present', 'Source found', 'Hazard controlled']],
+    other: [['Size-up', 'Active', 'Stabilized', 'Recovery'], ['Initial', 'Escalating', 'Stable', 'Under control']]
+  };
+  function setFor(tk) { return /^(structure|vehicle|alarm|brush)$/.test(tk) ? SETS.fire : SETS[tk] || SETS.other; }
+
+  // ---------- Fire & EMS look ----------
+  var PATCH = 'https://botetourt.maps.arcgis.com/sharing/rest/content/items/be57e94dfb084d689745c51d275cf20d/data'; // Botetourt County Fire & EMS patch (public item)
+  var SVG = {
+    flame: '<path d="M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.6 1.6-4 2-6.5 1 1.2 2 2 3 2.2C12 5.6 11.5 4 12 2z"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/>',
+    car: '<path d="M3 13l2-5a2 2 0 0 1 2-1.4h10A2 2 0 0 1 19 8l2 5v5h-3v-2H6v2H3zM5 13h14"/><circle cx="7.5" cy="15" r="1"/><circle cx="16.5" cy="15" r="1"/>',
+    leaf: '<path d="M5 19c0-8 5-13 15-14-1 10-6 15-14 15M5 19l7-7"/>',
+    flag: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
+    mci: '<path d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z"/>',
+    engine: '<path d="M2 16V9h10v7M12 11h5l4 3v2M2 16h19"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/><path d="M3 7h8"/>',
+    ladder: '<path d="M7 3v18M17 3v18M7 7h10M7 11h10M7 15h10M7 19h10"/>',
+    tanker: '<path d="M12 3l5.5 8a6 6 0 1 1-11 0z"/>',
+    rescue: '<path d="M14 6l4 4-8 8-4-4zM16 4l4 4M4 20l2-2"/>',
+    medic: '<path d="M10.5 3h3v6.4l5.5-3.2 1.5 2.6-5.5 3.2 5.5 3.2-1.5 2.6-5.5-3.2V21h-3v-6.4L5 17.8l-1.5-2.6L9 12 3.5 8.8 5 6.2l5.5 3.2z"/>',
+    chief: '<path d="M3 16h18M5 16a7 7 0 0 1 14 0M12 9V6M9.5 6h5"/>',
+    police: '<path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/>',
+    brushk: '<path d="M5 19c0-8 5-13 15-14-1 10-6 15-14 15M5 19l7-7"/>',
+    heli: '<path d="M3 6h18M12 6v3M6 9h9a3 3 0 0 1 0 6H8a2 2 0 0 1-2-2zM15 15l2 4M9 15l-1 4M6 19h12"/>',
+    search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+    vent: '<path d="M12 20V5M6 11l6-6 6 6"/>',
+    water: '<path d="M12 3l5.5 8a6 6 0 1 1-11 0z"/>',
+    rit: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M6.3 6.3l3.2 3.2M17.7 6.3l-3.2 3.2M6.3 17.7l3.2-3.2M17.7 17.7l-3.2-3.2"/>',
+    rehab: '<path d="M5 9h11v5a5 5 0 0 1-10 0zM16 10h2a2 2 0 0 1 0 4h-2M8 3v3M12 3v3"/>',
+    staging: '<path d="M7 20V4h6a4 4 0 0 1 0 8H7"/>',
+    traffic: '<path d="M12 3l7 17H5zM9.5 14h5M10.6 10h2.8"/>',
+    tools: '<path d="M14 6l4 4-8 8-4-4zM16 4l4 4M4 20l2-2"/>',
+    triage: '<path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h3"/>'
+  };
+  function svg(k, cls) { return '<svg class="cbi ' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (SVG[k] || SVG.flag) + '</svg>'; }
+  function unitLook(r) {
+    var k = r.kind || '';
+    if (/Engine/.test(k)) return ['engine', 'u-eng']; if (/Ladder/.test(k)) return ['ladder', 'u-lad']; if (/Tanker/.test(k)) return ['tanker', 'u-tank'];
+    if (/Ambulance/.test(k)) return ['medic', 'u-med']; if (/Rescue/.test(k)) return ['rescue', 'u-res']; if (/Brush/.test(k)) return ['brushk', 'u-brush'];
+    if (/Overhead/.test(k)) return ['chief', 'u-chief']; if (/Law/.test(k)) return ['police', 'u-pd']; if (/^HC/i.test(r.name || '')) return ['heli', 'u-med'];
+    return ['flag', 'u-oth'];
+  }
+  function asgLook(a) {
+    var n = (a.division || a.group || a.branch || a.staging || '');
+    var M = [[/attack|exposure|fire protection/i, 'flame', 'a-fire'], [/search/i, 'search', 'a-search'], [/vent|roof/i, 'vent', 'a-vent'], [/water/i, 'water', 'a-water'], [/RIT/i, 'rit', 'a-rit'], [/rehab/i, 'rehab', 'a-rehab'],
+      [/triage/i, 'triage', 'a-ems'], [/treat|patient|medical|EMS|transport/i, 'medic', 'a-ems'], [/staging/i, 'staging', 'a-stg'], [/traffic/i, 'traffic', 'a-traffic'], [/extric|salvage|overhaul|utilit/i, 'tools', 'a-tools'], [/investig/i, 'bell', 'a-fire'], [/landing|LZ/i, 'heli', 'a-ems']];
+    var m = M.find(function (x) { return x[0].test(n); }); return m ? [m[1], m[2]] : (a.division ? ['flag', 'a-div'] : ['flag', 'a-oth']);
+  }
+  function tplOf(i) { return TEMPLATES[kv('tpl', 'other')] || TEMPLATES.other; }
 
   // ---------- data helpers (all merge-safe items in the Command Post record) ----------
   function inc() { return CB.inc; }
@@ -54,7 +142,10 @@
   function startScreen() {
     var l = CB.list, cad = CB.cad;
     var h = '<div class="cbstart"><div class="cbhero"><h1>' + I('flag') + 'Command Board</h1><p>Start a board for a new incident, or open an incident that is already running. Everything you tap here is the Command Post incident, so you can move it to Command Post at any time.</p></div>';
-    h += '<div class="cbcols"><section class="card"><h3>' + I('plus') + 'New board</h3><div class="cbtypes">' + Object.keys(TEMPLATES).map(function (k) { return '<button class="cbtype' + (CB.tpl === k ? ' on' : '') + '" data-cb="tpl" data-a="' + k + '">' + E(TEMPLATES[k].n) + '</button>'; }).join('') + '</div>' +
+    h += '<div class="cbcols"><section class="card"><h3>' + I('plus') + 'New board</h3><div class="cbtypes">' + Object.keys(TEMPLATES).map(function (k) { return '<button class="cbtype t-' + k + (CB.tpl === k ? ' on' : '') + '" data-cb="tpl" data-a="' + k + '">' + svg(TEMPLATES[k].icon || 'flag') + E(TEMPLATES[k].n) + '</button>'; }).join('') + '</div>' +
+      '<label class="f"><span>Call type (county response plan)</span><select class="in big" id="cbCall" data-cbchg="call"><option value="">Pick a call type, or tap a type above</option>' +
+      [['Fire', /^(F - |TARGET)/], ['Vehicle crashes', /^MVC/], ['Rescue (SOTT)', /^SOTT/], ['Other', /^BOMB/]].map(function (g) { return '<optgroup label="' + g[0] + '">' + CALLS.filter(function (c) { return g[1].test(c[0]); }).map(function (c) { return '<option' + (CB.call && CB.call[0] === c[0] ? ' selected' : '') + '>' + E(c[0]) + '</option>'; }).join('') + '</optgroup>'; }).join('') + '</select></label>' +
+      (CB.call ? '<div class="cbresp start">' + I('truck') + ' <b>Recommended response:</b> ' + E(CB.call[1] || 'none') + (CB.call[3] ? ' <span class="dim">(' + E(CB.call[3]) + ')</span>' : '') + '</div>' : '') +
       '<label class="f"><span>Address / location</span><input class="in big" id="cbAddr" placeholder="e.g. 123 Main St, Daleville" value="' + E(CB.addr || '') + '"></label>' +
       '<label class="f"><span>Incident Commander</span><input class="in" id="cbIC" value="' + E(CP.me.name || '') + '" placeholder="Your name / unit"></label>' +
       '<label class="chk" style="margin:6px 0 12px"><input type="checkbox" id="cbEx"> Practice / training</label>' +
@@ -83,16 +174,19 @@
     if (ic) { CP.me = Object.assign({}, CP.me, { name: CP.me.name || ic }); CP.store.setPref('me', CP.me); }
     var ll = CB.cadPick && CB.cadPick.ll;
     if (!ll && A.status === 'on') { try { var g = await A.req('https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates', { singleLine: addr + (/va|virginia/i.test(addr) ? '' : ', Botetourt County, VA'), maxLocations: 1, outFields: 'Score' }); var c = (g.candidates || [])[0]; if (c && c.score >= 80) ll = [c.location.y, c.location.x]; } catch (e) {} }
-    var i = CP.newIncident({ name: (ex ? 'PRACTICE: ' : '') + T.n + ' · ' + addr, type: T.type, start: CP.now(), locdesc: addr, lat: ll ? +ll[0].toFixed(6) : null, lng: ll ? +ll[1].toFixed(6) : null, icName: ic, complexity: 5, opHours: 12, author: ic });
+    var ctName = CB.call ? CB.call[0].replace(/^F - /, '').toLowerCase().replace(/(^|[\s\/(-])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }).replace(/Mvc/, 'MVC').replace(/Sott/, 'SOTT').replace(/Vsp/, 'VSP').replace(/Mci/, 'MCI').replace(/Pi\)/, 'PI)') : T.n;
+    var i = CP.newIncident({ name: (ex ? 'PRACTICE: ' : '') + ctName + ' · ' + addr, type: T.type, start: CP.now(), locdesc: addr, lat: ll ? +ll[0].toFixed(6) : null, lng: ll ? +ll[1].toFixed(6) : null, icName: ic, complexity: 5, opHours: 12, author: ic });
     if (ex) i.exercise = true;
     i.arc.auto = { incident: false, facilities: false }; // a fire alarm is not posted to the public incident map unless the IC turns it on in Command Post
-    i.cbKV = [{ id: 'tpl', v: tk, u: CP.now() }, { id: 'mode', v: tk === 'alarm' ? 'Investigating' : 'Offensive', u: CP.now() }, { id: 'cond', v: tk === 'alarm' ? 'Nothing showing' : 'Smoke showing', u: CP.now() }, { id: 'parEvery', v: 20, u: CP.now() }, { id: 'parT', v: CP.now(), u: CP.now() }];
+    var SS = setFor(tk); i.cbKV = [{ id: 'tpl', v: tk, u: CP.now() }, { id: 'mode', v: SS === SETS.fire ? (tk === 'alarm' ? 'Investigating' : 'Offensive') : SS[0][0], u: CP.now() }, { id: 'cond', v: SS === SETS.fire ? (tk === 'alarm' ? 'Nothing showing' : 'Smoke showing') : '', u: CP.now() }, { id: 'parEvery', v: 20, u: CP.now() }, { id: 'parT', v: CP.now(), u: CP.now() }];
+    if (CB.call) i.cbKV.push({ id: 'call', v: { type: CB.call[0], resp: CB.call[1], note: CB.call[3] || '' }, u: CP.now() });
+    if (tk === 'mci') i.cbKV.push({ id: 'mci', v: { t: CP.now(), est: 0 }, u: CP.now() });
     i.cbMarks = T.marks.map(function (m, n) { return { id: 'm' + n, label: m, t: '', by: '', u: CP.now() }; });
     T.assign.forEach(function (a) { var o = { branch: '', division: '', group: '', staging: '', work: '', special: '', needs: [], reportTo: '' }; o[a[0]] = a[1]; CP.addItem(i, 'assignments', o); });
     CB.inc = i;
     if (CB.cadPick) { CP.addItem(i, 'calls', { callid: CB.cadPick.callid, type: CB.cadPick.type, addr: CB.cadPick.addr, linked: CP.now() }); (CB.cadPick.units || []).forEach(function (u) { addUnit(u.id, kindOf(u.id), u.dept || '', /arriv|on ?scene/i.test(u.st || '') ? 'Checked In' : 'En Route', true); }); }
-    log('Command Board started: ' + T.n + ' at ' + addr + (ic ? '. ' + ic + ' has command.' : '') + (CB.cadPick ? ' CAD ' + CB.cadPick.callid + '.' : ''), 'Event');
-    CP.store.setPref('curInc', { key: i.id, t: Date.now() }); history.replaceState(null, '', location.pathname + '?incident=' + encodeURIComponent(i.id));
+    log('Command Board started: ' + (CB.call ? CB.call[0] + ' (response: ' + (CB.call[1] || 'none') + ')' : T.n) + ' at ' + addr + (ic ? '. ' + ic + ' has command.' : '') + (CB.cadPick ? ' CAD ' + CB.cadPick.callid + '.' : ''), 'Event');
+    CB.call = null; CP.store.setPref('curInc', { key: i.id, t: Date.now() }); history.replaceState(null, '', location.pathname + '?incident=' + encodeURIComponent(i.id));
     commit(null);
     if (A.status === 'on') push();
   }
@@ -124,38 +218,53 @@
   function board() {
     var i = inc(), mode = kv('mode', ''), cond = kv('cond', ''), parEvery = +kv('parEvery', 20), parT = kv('parT', i.start), parDue = new Date(parT).getTime() + parEvery * 60000, parLeft = Math.round((parDue - Date.now()) / 1000);
     var may = kv('mayday', null), ic = CP.personName(i, 'IC');
-    var h = '<div class="cbtop' + (may ? ' mayday' : '') + '"><div class="cbaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (ic ? ' · IC ' + E(ic) : '') + (i.exercise ? ' · <span class="chip practice">PRACTICE</span>' : '') + '</span></div>' +
+    var h = '<div class="cbtop' + (may ? ' mayday' : '') + '"><div class="cbaddr">' + svg(tplOf(i).icon || 'flag', 'big t-' + kv('tpl', 'other')) + '<div><b>' + E(i.location.desc || i.name) + '</b><span>' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (ic ? ' · IC ' + E(ic) : '') + (i.exercise ? ' · <span class="chip practice">PRACTICE</span>' : '') + (kv('mci') ? ' · <span class="chip red">MCI</span>' : '') + '</span></div></div>' +
       '<div class="cbclock"><span>ELAPSED</span><b id="cbEl">' + since(i.start) + '</b></div>' +
       '<button class="cbpar' + (parLeft <= 0 ? ' due' : parLeft < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR every ' + parEvery + ' min</span><b id="cbPar">' + (parLeft <= 0 ? 'DUE ' + since(new Date(parDue).toISOString()) : Math.floor(parLeft / 60) + ':' + CP.pad(parLeft % 60)) + '</b></button>' +
       '<button class="cbmay" data-cb="mayday">' + I('warn') + (may ? 'MAYDAY ACTIVE' : 'MAYDAY') + '</button></div>';
     if (may) h += '<div class="cbmaybar">' + I('warn') + ' MAYDAY ' + E(since(may.t)) + ' · ' + E(may.who || '') + ' · ' + E(may.where || '') + ' · ' + E(may.air || '') + (may.rit ? ' · RIT: ' + E(may.rit) : '') + ' <button class="btn sm" data-cb="mayclear">Clear MAYDAY</button></div>';
-    h += '<div class="cbbar"><div class="cbseg">' + MODES.map(function (m) { return '<button class="' + (m === mode ? 'on' : '') + (m === 'Defensive' ? ' def' : '') + '" data-cb="mode" data-a="' + m + '">' + m + '</button>'; }).join('') + '</div>' +
-      '<div class="cbseg">' + COND.map(function (c) { return '<button class="' + (c === cond ? 'on' : '') + '" data-cb="cond" data-a="' + c + '">' + c + '</button>'; }).join('') + '</div>' +
-      '<span class="sp"></span><span class="sync on" id="cbSync"></span><button class="btn sm" data-cb="can">' + I('msg') + 'CAN report</button><button class="btn sm" data-cb="note">' + I('log') + 'Log</button><button class="btn sm" data-cb="more">' + I('menu') + 'More</button><a class="btn sm pri" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener" data-cb="tocp">' + I('link') + 'Move to Command Post</a></div>';
+    var SET = setFor(kv('tpl', 'other')) === SETS.fire && kv('mci') ? SETS.mci : setFor(kv('tpl', 'other'));
+    h += '<div class="cbbar"><div class="cbseg">' + SET[0].map(function (m) { return '<button class="' + (m === mode ? 'on' : '') + (m === 'Defensive' ? ' def' : '') + '" data-cb="mode" data-a="' + m + '">' + m + '</button>'; }).join('') + '</div>' +
+      '<div class="cbseg">' + SET[1].map(function (c) { return '<button class="' + (c === cond ? 'on' : '') + '" data-cb="cond" data-a="' + c + '">' + c + '</button>'; }).join('') + '</div>' +
+      '<span class="sp"></span><span class="sync on" id="cbSync"></span>' + (kv('mci') ? '' : '<button class="btn sm red" data-cb="mci">' + svg('mci') + 'Declare MCI</button>') + '<button class="btn sm" data-cb="can">' + I('msg') + 'CAN report</button><button class="btn sm" data-cb="note">' + I('log') + 'Log</button><button class="btn sm" data-cb="more">' + I('menu') + 'More</button><a class="btn sm pri" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener" data-cb="tocp">' + I('link') + 'Move to Command Post</a></div>';
     // units rack
     var free = units().filter(function (r) { return !r.assign; }), enr = free.filter(function (r) { return r.status === 'En Route'; }), avail = free.filter(function (r) { return r.status !== 'En Route'; });
     h += '<div class="cbmain"><section class="cbrack"><div class="cbh">' + I('truck') + 'Units <span class="ct">' + units().length + '</span></div>' +
       '<div class="cbadd">' + KINDS.map(function (k) { return '<button data-cb="addk" data-a="' + k[0] + '" title="' + E(k[2]) + '">+' + k[0] + '</button>'; }).join('') + '</div>' +
-      '<div class="cbsub">On scene · not assigned</div>' + (avail.length ? avail.map(tile).join('') : '<div class="dim cbempty">Tap a unit type above, or a unit below to assign it.</div>') +
+      respPanel() + '<div class="cbsub">On scene · not assigned</div>' + (avail.length ? avail.map(tile).join('') : '<div class="dim cbempty">Tap a unit type above, or a unit below to assign it.</div>') +
       '<div class="cbsub">Responding</div>' + (enr.length ? enr.map(tile).join('') : '<div class="dim cbempty">—</div>') +
       '<button class="btn sm ghost" style="width:100%;margin-top:8px" data-cb="cadunits">' + I('radio') + 'Pull units from CAD</button></section>';
     // assignments
     h += '<section class="cbgrid">' + asgs().map(function (a) {
       var us = unitsIn(a.id), sup = a.reportTo || '', par = kv('par_' + a.id, null), can = a.cbCan || '';
-      return '<div class="cbasg' + (a.staging ? ' stg' : a.division ? ' div' : '') + (CB.sel ? ' target' : '') + '" data-cb="drop" data-a="' + a.id + '"><div class="cbah"><b>' + E(aName(a)) + '</b>' + (sup ? '<span>' + E(sup) + '</span>' : '') + '<button class="ibtn" data-cb="amenu" data-a="' + a.id + '" title="Assignment options">' + I('menu') + '</button></div>' +
+      var al = asgLook(a);
+      return '<div class="cbasg ' + al[1] + (a.staging ? ' stg' : a.division ? ' div' : '') + (CB.sel ? ' target' : '') + '" data-cb="drop" data-a="' + a.id + '"><div class="cbah">' + svg(al[0], 'ah') + '<b>' + E(aName(a)) + '</b>' + (sup ? '<span>' + E(sup) + '</span>' : '') + '<button class="ibtn" data-cb="amenu" data-a="' + a.id + '" title="Assignment options">' + I('menu') + '</button></div>' +
         '<div class="cbau">' + (us.length ? us.map(tile).join('') : '<div class="dim">' + (CB.sel ? 'Tap to assign here' : 'No units') + '</div>') + '</div>' +
         (can || a.work ? '<div class="cbcan">' + E(can || a.work).slice(0, 140) + '</div>' : '') + (par ? '<div class="cbpok">' + I('check') + 'PAR ' + Math.round((Date.now() - new Date(par).getTime()) / 60000) + ' min ago</div>' : '') + '</div>';
     }).join('') + '<button class="cbasg cbnew" data-cb="newasg">' + I('plus') + 'Add division / group</button></section>';
     // benchmarks + log
-    h += '<section class="cbside"><div class="cbh">' + I('check') + 'Benchmarks</div>' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '"><span>' + I(m.t ? 'check' : 'clock') + E(m.label) + '</span><i>' + (m.t ? E(CP.fmtTime(m.t)) + ' · +' + Math.round((new Date(m.t) - new Date(i.start)) / 60000) + ' min' : 'tap when done') + '</i></button>'; }).join('') +
+    h += '<section class="cbside">' + mciPanel() + '<div class="cbh">' + I('check') + 'Benchmarks</div>' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '"><span>' + I(m.t ? 'check' : 'clock') + E(m.label) + '</span><i>' + (m.t ? E(CP.fmtTime(m.t)) + ' · +' + Math.round((new Date(m.t) - new Date(i.start)) / 60000) + ' min' : 'tap when done') + '</i></button>'; }).join('') +
       '<button class="btn xs ghost" data-cb="addmark">' + I('plus') + 'Benchmark</button>' +
       '<div class="cbh" style="margin-top:12px">' + I('log') + 'Activity</div><div class="cblog">' + AL(i.log).slice(-14).reverse().map(function (l) { return '<div><span class="mono">' + E(CP.fmtTime(l.ts)) + '</span> ' + E(l.text) + '</div>'; }).join('') + '</div></section></div>';
     return h;
   }
+  function respPanel() {
+    var c = kv('call', null); if (!c || !c.resp) return '';
+    var used = {}, all = units();
+    var chips = slots(c.resp).map(function (sl, ix) {
+      var have = 0, tot = sl.n;
+      if (sl.test) { all.forEach(function (r) { if (!used[r.id] && have < tot && sl.test(r)) { used[r.id] = 1; have++; } }); }
+      else have = kv('slot_' + ix, 0) ? tot : 0;
+      var cls = have >= tot ? 'ok' : have ? 'part' : 'none';
+      return '<button class="cbslot ' + cls + '"' + (sl.test ? '' : ' data-cb="slot" data-a="' + ix + '"') + ' title="' + (sl.test ? 'Fills as matching units are added' : 'Tap when they arrive') + '"><b>' + E(sl.label) + '</b><span>' + have + '/' + tot + '</span></button>';
+    }).join('');
+    return '<div class="cbresp"><div class="cbsub" style="margin-top:0">' + E(c.type) + ' · response</div><div class="cbslots">' + chips + '</div>' + (c.note ? '<div class="dim" style="font-size:11.5px;margin-top:4px">' + E(c.note) + '</div>' : '') + '</div>';
+  }
   function tile(r) {
     var on = CB.sel === r.id, st = r.status === 'En Route' ? 'enr' : r.status === 'Out of Service' ? 'oos' : r.assign ? 'asg' : 'av';
     var t = r.arrived || r.checkin; var mins = t ? Math.floor((Date.now() - new Date(t).getTime()) / 60000) : 0;
-    return '<button class="cbunit ' + st + (on ? ' sel' : '') + '" data-cb="unit" data-a="' + r.id + '"><b>' + E(r.name) + '</b><span>' + E((r.kind || '').replace(/ \(.*\)/, '').replace('Overhead', 'Chief')) + (r.status === 'En Route' ? ' · resp.' : mins ? ' · ' + mins + 'm' : '') + '</span></button>';
+    var lk = unitLook(r);
+    return '<button class="cbunit ' + st + ' ' + lk[1] + (on ? ' sel' : '') + '" data-cb="unit" data-a="' + r.id + '">' + svg(lk[0]) + '<b>' + E(r.name) + '</b><span>' + E((r.kind || '').replace(/ \(.*\)/, '').replace('Overhead', 'Chief')) + (r.status === 'En Route' ? ' · resp.' : mins ? ' · ' + mins + 'm' : '') + '</span></button>';
   }
 
   // ---------- phone view (read-only, live) ----------
@@ -163,7 +272,7 @@
     var i = inc(), may = kv('mayday', null), parEvery = +kv('parEvery', 20), parDue = new Date(kv('parT', i.start)).getTime() + parEvery * 60000, left = Math.round((parDue - Date.now()) / 1000);
     var h = '<div class="cbph"><div class="cbaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + E(kv('mode', '')) + ' · ' + E(kv('cond', '')) + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
       '<div class="cbphrow"><div><span>Elapsed</span><b id="cbEl">' + since(i.start) + '</b></div><div class="' + (left <= 0 ? 'bad-t' : '') + '"><span>PAR</span><b id="cbPar">' + (left <= 0 ? 'DUE' : Math.floor(left / 60) + ':' + CP.pad(left % 60)) + '</b></div><div><span>Units</span><b>' + units().length + '</b></div></div>' +
-      (may ? '<div class="cbmaybar">' + I('warn') + ' MAYDAY · ' + E(may.who || '') + ' · ' + E(may.where || '') + '</div>' : '') +
+      (may ? '<div class="cbmaybar">' + I('warn') + ' MAYDAY · ' + E(may.who || '') + ' · ' + E(may.where || '') + '</div>' : '') + mciPanel() +
       asgs().map(function (a) { var us = unitsIn(a.id); return '<div class="cbphasg"><b>' + E(aName(a)) + '</b>' + (a.reportTo ? ' <span class="dim">· ' + E(a.reportTo) + '</span>' : '') + '<div>' + (us.length ? us.map(function (r) { return '<span class="chip">' + E(r.name) + '</span>'; }).join(' ') : '<span class="dim">—</span>') + '</div></div>'; }).join('') +
       '<div class="cbphasg"><b>Not assigned</b><div>' + units().filter(function (r) { return !r.assign; }).map(function (r) { return '<span class="chip' + (r.status === 'En Route' ? ' blue' : '') + '">' + E(r.name) + (r.status === 'En Route' ? ' (resp.)' : '') + '</span>'; }).join(' ') + '</div></div>' +
       '<div class="cbh">Benchmarks</div>' + marks().map(function (m) { return '<div class="cbphm ' + (m.t ? 'ok-t' : 'dim') + '">' + I(m.t ? 'check' : 'clock') + E(m.label) + (m.t ? ' · ' + E(CP.fmtTime(m.t)) : '') + '</div>'; }).join('') +
@@ -202,6 +311,7 @@
   setInterval(async function () {
     if (!inc() || A.status !== 'on' || CB.saving || document.getElementById('modal')) return;
     try { var m = await A.checkRemote(inc()); if (m) { CB.inc = m; CP.store.put(m); render(); } } catch (e) {}
+    if (kv('mci') && (!CB.mciLive || Date.now() - (CB.mciLive.t || 0) > 15000)) { var before = JSON.stringify(CB.mciLive || {}); await loadMci(); if (JSON.stringify(CB.mciLive || {}) !== before && !document.getElementById('modal')) render(); }
   }, 5000);
 
   // ---------- dialogs (no browser pop-ups: they are blocked in the BEACON pane and on some tablets) ----------
@@ -215,11 +325,11 @@
   var act = {};
   act.signin = function () { A.signIn(); };
   act.local = function () { CB.localOk = true; CB.list = []; CB.cad = []; render(); };
-  act.tpl = function (k) { CB.tpl = k; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; render(); };
-  act.cad = function (id) { var c = (CB.cad || []).find(function (x) { return x.callid === id; }); CB.cadPick = c; CB.addr = c.addr; if (/alarm/i.test(c.type + ' ' + c.cat)) CB.tpl = 'alarm'; else if (/struct|resid|commerc|building|house/i.test(c.type)) CB.tpl = 'structure'; else if (/vehicle|car/i.test(c.type)) CB.tpl = 'vehicle'; else if (/brush|woods|grass|wild/i.test(c.type)) CB.tpl = 'brush'; render(); };
+  act.tpl = function (k) { CB.tpl = k; if (CB.call && CB.call[2] !== k) CB.call = null; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; render(); };
+  act.cad = function (id) { var c = (CB.cad || []).find(function (x) { return x.callid === id; }); CB.cadPick = c; CB.addr = c.addr; var ct = callFor(c.type); if (ct) { CB.call = ct; CB.tpl = ct[2]; return render(); } if (/alarm/i.test(c.type + ' ' + c.cat)) CB.tpl = 'alarm'; else if (/struct|resid|commerc|building|house/i.test(c.type)) CB.tpl = 'structure'; else if (/mci|mass casualty|multiple patient/i.test(c.type + ' ' + c.cat)) CB.tpl = 'mci'; else if (/accident|mva|collision|crash|wreck|mvc/i.test(c.type + ' ' + c.cat)) CB.tpl = 'mva'; else if (/vehicle fire|car fire/i.test(c.type)) CB.tpl = 'vehicle'; else if (/brush|woods|grass|wild/i.test(c.type)) CB.tpl = 'brush'; render(); };
   act.start = function () { startBoard().catch(function (e) { U.toast(E(e.message), 'err'); }); };
   act.open = function (k) { openBoard(k); };
-  act.mode = function (m) { setKV('mode', m); commit('Strategy: ' + m.toUpperCase(), 'Decision'); };
+  act.mode = function (m) { setKV('mode', m); commit((setFor(kv('tpl', 'other')) === SETS.fire ? 'Strategy: ' : 'Phase: ') + m.toUpperCase(), 'Decision'); };
   act.cond = function (c) { setKV('cond', c); if (c === 'Working fire' && kv('tpl') === 'alarm') return upgrade(); commit('Conditions: ' + c, 'Event'); };
   act.unit = function (id) {
     if (CB.sel === id) { unitMenu(id); return; }
@@ -330,6 +440,7 @@
     var asgName = function (id) { var a = CP.byId(i.assignments, id); return a ? aName(a) : ''; };
     var body = '<div class="k">BOTETOURT COUNTY EMERGENCY MANAGEMENT · ' + E(CP.BRAND) + ' COMMAND BOARD</div><h1>Incident report: ' + E(i.location.desc || i.name) + '</h1>' +
       '<div class="sub">' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (i.exercise ? ' · PRACTICE' : '') + ' · Status ' + E(i.status) + '</div>' +
+      (kv('call', null) ? '<p><b>Call type:</b> ' + E(kv('call').type) + ' · <b>Recommended response:</b> ' + E(kv('call').resp || 'none') + '</p>' : '') + (kv('mci', null) ? '<p><b>MCI declared</b> ' + E(CP.fmtDT(kv('mci').t)) + ' · patients ' + mciCounts().total + ' (red ' + mciCounts().red + ', yellow ' + mciCounts().yellow + ', green ' + mciCounts().green + ', black ' + mciCounts().black + ')</p>' : '') +
       tbl(['Started', 'Closed', 'Duration', 'Incident Commander', 'Final strategy', 'Conditions', 'Units'], [row([CP.fmtDT(i.start), i.closed ? CP.fmtDT(i.closed) : 'Open', dur(i.start, i.closed || null), CP.personName(i, 'IC'), kv('mode', ''), kv('cond', ''), all.length])]) +
       '<h2>Benchmarks</h2>' + tbl(['Benchmark', 'Time', 'Into incident', 'By'], marks().map(function (m) { return row([m.label, m.t ? CP.fmtTime(m.t) : 'not reached', m.t ? dur(i.start, m.t) : '', m.by]); })) +
       '<h2>Units</h2>' + tbl(['Unit', 'Type', 'Agency', 'Arrived', 'Last assignment', 'Status', 'Released', 'Time on scene'], all.map(function (r) { return row([r.name, r.kind, r.agency, r.arrived || r.checkin ? CP.fmtTime(r.arrived || r.checkin) : '', asgName(r.assign) || (lg.slice().reverse().find(function (l) { return l.text.indexOf(r.name + ' assigned to ') === 0; }) || { text: '' }).text.replace(r.name + ' assigned to ', ''), r.status, r.released ? CP.fmtTime(r.released) : '', dur(r.arrived || r.checkin, r.released || i.closed || null)]); })) +
@@ -345,11 +456,61 @@
     return bg;
   }
 
+  // ---------- MCI ----------
+  function mciLevel(n) { return n <= 15 ? 4 : n <= 30 ? 3 : n <= 100 ? 2 : 1; }
+  function mciCounts() {
+    var live = CB.mciLive, t = kv('mciTally', {}) || {};
+    var c = live && live.ok ? live.c : { red: t.red || 0, yellow: t.yellow || 0, green: t.green || 0, black: t.black || 0 };
+    c.total = c.red + c.yellow + c.green + c.black; return c;
+  }
+  async function loadMci() {
+    if (!inc() || !kv('mci') || A.status !== 'on') return;
+    try {
+      if (!CB.ptUrl) {
+        for (var nm of ['BOCO_EMS_PatientCare', 'BOCO_EMS_PatientCare_Field']) {
+          var r = await A.req(A.portal + '/sharing/rest/search', { q: 'title:"' + nm + '" AND orgid:' + A.user.orgId, num: 2 }); var it = (r.results || []).find(function (x) { return x.title === nm; }); if (!it) continue;
+          var info = await A.req(it.url, {}); var l = (info.layers || []).concat(info.tables || []).find(function (x) { return x.name === 'PROT_MCI_Patients'; }); if (l) { CB.ptUrl = it.url.replace(/\/$/, '') + '/' + l.id; break; }
+        }
+        if (!CB.ptUrl) { CB.mciLive = { ok: false }; return; }
+      }
+      var st = await A.stats(CB.ptUrl, 'incident_key=' + A.sq(inc().id), [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], 'triage');
+      var c = { red: 0, yellow: 0, green: 0, black: 0 }; st.forEach(function (x) { var t = x.triage || ''; if (/Red/.test(t)) c.red += x.n; else if (/Yellow/.test(t)) c.yellow += x.n; else if (/Green/.test(t)) c.green += x.n; else if (/Black|Gray/.test(t)) c.black += x.n; });
+      CB.mciLive = { ok: true, c: c, t: Date.now() };
+    } catch (e) { CB.mciLive = { ok: false }; }
+  }
+  function mciPanel() {
+    var m = kv('mci', null); if (!m) return '';
+    var c = mciCounts(), lv = c.total ? mciLevel(c.total) : (m.est ? mciLevel(m.est) : 4), live = CB.mciLive && CB.mciLive.ok;
+    var cell = function (k, lab, cls) { return '<div class="cbtri ' + cls + '"><b>' + c[k] + '</b><span>' + lab + '</span>' + (live ? '' : '<div class="row"><button class="btn xs" data-cb="tally" data-a="' + k + '|-1" aria-label="Minus ' + lab + '">−</button><button class="btn xs" data-cb="tally" data-a="' + k + '|1" aria-label="Plus ' + lab + '">+</button></div>') + '</div>'; };
+    return '<div class="cbmci"><div class="cbh" style="color:#ffb3b8">' + svg('mci') + 'MCI · LEVEL ' + lv + '<span class="ct">' + c.total + (m.est && !c.total ? ' est ' + m.est : '') + '</span></div>' +
+      '<div class="cbtris">' + cell('red', 'Red', 'r') + cell('yellow', 'Yellow', 'y') + cell('green', 'Green', 'g') + cell('black', 'Black', 'k') + '</div>' +
+      (lv <= 2 ? '<div class="cbrhcc">' + I('phone') + ' Level ' + lv + ': call RHCC <b>1-866-679-7422</b></div>' : '') +
+      '<div class="row" style="gap:6px;margin-top:8px"><a class="btn sm pri" href="mci.html?incident=' + encodeURIComponent(inc().id) + '" target="_blank" rel="noopener">' + I('med') + 'MCI patient tracking</a></div>' +
+      '<div class="dim" style="font-size:11.5px;margin-top:4px">' + (live ? 'Live from MCI patient tracking.' : 'Tap +/− to keep a tally here; triage in the MCI app for full tracking.') + '</div></div>';
+  }
+  act.tally = function (a) { var p = a.split('|'), t = Object.assign({}, kv('mciTally', {}) || {}); t[p[0]] = Math.max(0, (t[p[0]] || 0) + (+p[1])); setKV('mciTally', t); var c = mciCounts(); var was = kv('mciLv', 4), now = mciLevel(c.total); if (now !== was) { setKV('mciLv', now); return commit('MCI now Level ' + now + ' (' + c.total + ' patients)', 'Event'); } commit(null, null, true); render(); };
+  act.mci = function () {
+    if (kv('mci')) { U.toast('MCI is already declared on this incident.', 'ok'); return; }
+    U.modal('Declare MCI', '<p style="margin-top:0">Turns this incident into a mass casualty incident: adds Triage, Treatment, Transport and Ambulance Staging, MCI benchmarks and a live patient count, and opens MCI patient tracking on the same incident.</p><label class="f"><span>Estimated patients</span><input class="in big" name="est" type="number" min="1" inputmode="numeric" placeholder="e.g. 8"></label>' +
+      '<div class="dim" style="font-size:13px">EOP levels: 4 = up to 15 · 3 = 16–30 · 2 = 31–100 · 1 = 101+ (call RHCC at Level 2 or 1).</div>',
+      [{ label: 'Cancel', cls: 'ghost' }, { label: svg('mci') + 'Declare MCI', cls: 'red', fn: function (b) {
+        var est = +U.val(b, 'est') || 0, lv = mciLevel(est || 1), have = asgs().map(aName);
+        TEMPLATES.mci.assign.forEach(function (a) { if (have.indexOf(a[1]) >= 0) return; var o = { branch: '', division: '', group: '', staging: '', work: '', special: '', needs: [], reportTo: '' }; o[a[0]] = a[1]; CP.addItem(inc(), 'assignments', o); });
+        var hm = marks().map(function (x) { return x.label; }); TEMPLATES.mci.marks.forEach(function (x) { if (hm.indexOf(x) < 0) inc().cbMarks.push({ id: CP.uid(), label: x, t: '', by: '', u: CP.now() }); });
+        var first = inc().cbMarks.find(function (x) { return x.label === 'MCI declared · level set'; }); if (first) { first.t = CP.now(); first.by = CP.me.name || ''; first.u = CP.now(); } CP.touch(inc(), 'cbMarks');
+        setKV('mci', { t: CP.now(), est: est }); setKV('mciLv', lv); if (setFor(kv('tpl', 'other')) !== SETS.fire) { setKV('mode', 'Triage'); setKV('cond', 'Patients still being found'); }
+        if (lv <= 3 && inc().complexity > 3) CP.setPath(inc(), 'complexity', 3);
+        commit('MCI DECLARED: Level ' + lv + (est ? ' (about ' + est + ' patients)' : '') + '. Triage, Treatment, Transport and Ambulance Staging established.' + (lv <= 2 ? ' Call RHCC 1-866-679-7422.' : ''), 'Decision');
+        loadMci().then(render);
+      } }]);
+  };
+
   function upgrade() {
     var T = TEMPLATES.structure, have = asgs().map(aName);
     T.assign.forEach(function (a) { if (have.indexOf(a[1]) >= 0) return; var o = { branch: '', division: '', group: '', staging: '', work: '', special: '', needs: [], reportTo: '' }; o[a[0]] = a[1]; CP.addItem(inc(), 'assignments', o); });
     var hm = marks().map(function (m) { return m.label; }); T.marks.forEach(function (m) { if (hm.indexOf(m) < 0) inc().cbMarks.push({ id: CP.uid(), label: m, t: '', by: '', u: CP.now() }); }); CP.touch(inc(), 'cbMarks');
     setKV('tpl', 'structure'); setKV('mode', 'Offensive'); setKV('cond', 'Working fire');
+    var cc = kv('call', null); if (cc && !/ON-CALL/.test(cc.resp)) setKV('call', { type: cc.type, resp: (cc.resp ? cc.resp + ', ' : '') + 'ON-CALL, POWER COMPANY', note: 'Working fire adds on-call and the power company' });
     var nm = inc().name.replace(/Fire alarm/, 'Structure fire'); if (nm !== inc().name) CP.setPath(inc(), 'name', nm);
     commit('UPGRADED to working structure fire', 'Decision');
   }
@@ -358,6 +519,7 @@
     commit('Moved to Command Post (full ICS). Units, assignments and log carried over.', 'Decision', true);
     window.open('index.html?incident=' + encodeURIComponent(i.id) + '&view=dash', '_blank');
   }
+  act.slot = function (ix) { setKV('slot_' + ix, !kv('slot_' + ix, 0)); commit(null); };
   act.home = function () { CB.inc = null; CB.sel = null; history.replaceState(null, '', location.pathname); CB.list = undefined; CB.cad = undefined; render(); loadLists().then(render); };
   act.report = function () { report(); };
   act.reopen = function () { CP.setPath(inc(), 'status', 'Active'); CP.setPath(inc(), 'closed', ''); commit('Incident reopened', 'Decision'); };
@@ -382,6 +544,7 @@
     e.preventDefault(); e.stopPropagation();
     try { var r = f(el.dataset.a, el, e); if (r && r.catch) r.catch(function (er) { U.toast(E(er.message), 'err'); }); } catch (er) { console.error(er); U.toast(E(er.message), 'err'); }
   });
+  document.addEventListener('change', function (e) { var el = e.target.closest('[data-cbchg="call"]'); if (!el) return; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; CB.call = CALLS.find(function (c) { return c[0] === el.value; }) || null; if (CB.call) CB.tpl = CB.call[2]; render(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && CB.sel && !document.getElementById('modal')) { CB.sel = null; render(); } });
   window.addEventListener('resize', function () { clearTimeout(CB._rz); CB._rz = setTimeout(render, 200); });
   window.addEventListener('cp-incident-synced', function (ev) { if (inc() && inc().id === ev.detail) { var s = CP.store.get(ev.detail); if (s) { CB.inc = CP.merge(inc(), s); render(); } } });
@@ -390,7 +553,7 @@
   // ---------- boot ----------
   CB.boot = async function () {
     CP.me = CP.store.prefs().me || {};
-    document.getElementById('app').innerHTML = '<header class="hdr cbhdr"><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock ops"><div class="k">' + E(CP.BRAND) + ' · BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t">COMMAND BOARD</div></div><span class="sp" style="flex:1"></span><button class="btn cbhome" data-cb="home" title="Command Board home: all open incidents">' + I('home') + 'Home</button>' + CP.beaconMark() + '</header><main id="cbmain" class="cbwrap"></main>';
+    document.getElementById('app').innerHTML = '<header class="cbfire"><div class="cbpatchbox"><img class="cbpatch" src="' + PATCH + '" alt="Botetourt County Fire &amp; EMS patch" onerror="this.onerror=null;this.src=\'seal.png\'"></div><div class="cblock"><div class="k">BOTETOURT COUNTY</div><div class="t">FIRE <i>&amp;</i> EMS</div><div class="s">COMMAND BOARD</div></div><span class="sp" style="flex:1"></span><button class="btn cbhome" data-cb="home" title="Command Board home: all open incidents">' + I('home') + 'Home</button>' + CP.beaconMark() + '</header><main id="cbmain" class="cbwrap"></main>';
     try { if (await A.handleRedirect() === 'away') return; } catch (e) {}
     var qs = new URLSearchParams(location.search), want = qs.get('incident');
     render();
