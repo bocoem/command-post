@@ -43,12 +43,40 @@
     var no = 'F-' + new Date().toISOString().slice(5, 10).replace('-', '') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
     var at = { intake_no: no, intake_type: REASON[st.reason], site: SITE.slice(0, 150), channel: KIOSK ? 'Kiosk' : 'Phone', first_name: g('first_name').slice(0, 80), last_name: g('last_name').slice(0, 80), phone: g('phone').slice(0, 30), email: g('email').slice(0, 150) || null, language: g('language').slice(0, 60) || null, party_size: parseInt(g('party_size'), 10) || null, sought: g('sought').slice(0, 2000) || null, children: g('children') || 'No', last_seen: g('last_seen').slice(0, 500) || null, current_loc: g('current_loc').slice(0, 255) || null, needs: g('needs').slice(0, 500) || null, consent: g('consent'), incident_key: INC || null, status: 'New' };
     var b = document.querySelector('[data-send]'); b.disabled = true;
+    var kids = at.children === 'Yes' || st.reason === 'pick' || st.reason === 'look' && /\b([0-9]|1[0-7])\b/.test(at.sought || '');
     try {
-      var r = await fetch(SVC + '/addFeatures', { method: 'POST', body: new URLSearchParams({ f: 'json', features: JSON.stringify([{ attributes: at }]) }) }).then(function (x) { return x.json(); });
-      if (!r.addResults || !r.addResults[0] || !r.addResults[0].success) throw new Error((r.error && r.error.message) || 'failed');
-      st = { step: 'done', no: no, kids: at.children === 'Yes' || st.reason === 'pick' || st.reason === 'look' && /\b([0-9]|1[0-7])\b/.test(at.sought || '') }; paint(); poke();
-    } catch (e) { b.disabled = false; document.getElementById('ferr').textContent = t('err'); }
+      if (navigator.onLine === false || outbox().length) throw { offline: true }; // keep order: earlier check-ins go first
+      await post(at);
+      st = { step: 'done', no: no, kids: kids }; paint(); poke();
+    } catch (e) {
+      if (e && (e.offline || e instanceof TypeError)) { queue(at); st = { step: 'done', no: no, kids: kids, held: true }; paint(); poke(); setTimeout(flush, 15000); }
+      else { b.disabled = false; document.getElementById('ferr').textContent = t('err'); }
+    }
   }
+  // ---------- offline: check-ins wait on this tablet and send when the connection is back ----------
+  var QK = 'bcem.fam.outbox.v1';
+  function outbox() { try { return (JSON.parse(localStorage.getItem(QK) || '[]') || []).filter(function (x) { return x.svc === SVC; }); } catch (e) { return []; } }
+  function saveBox(list) { var other = []; try { other = (JSON.parse(localStorage.getItem(QK) || '[]') || []).filter(function (x) { return x.svc !== SVC; }); } catch (e) {} localStorage.setItem(QK, JSON.stringify(other.concat(list))); badge(); }
+  function queue(at) { var l = outbox(); l.push({ svc: SVC, at: at, t: Date.now() }); saveBox(l); }
+  async function post(at) {
+    var r = await fetch(SVC + '/addFeatures', { method: 'POST', body: new URLSearchParams({ f: 'json', features: JSON.stringify([{ attributes: at }]) }) }).then(function (x) { return x.json(); });
+    if (!r.addResults || !r.addResults[0] || !r.addResults[0].success) { var er = new Error((r.error && r.error.message) || 'failed'); er.server = true; throw er; }
+  }
+  var flushing = false;
+  async function flush() {
+    if (flushing || !SVC) return; var l = outbox(); if (!l.length) return; flushing = true;
+    try { while (l.length) { try { await post(l[0].at); l.shift(); saveBox(l); } catch (e) { if (e.server) { l[0].err = e.message; l.push(l.shift()); saveBox(l); } break; } } } finally { flushing = false; }
+  }
+  function badge() { // small staff indicator; families just see "checked in"
+    var n = outbox().length, el = document.getElementById('famq');
+    if (!n) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'famq'; el.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:50;background:#2a3442;color:#fff;border-radius:999px;padding:6px 12px;font:700 12px Barlow,sans-serif;opacity:.85'; document.body.appendChild(el); }
+    el.textContent = (navigator.onLine === false ? 'Offline · ' : 'Sending · ') + n + ' check-in' + (n > 1 ? 's' : '') + ' saved on this tablet';
+  }
+  window.addEventListener('online', function () { setTimeout(flush, 500); });
+  window.addEventListener('offline', badge);
+  setInterval(flush, 20000); setTimeout(flush, 3000); setTimeout(badge, 300);
+  if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   document.addEventListener('click', function (e) {
     poke();
     var l = e.target.closest('[data-lang]'); if (l) { lang = l.dataset.lang; paint(); return; }

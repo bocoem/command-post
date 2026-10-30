@@ -31,6 +31,7 @@
     return [
       { k: 'cp', n: 'Command Post', ty: 'Web app', off: 1, url: BASE, btn: 'Open Command Post', d: 'Run an incident: ICS 201–215 forms, resources, assignments, activity log and briefings. Shared live through ArcGIS; works offline and catches up when the connection is back.', who: ['em', 'so', 'fire', 'disp'] },
       { k: 'ops', n: 'EM Ops tools', ty: 'Web app', off: 1, url: BASE + 'ops.html', btn: 'Open EM Ops', d: 'County resources and requests, PODs, infrastructure, flood watch, volunteers, cost recovery and training, all tied to the Command Post incident. You see the tools your group can use.', who: ['em', 'so', 'fire', 'disp'] },
+      { k: 'cb', n: 'Command Board', ty: 'Tablet / computer', off: 1, url: BASE + 'commandboard.html', btn: 'Open Command Board', d: 'Tap-first command board for fire alarms, structure fires and the first hour of any incident: units, divisions and groups, benchmarks, PAR timer, MAYDAY and CAN reports. Officers follow it live on their phones; one tap moves it into Command Post.', who: ['em', 'so', 'fire', 'disp'] },
       { k: 'hot', n: 'Hotline desk', ty: 'Web app', off: 1, url: BASE + 'hotline.html', btn: 'Open Hotline', d: 'Public information line for desktop and tablet: log calls, answer from PIO-approved talking points and live shelter, POD and road facts, and route callers to reunification, AFN, volunteers or the PIO.', who: ['em', 'so', 'disp'] },
       { k: 'ci', n: 'Check-In', ty: 'Phone app', off: 1, url: BASE + 'checkin.html', btn: 'Open Check-In', d: 'Check in and out of an incident from your phone, or scan a unit tag or volunteer badge. Lands on the Command Post resources list and ICS 211.', who: ['em', 'so', 'fire', 'disp'] },
       { k: 'mci', n: 'MCI', ty: 'Phone app', off: 1, url: BASE + 'mci.html', btn: 'Open MCI', d: 'Mass casualty triage (scan the tag), transport and the hospital board. Patient records are visible only to EM and the EMS patient care group.', who: ['em', 'ems'] },
@@ -39,7 +40,7 @@
       { k: 'fam', n: 'Family Reunification Check-In', ty: 'Kiosk / QR', url: BASE + 'family.html', btn: 'Open check-in', d: 'For families at a reunification site: a tablet kiosk or QR code. Families can add their details but nobody can read records through it. Only post it when a reunification site is open.', who: ['all'] }
     ].filter(function (a) { return a.url; });
   }
-  var ROLE_APPS = { em: ['cp', 'ops', 'hot', 'ci', 'mci', 'ru', 'lead'], so: ['cp', 'ops', 'hot', 'ci'], fire: ['cp', 'ops', 'ci', 'mci'], disp: ['cp', 'ops', 'hot', 'ci'], lead: ['lead'], all: ['fam'] };
+  var ROLE_APPS = { em: ['cp', 'cb', 'ops', 'hot', 'ci', 'mci', 'ru', 'lead'], so: ['cp', 'cb', 'ops', 'hot', 'ci'], fire: ['cb', 'cp', 'ops', 'ci', 'mci'], disp: ['cp', 'cb', 'ops', 'hot', 'ci'], lead: ['lead'], all: ['fam'] };
   function row(a) {
     return '<div class="rz-row"><div class="rz-rm"><div class="rz-rt"><b>' + E(a.n) + '</b><span class="rz-ty">' + E(a.ty) + '</span>' + (a.off ? '<span class="rz-ph">Works offline · save to home screen</span>' : '') + '</div><p>' + E(a.d) + (a.k === 'mci' ? ' Fire &amp; EMS: ask EM to add you to the EMS patient care group.' : '') + '</p></div><div class="rz-ra"><a class="rz-btn" href="' + E(a.url) + '" target="_blank" rel="noopener">' + E(a.btn) + '</a></div></div>';
   }

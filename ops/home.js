@@ -16,6 +16,7 @@
       }).join('') + '</div>';
       h += '<div class="card" style="margin-top:14px"><h3>' + I('link') + 'Field links</h3><div class="tk">' +
         '<a href="checkin.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank"><b>Check-In app</b><span>Phone check-in for responders and volunteers</span></a>' +
+        '<a href="commandboard.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank" class="red"><b>Command Board</b><span>Fire alarm, structure fire, first-hour command</span></a>' +
         '<a href="hotline.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank" class="blue"><b>Hotline desk</b><span>Public information line: calls, talking points, routing</span></a>' +
         '<a href="mci.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank" class="red"><b>MCI app</b><span>Triage, transport, hospitals</span></a>' +
         '<a href="' + OPS.cpLink() + '" target="_blank"><b>Command Post</b><span>Incident record and ICS forms</span></a>' +
