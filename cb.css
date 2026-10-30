@@ -557,3 +557,13 @@ body.cbdragging .cbasg[data-a]{border-color:var(--gold)}
 .cbhero2 .hs span{font:700 10px var(--cond);letter-spacing:1.4px;text-transform:uppercase;color:#8fa6c2;margin-top:4px;text-align:center}
 @media (max-width:900px){.cbhero2{flex-wrap:wrap}.cbhero2 .hs{width:100%}.cbhero2 .hs>*{flex:1;min-width:0}}
 @media (max-width:560px){.cbhero2{gap:12px;padding:12px}.cbhero2 .hp{width:54px;height:60px}.cbhero2 .hp img{height:60px}.cbbody .cbhero2 h1{font-size:26px}.cbhero2 p{font-size:13px}}
+/* start: thin live-count strip instead of a second header */
+.cbstrip{display:flex;align-items:center;gap:12px;max-width:1400px;margin:2px auto 12px;flex-wrap:wrap}
+.cbstrip .lead{flex:1;min-width:220px;color:#9fb2c9;font-size:14px}
+.cbstrip .hs{display:flex;gap:8px}
+.cbstrip .hs>*{display:flex;align-items:baseline;gap:7px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid var(--t-edge2);color:#e8eef7;font:inherit}
+.cbstrip .hs button{cursor:pointer}.cbstrip .hs button:hover{border-color:var(--t-gold)}
+.cbstrip .hs b{font:700 17px var(--mono);color:#fff}.cbstrip .hs button b{color:#ffd27a}
+.cbstrip .hs span{font:700 10.5px var(--cond);letter-spacing:1.3px;text-transform:uppercase;color:#8fa6c2}
+.cbhero2.solo{padding:16px 20px}.cbhero2.solo p{font-size:15px;color:#c9d6e6}
+@media (max-width:560px){.cbstrip .hs{width:100%}.cbstrip .hs>*{flex:1;justify-content:center;flex-direction:column;align-items:center;gap:2px;border-radius:12px}}

@@ -147,7 +147,7 @@
   function startScreen() {
     var l = CB.list, cad = CB.cad;
     var nCad = Array.isArray(cad) ? cad.length : '–', nInc = Array.isArray(l) ? l.length : '–';
-    var h = '<div class="cbstart"><div class="cbhero2"><div class="hp"><img src="' + PATCH + '" alt=""></div><div class="ht"><div class="k">Botetourt County Fire &amp; EMS</div><h1>Command Board</h1><p>Start a board, pick up an active CAD call, or rejoin a running incident. It all flows into Command Post.</p></div>' +
+    var h = '<div class="cbstart"><div class="cbstrip"><span class="lead">Start a board, pick up a CAD call, or rejoin a running incident.</span>' +
       '<div class="hs"><button data-cb="htab" data-a="map"><b>' + nCad + '</b><span>Active fire &amp; EMS calls</span></button><div><b>' + nInc + '</b><span>Running incidents</span></div>' + (CB.wx && CB.wx.ok ? '<div class="w"><b>' + (CB.wx.f != null ? Math.round(CB.wx.f) + '°' : '–') + '</b><span>' + E(CB.wx.dir != null ? compass(CB.wx.dir) + ' ' + Math.round(CB.wx.mph || 0) + ' mph' : 'Wind calm') + '</span></div>' : '') + '</div></div>';
     h += '<div class="cbcols"><section class="card"><h3>' + I('plus') + 'New board</h3><div class="cbtypes">' + Object.keys(TEMPLATES).map(function (k) { return '<button class="cbtype t-' + k + (CB.tpl === k ? ' on' : '') + '" data-cb="tpl" data-a="' + k + '">' + svg(TEMPLATES[k].icon || 'flag') + E(TEMPLATES[k].n) + '</button>'; }).join('') + '</div>' +
       '<label class="f"><span>Call type (county response plan)</span><select class="in big" id="cbCall" data-cbchg="call"><option value="">Pick a call type, or tap a type above</option>' +
@@ -337,7 +337,7 @@
   function render() {
     var m = document.getElementById('cbmain'); if (!m) return;
     document.body.classList.remove('cbfit');
-    if (!A.signedIn() && !inc() && !CB.localOk) { m.innerHTML = '<div class="cbstart"><div class="cbhero2 solo"><div class="hp"><img src="' + PATCH + '" alt=""></div><div class="ht"><div class="k">Botetourt County Fire &amp; EMS</div><h1>Command Board</h1><p>Sign in with your county ArcGIS account so the board is shared live with Command Post, the EOC and phones on scene. You can also start offline; it shares once you sign in.</p><button class="btn big pri" data-cb="signin">' + I('cloud') + 'Sign in with ArcGIS</button> <button class="btn big" data-cb="local">Start without signing in</button></div></div></div>'; return; }
+    if (!A.signedIn() && !inc() && !CB.localOk) { m.innerHTML = '<div class="cbstart"><div class="cbhero2 solo"><div class="ht"><p>Sign in with your county ArcGIS account so the board is shared live with Command Post, the EOC and phones on scene. You can also start offline; it shares once you sign in.</p><button class="btn big pri" data-cb="signin">' + I('cloud') + 'Sign in with ArcGIS</button> <button class="btn big" data-cb="local">Start without signing in</button></div></div></div>'; return; }
     if (!inc() && !CB.wx && navigator.onLine) loadWx();
     if (!inc()) { var hv = CB.htab === 'map' ? homeMapView() : CB.htab === 'wb' ? homeWbView() : startScreen(); m.innerHTML = hv; document.body.classList.toggle('cbfit', CB.htab !== 'home'); var ts0 = document.getElementById('cbTabSlot'); if (ts0) ts0.innerHTML = homeTabs(); if (CB.htab === 'map') homeMapMount(); if (CB.htab === 'wb') wbMount(); return; }
     var y = window.scrollY, qn = document.getElementById('cbQuick'), qv = qn ? qn.value : '', qf = qn && document.activeElement === qn;
