@@ -67,7 +67,7 @@
   function setFor(tk) { return /^(structure|vehicle|alarm|brush)$/.test(tk) ? SETS.fire : SETS[tk] || SETS.other; }
 
   // ---------- Fire & EMS look ----------
-  var PATCH = 'https://botetourt.maps.arcgis.com/sharing/rest/content/items/be57e94dfb084d689745c51d275cf20d/data'; // Botetourt County Fire & EMS patch (public item)
+  var PATCH = 'patch.png'; // Botetourt County Fire & EMS patch (full resolution, cached for offline)
   var SVG = {
     flame: '<path d="M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.6 1.6-4 2-6.5 1 1.2 2 2 3 2.2C12 5.6 11.5 4 12 2z"/>',
     bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/>',
@@ -141,7 +141,7 @@
   // ---------- start screen ----------
   function startScreen() {
     var l = CB.list, cad = CB.cad;
-    var h = '<div class="cbstart"><div class="cbhero"><h1>' + I('flag') + 'Command Board</h1><p>Start a board for a new incident, or open an incident that is already running. Everything you tap here is the Command Post incident, so you can move it to Command Post at any time.</p></div>';
+    var h = '<div class="cbstart"><div class="cbhero"><img class="cbheropatch" src="' + PATCH + '" alt=""><h1>' + I('flag') + 'Command Board</h1><p>Start a board for a new incident, or open an incident that is already running. Everything you tap here is the Command Post incident, so you can move it to Command Post at any time.</p></div>';
     h += '<div class="cbcols"><section class="card"><h3>' + I('plus') + 'New board</h3><div class="cbtypes">' + Object.keys(TEMPLATES).map(function (k) { return '<button class="cbtype t-' + k + (CB.tpl === k ? ' on' : '') + '" data-cb="tpl" data-a="' + k + '">' + svg(TEMPLATES[k].icon || 'flag') + E(TEMPLATES[k].n) + '</button>'; }).join('') + '</div>' +
       '<label class="f"><span>Call type (county response plan)</span><select class="in big" id="cbCall" data-cbchg="call"><option value="">Pick a call type, or tap a type above</option>' +
       [['Fire', /^(F - |TARGET)/], ['Vehicle crashes', /^MVC/], ['Rescue (SOTT)', /^SOTT/], ['Other', /^BOMB/]].map(function (g) { return '<optgroup label="' + g[0] + '">' + CALLS.filter(function (c) { return g[1].test(c[0]); }).map(function (c) { return '<option' + (CB.call && CB.call[0] === c[0] ? ' selected' : '') + '>' + E(c[0]) + '</option>'; }).join('') + '</optgroup>'; }).join('') + '</select></label>' +
@@ -284,7 +284,7 @@
   // ---------- incident closed: a clear end state ----------
   function closedScreen() {
     var i = inc(), mins = Math.round((new Date(i.closed || Date.now()) - new Date(i.start)) / 60000);
-    return '<div class="cbclosed"><div class="cbclosedin"><svg viewBox="0 0 24 24" width="84" height="84" fill="none" stroke="#2FBF71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M7.5 12.5l3 3 6-6"></path></svg>' +
+    return '<div class="cbclosed"><div class="cbclosedin"><img class="cbclosedpatch" src="' + PATCH + '" alt=""><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#2FBF71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M7.5 12.5l3 3 6-6"></path></svg>' +
       '<div class="k">INCIDENT CLOSED</div><h1>' + E(i.location.desc || i.name) + '</h1>' +
       '<p>' + E(i.number) + ' · command terminated ' + E(CP.fmtDT(i.closed || CP.now())) + ' · ' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + (i.exercise ? ' · PRACTICE' : '') + '</p>' +
       '<p class="dim">All units released. The record is saved in Command Post' + (A.status === 'on' ? ' and county ArcGIS.' : ' and will send to ArcGIS when this device is back online.') + '</p>' +
@@ -294,7 +294,7 @@
   // ---------- render ----------
   function render() {
     var m = document.getElementById('cbmain'); if (!m) return;
-    if (!A.signedIn() && !inc() && !CB.localOk) { m.innerHTML = '<div class="cbstart"><div class="cbhero"><h1>' + I('flag') + 'Command Board</h1><p>Sign in with your county ArcGIS account so the board is shared live with Command Post, the EOC and phones on scene. You can also start offline; it shares once you sign in.</p><button class="btn big pri" data-cb="signin">' + I('cloud') + 'Sign in with ArcGIS</button> <button class="btn big" data-cb="local">Start without signing in</button></div></div>'; return; }
+    if (!A.signedIn() && !inc() && !CB.localOk) { m.innerHTML = '<div class="cbstart"><div class="cbhero"><img class="cbheropatch" src="' + PATCH + '" alt=""><h1>' + I('flag') + 'Command Board</h1><p>Sign in with your county ArcGIS account so the board is shared live with Command Post, the EOC and phones on scene. You can also start offline; it shares once you sign in.</p><button class="btn big pri" data-cb="signin">' + I('cloud') + 'Sign in with ArcGIS</button> <button class="btn big" data-cb="local">Start without signing in</button></div></div>'; return; }
     if (!inc()) { m.innerHTML = startScreen(); return; }
     var y = window.scrollY;
     var force = new URLSearchParams(location.search).get('view');
