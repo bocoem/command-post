@@ -230,41 +230,50 @@
   function board() {
     var i = inc(), mode = kv('mode', ''), cond = kv('cond', ''), parEvery = +kv('parEvery', 20), parT = kv('parT', i.start), parDue = new Date(parT).getTime() + parEvery * 60000, parLeft = Math.round((parDue - Date.now()) / 1000);
     var may = kv('mayday', null), ic = CP.personName(i, 'IC');
-    var h = '<div class="cbtop' + (may ? ' mayday' : '') + '"><div class="cbaddr">' + svg(tplOf(i).icon || 'flag', 'big t-' + kv('tpl', 'other')) + '<div><b>' + E(i.location.desc || i.name) + '</b><span>' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (ic ? ' · IC ' + E(ic) : '') + (i.exercise ? ' · <span class="chip practice">PRACTICE</span>' : '') + (kv('mci') ? ' · <span class="chip red">MCI</span>' : '') + '</span></div></div>' +
+    var h = '<div class="cbx">';
+    // top: where, clock, PAR, MAYDAY
+    h += '<div class="cbtop' + (may ? ' mayday' : '') + '"><div class="cbaddr">' + svg(tplOf(i).icon || 'flag', 'big t-' + kv('tpl', 'other')) + '<div><b>' + E(i.location.desc || i.name) + '</b><span>' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (ic ? ' · IC ' + E(ic) : '') + (i.exercise ? ' · <span class="chip practice">PRACTICE</span>' : '') + (kv('mci') ? ' · <span class="chip red">MCI</span>' : '') + '</span></div><span class="sync on" id="cbSync"></span></div>' +
       '<div class="cbclock"><span>ELAPSED</span><b id="cbEl">' + since(i.start) + '</b></div>' +
-      '<button class="cbpar' + (parLeft <= 0 ? ' due' : parLeft < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR every ' + parEvery + ' min</span><b id="cbPar">' + (parLeft <= 0 ? 'DUE ' + since(new Date(parDue).toISOString()) : Math.floor(parLeft / 60) + ':' + CP.pad(parLeft % 60)) + '</b></button>' +
+      '<button class="cbpar' + (parLeft <= 0 ? ' due' : parLeft < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR · every ' + parEvery + ' min</span><b id="cbPar">' + (parLeft <= 0 ? 'DUE ' + since(new Date(parDue).toISOString()) : Math.floor(parLeft / 60) + ':' + CP.pad(parLeft % 60)) + '</b></button>' +
       '<button class="cbmay" data-cb="mayday">' + I('warn') + (may ? 'MAYDAY ACTIVE' : 'MAYDAY') + '</button></div>';
     if (may) h += '<div class="cbmaybar">' + I('warn') + ' MAYDAY ' + E(since(may.t)) + ' · ' + E(may.who || '') + ' · ' + E(may.where || '') + ' · ' + E(may.air || '') + (may.rit ? ' · RIT: ' + E(may.rit) : '') + ' <button class="btn sm" data-cb="mayclear">Clear MAYDAY</button></div>';
-    var SET = setFor(kv('tpl', 'other')) === SETS.fire && kv('mci') ? SETS.mci : setFor(kv('tpl', 'other'));
-    h += '<div class="cbbar"><div class="cbseg">' + SET[0].map(function (m) { return '<button class="' + (m === mode ? 'on' : '') + (m === 'Defensive' ? ' def' : '') + '" data-cb="mode" data-a="' + m + '">' + m + '</button>'; }).join('') + '</div>' +
-      '<div class="cbseg">' + SET[1].map(function (c) { return '<button class="' + (c === cond ? 'on' : '') + '" data-cb="cond" data-a="' + c + '">' + c + '</button>'; }).join('') + '</div>' +
-      '<span class="sp"></span><span class="sync on" id="cbSync"></span>' + (kv('mci') ? '' : '<button class="btn sm red" data-cb="mci">' + svg('mci') + 'Declare MCI</button>') + '<button class="btn sm" data-cb="can">' + I('msg') + 'CAN report</button><button class="btn sm" data-cb="note">' + I('log') + 'Log</button><button class="btn sm" data-cb="more">' + I('menu') + 'More</button><a class="btn sm pri" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener" data-cb="tocp">' + I('link') + 'Move to Command Post</a></div>';
-    // units rack
     var free = units().filter(function (r) { return !r.assign; }), enr = free.filter(function (r) { return r.status === 'En Route'; }), avail = free.filter(function (r) { return r.status !== 'En Route'; });
-    var trayU = avail.concat(enr), su = CB.sel ? CP.byId(i.resources, CB.sel) : null;
-    h += '<section class="cbtray' + (su ? ' picking' : '') + '"><div class="cbtrayh"><b>' + I('truck') + 'Units <span class="ct">' + units().length + '</span></b>' +
-      '<div class="cbadd">' + KINDS.map(function (k) { return '<button data-cb="addk" data-a="' + k[0] + '" title="' + E(k[2]) + '">+' + k[0] + '</button>'; }).join('') + '</div>' +
-      '<button class="btn sm ghost" data-cb="cadunits">' + I('radio') + 'From CAD</button></div>' + (su ? '' : '<div class="cbtip">Tap a unit to send it to a division or group' + (window.matchMedia && matchMedia('(pointer:fine)').matches ? ', or drag it' : '') + '.</div>') +
-      '<div class="cbtrayu">' + (avail.length ? avail.map(tile).join('') : '') + (enr.length ? '<span class="cbtraysep">Responding</span>' + enr.map(tile).join('') : '') +
-      (trayU.length ? '' : '<div class="dim cbempty">Every unit is assigned. Tap + to add one, or tap a unit in a division to move it.</div>') + '</div>' +
-      (su ? '<div class="cbqa"><div class="cbqal">Send <b>' + E(su.name) + '</b> to:</div><div class="cbqbs">' + asgs().map(function (a) { var al = asgLook(a); return '<button class="cbqb ' + al[1] + (su.assign === a.id ? ' cur' : '') + '" data-cb="qa" data-a="' + a.id + '">' + svg(al[0]) + '<span>' + E(aName(a)) + '</span><i>' + unitsIn(a.id).length + '</i></button>'; }).join('') +
-        (su.assign || su.status === 'En Route' ? '<button class="cbqb av" data-cb="qa" data-a="">' + I('check') + '<span>On scene, available</span></button>' : '') +
-        '<button class="cbqb ghost" data-cb="newasg">' + I('plus') + '<span>New division / group</span></button><button class="cbqb ghost" data-cb="unote" data-a="' + su.id + '">' + I('log') + '<span>' + (su.note ? 'Edit note' : 'Add note') + '</span></button><button class="cbqb ghost" data-cb="unit" data-a="' + su.id + '">' + I('menu') + '<span>Unit options</span></button><button class="cbqb ghost" data-cb="desel"><span>Cancel</span></button></div></div>'
-        : '<div class="cbwho"><span class="cbwhol">On task</span>' + asgs().map(function (a) { var us = unitsIn(a.id), al = asgLook(a); return '<button class="cbwh ' + al[1] + (us.length ? '' : ' empty') + '" data-cb="jump" data-a="' + a.id + '" title="Show ' + E(aName(a)) + '">' + svg(al[0]) + '<b>' + E(aName(a)) + '</b>' + (us.length ? us.map(function (r) { return '<span' + (r.note ? ' class="nt" title="' + E(r.note) + '"' : '') + '>' + E(r.name) + '</span>'; }).join('') : '<i>—</i>') + '</button>'; }).join('') + '</div>') + '</section>';
-    h += '<div class="cbmain">';
-    // assignments
-    h += '<section class="cbgrid">' + asgs().map(function (a) {
-      var us = unitsIn(a.id), sup = a.reportTo || '', par = kv('par_' + a.id, null), can = a.cbCan || '';
-      var al = asgLook(a);
-      return '<div id="asg_' + a.id + '" class="cbasg ' + al[1] + (a.staging ? ' stg' : a.division ? ' div' : '') + (CB.sel ? ' target' : '') + '" data-cb="drop" data-a="' + a.id + '"><div class="cbah">' + svg(al[0], 'ah') + '<b>' + E(aName(a)) + '</b>' + (sup ? '<span>' + E(sup) + '</span>' : '') + '<button class="ibtn" data-cb="amenu" data-a="' + a.id + '" title="Assignment options">' + I('menu') + '</button></div>' +
-        '<div class="cbau">' + (us.length ? us.map(tile).join('') : '<div class="dim">' + (CB.sel ? 'Tap to assign here' : 'No units') + '</div>') + '</div>' +
-        (can || a.work ? '<div class="cbcan">' + E(can || a.work).slice(0, 140) + '</div>' : '') + (par ? '<div class="cbpok">' + I('check') + 'PAR ' + Math.round((Date.now() - new Date(par).getTime()) / 60000) + ' min ago</div>' : '') + '</div>';
-    }).join('') + '<button class="cbasg cbnew" data-cb="newasg">' + I('plus') + 'Add division / group</button></section>';
-    // benchmarks + log
-    h += '<section class="cbside">' + respPanel() + mciPanel() + '<div class="cbh">' + I('check') + 'Benchmarks <span class="ct">' + marks().filter(function (m) { return m.t; }).length + '/' + marks().length + '</span></div><div class="cbmarks">' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '" title="' + (m.t ? 'Done ' + E(CP.fmtTime(m.t)) : 'Tap when done') + '">' + I(m.t ? 'check' : 'clock') + '<span>' + E(m.label) + '</span>' + (m.t ? '<i>' + E(CP.fmtTime(m.t)) + ' +' + Math.round((new Date(m.t) - new Date(i.start)) / 60000) + 'm</i>' : '') + '</button>'; }).join('') +
+    var su = CB.sel ? CP.byId(i.resources, CB.sel) : null;
+    h += '<div class="cb3">';
+    // LEFT: units waiting + add buttons
+    h += '<section class="cbcol cbcolU"><div class="cbh">' + I('truck') + 'Waiting <span class="ct">' + free.length + '</span><span class="sp" style="flex:1"></span><span class="dim cbhint">' + units().length + ' on incident</span></div><div class="cbscroll cbuw">' +
+      (avail.length ? avail.map(tile).join('') : '') + (enr.length ? '<div class="cbsub">Responding</div>' + enr.map(tile).join('') : '') +
+      (free.length ? '' : '<div class="dim cbempty">' + (units().length ? 'All units are on a task.' : 'No units yet. Tap a unit type below to add one.') + '</div>') + '</div>' +
+      '<div class="cbh sm">' + I('plus') + 'Add unit</div><div class="cbadd">' + KINDS.map(function (k) { return '<button data-cb="addk" data-a="' + k[0] + '" title="' + E(k[2]) + '">' + E(k[0]) + '</button>'; }).join('') + '</div>' +
+      '<button class="btn cbcad" data-cb="cadunits">' + I('radio') + 'From CAD</button></section>';
+    // CENTER: divisions and groups, all visible
+    h += '<section class="cbcol cbcolA">' + (su ? '<div class="cbpick"><div><b>' + E(su.name) + '</b> selected · tap a division or group to assign</div><div class="cbpickb">' +
+        (su.assign || su.status === 'En Route' ? '<button class="btn" data-cb="qa" data-a="">' + I('check') + 'Available</button>' : '') +
+        '<button class="btn" data-cb="unote" data-a="' + su.id + '">' + I('log') + (su.note ? 'Edit note' : 'Note') + '</button><button class="btn" data-cb="unit" data-a="' + su.id + '">' + I('menu') + 'Options</button><button class="btn ghost" data-cb="desel">Cancel</button></div></div>'
+        : '<div class="cbh">' + svg('div') + 'Divisions & groups <span class="ct">' + asgs().filter(function (a) { return unitsIn(a.id).length; }).length + ' staffed</span><span class="sp" style="flex:1"></span><span class="dim cbhint">Tap a unit, then tap where it goes</span></div>') +
+      '<div class="cbscroll"><div class="cbgrid">' + asgs().map(function (a) {
+        var us = unitsIn(a.id), sup = a.reportTo || '', par = kv('par_' + a.id, null), can = a.cbCan || '', al = asgLook(a);
+        return '<div id="asg_' + a.id + '" class="cbasg ' + al[1] + (a.staging ? ' stg' : a.division ? ' div' : '') + (su ? ' target' + (su.assign === a.id ? ' cur' : '') : '') + (us.length ? '' : ' empty') + '" data-cb="drop" data-a="' + a.id + '"><div class="cbah">' + svg(al[0], 'ah') + '<b>' + E(aName(a)) + '</b><span class="ct">' + us.length + '</span>' + (sup ? '<span class="sup">' + E(sup) + '</span>' : '') + '<button class="ibtn" data-cb="amenu" data-a="' + a.id + '" title="Assignment options">' + I('menu') + '</button></div>' +
+          '<div class="cbau">' + (us.length ? us.map(tile).join('') : '<div class="dim">' + (su ? 'Tap to assign ' + E(su.name) + ' here' : 'No units') + '</div>') + '</div>' +
+          (can || a.work ? '<div class="cbcan">' + E(can || a.work).slice(0, 120) + '</div>' : '') + (par ? '<div class="cbpok">' + I('check') + 'PAR ' + Math.round((Date.now() - new Date(par).getTime()) / 60000) + ' min ago</div>' : '') + '</div>';
+      }).join('') + '<button class="cbasg cbnew" data-cb="newasg">' + I('plus') + 'Add division / group</button></div></div></section>';
+    // RIGHT: status, benchmarks, notes
+    var SET = setFor(kv('tpl', 'other')) === SETS.fire && kv('mci') ? SETS.mci : setFor(kv('tpl', 'other'));
+    h += '<section class="cbcol cbcolS"><div class="cbscroll">' +
+      '<div class="cbh sm">' + (setFor(kv('tpl', 'other')) === SETS.fire ? 'Strategy' : 'Phase') + '</div><div class="cbbtns">' + SET[0].map(function (m) { return '<button class="' + (m === mode ? 'on' : '') + (m === 'Defensive' ? ' def' : '') + '" data-cb="mode" data-a="' + E(m) + '">' + E(m) + '</button>'; }).join('') + '</div>' +
+      '<div class="cbh sm">Conditions</div><div class="cbbtns">' + SET[1].map(function (c) { return '<button class="' + (c === cond ? 'on' : '') + '" data-cb="cond" data-a="' + E(c) + '">' + E(c) + '</button>'; }).join('') + '</div>' +
+      respPanel() + mciPanel() +
+      '<div class="cbh sm">' + I('check') + 'Benchmarks <span class="ct">' + marks().filter(function (m) { return m.t; }).length + '/' + marks().length + '</span></div><div class="cbmarks">' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '" title="' + (m.t ? 'Done ' + E(CP.fmtTime(m.t)) : 'Tap when done') + '">' + I(m.t ? 'check' : 'clock') + '<span>' + E(m.label) + '</span>' + (m.t ? '<i>' + E(CP.fmtTime(m.t)) + '</i>' : '') + '</button>'; }).join('') +
       '<button class="cbmark add" data-cb="addmark">' + I('plus') + '<span>Add</span></button></div>' +
-      '<div class="cbh" style="margin-top:12px">' + I('log') + 'Notes & activity</div><div class="cbnote"><textarea id="cbQuick" class="in" rows="2" placeholder="Type a note… (saves with the time)"></textarea><button class="btn pri" data-cb="notesave">Save</button></div><div class="cbqk">' + quickFor().map(function (q) { return '<button data-cb="quick" data-a="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div><div class="cblog">' + AL(i.log).slice(-14).reverse().map(function (l) { return '<div><span class="mono">' + E(CP.fmtTime(l.ts)) + '</span> ' + E(l.text) + '</div>'; }).join('') + '</div></section></div>';
-    return h;
+      '<div class="cbh sm">' + I('log') + 'Quick log</div><div class="cbqk">' + quickFor().map(function (q) { return '<button data-cb="quick" data-a="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>' +
+      '<div class="cbnote"><input id="cbQuick" class="in" placeholder="Type a note…"><button class="btn pri" data-cb="notesave">Save</button></div>' +
+      '<div class="cblog">' + AL(i.log).slice(-12).reverse().map(function (l) { return '<div><span class="mono">' + E(CP.fmtTime(l.ts)) + '</span> ' + E(l.text) + '</div>'; }).join('') + '</div></div></section>';
+    h += '</div>';
+    // BOTTOM: big action buttons
+    h += '<div class="cbact">' + (kv('mci') ? '' : '<button class="red" data-cb="mci">' + svg('mci') + '<span>Declare MCI</span></button>') +
+      '<button data-cb="can">' + I('msg') + '<span>CAN report</span></button><button data-cb="note">' + I('log') + '<span>Log entry</span></button><button data-cb="newasg">' + I('plus') + '<span>Division / group</span></button><button data-cb="report">' + I('print') + '<span>Report</span></button><button data-cb="more">' + I('menu') + '<span>More</span></button>' +
+      '<a class="pri" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener" data-cb="tocp">' + I('link') + '<span>Command Post</span></a></div>';
+    return h + '</div>';
   }
   function respPanel() {
     var c = kv('call', null); if (!c || !c.resp) return '';
@@ -312,11 +321,13 @@
   // ---------- render ----------
   function render() {
     var m = document.getElementById('cbmain'); if (!m) return;
+    document.body.classList.remove('cbfit');
     if (!A.signedIn() && !inc() && !CB.localOk) { m.innerHTML = '<div class="cbstart"><div class="cbhero"><img class="cbheropatch" src="' + PATCH + '" alt=""><h1>' + I('flag') + 'Command Board</h1><p>Sign in with your county ArcGIS account so the board is shared live with Command Post, the EOC and phones on scene. You can also start offline; it shares once you sign in.</p><button class="btn big pri" data-cb="signin">' + I('cloud') + 'Sign in with ArcGIS</button> <button class="btn big" data-cb="local">Start without signing in</button></div></div>'; return; }
     if (!inc()) { m.innerHTML = startScreen(); return; }
     var y = window.scrollY, qn = document.getElementById('cbQuick'), qv = qn ? qn.value : '', qf = qn && document.activeElement === qn;
     var force = new URLSearchParams(location.search).get('view');
     m.innerHTML = inc().status === 'Closed' ? closedScreen() : (force === '0' ? false : phone()) ? phoneView() : board();
+    document.body.classList.toggle('cbfit', !!m.querySelector('.cbx'));
     document.body.classList.toggle('practice', !!inc().exercise); CP.practice = !!inc().exercise;
     var q2 = document.getElementById('cbQuick'); if (q2 && qv) { q2.value = qv; } if (q2 && qf) { q2.focus(); try { q2.setSelectionRange(qv.length, qv.length); } catch (x) {} }
     paintSync(); window.scrollTo(0, y);
@@ -350,7 +361,9 @@
   act.open = function (k) { openBoard(k); };
   act.mode = function (m) { setKV('mode', m); commit((setFor(kv('tpl', 'other')) === SETS.fire ? 'Strategy: ' : 'Phase: ') + m.toUpperCase(), 'Decision'); };
   act.cond = function (c) { setKV('cond', c); if (c === 'Working fire' && kv('tpl') === 'alarm') return upgrade(); commit('Conditions: ' + c, 'Event'); };
-  act.unit = function (id) {
+  act.unit = function (id, el) {
+    // with a unit picked, tapping any unit inside another division/group assigns to that division/group
+    if (CB.sel && CB.sel !== id && el && el.closest) { var card = el.closest('.cbasg[data-a]'), cur = CP.byId(inc().resources, CB.sel); if (card && cur && cur.assign !== card.dataset.a) { CB.sel = null; return moveUnit(cur, card.dataset.a); } }
     if (CB.sel === id) { CB.sel = null; render(); return; }
     CB.sel = id; render();
   };
