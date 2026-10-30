@@ -43,7 +43,7 @@
     var a = CP.arc; if (!a.signedIn()) { O.err = 'Sign in to ArcGIS to load Overwatch.'; O.paint(); return; }
     var nearW = NEAR.map(function (n) { return "name LIKE '" + n + "%'"; }).join(' OR ');
     var jobs = {
-      calls: a.query(a.L.cad, '1=1', { geom: true, order: 'calldate DESC', n: 300, fields: 'callid,callcat,calltype,priority,description,fulladdr,city,calldate,agency' }),
+      calls: a.query(a.L.cad, a.CAD_FIRE_EMS, { geom: true, order: 'calldate DESC', n: 300, fields: 'callid,callcat,calltype,priority,description,fulladdr,city,calldate,agency' }),
       units: a.query(a.L.cadUnits, '1=1', { geom: true, n: 1000, fields: 'UnitID,StatusName,UnitTypeDesc,DeptName,CFSNumber,MainTypeDesc' }),
       vdot: a.query(SRC.vdot, "district='Salem' OR county LIKE '%Botetourt%'", { geom: true, order: 'start_time DESC', n: 200, fields: 'event_type,category,description,road,county,severity,lane_status,start_time,update_time,latitude,longitude' }),
       power: a.query(SRC.power, nearW, { geom: true, n: 50, fields: 'name,localitylabel,customersout,customerstracked,percent_out,lastupdateddatetime' }),

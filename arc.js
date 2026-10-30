@@ -48,6 +48,7 @@
     },
     user: null, own: null, live: {}, status: 'local', err: ''
   };
+  arc.CAD_FIRE_EMS = "callcat IN ('FIRE','EMS')"; // CAD calls everywhere in BEACON: fire and EMS only
   var TK = 'bcem.cp.auth.v1', MIR = 'bcem.cp.mirror.v1', SES = 'bcem.cp.session.v1';
 
   // ---------- auth ----------
@@ -572,7 +573,7 @@
         within(L.critInfra, latlngs, { fields: 'OBJECTID,name,facilitytype,sector,fulladdr,pocname,pocphone', geom: true }).catch(none),
         within(L.closures, latlngs, { where: "activeincid='Yes'", fields: 'OBJECTID,street,description' }).catch(none),
         within(L.blocks, latlngs, { where: "activeincid='Yes'", fields: 'OBJECTID,street,description' }).catch(none),
-        within(L.cad, latlngs, { fields: '*', geom: true }).catch(none)
+        within(L.cad, latlngs, { where: arc.CAD_FIRE_EMS, fields: '*', geom: true }).catch(none)
       ]);
       var addr = {}; r[0].forEach(function (f) { var a = f.attributes; addr[a.Type || a.TYPE || 'Unspecified'] = a.n || a.N || 0; });
       var res = 0, mh = 0, bus = 0, other = 0, tot = 0;
@@ -644,7 +645,7 @@
     var bb = { geometry: CP.COUNTY.bbox.xmin + ',' + CP.COUNTY.bbox.ymin + ',' + CP.COUNTY.bbox.xmax + ',' + CP.COUNTY.bbox.ymax, geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects' };
     var L = arc.L;
     var R = await Promise.all([
-      settle(arc.query(L.cad, '1=1', { fields: 'callid,calltype,callcat,priority,fulladdr,calldate,agency,disposition', geom: true, order: 'calldate DESC', n: 200 })),
+      settle(arc.query(L.cad, arc.CAD_FIRE_EMS, { fields: 'callid,calltype,callcat,priority,fulladdr,calldate,agency,disposition', geom: true, order: 'calldate DESC', n: 200 })),
       settle(arc.stats(L.cadUnits, '1=1', [{ statisticType: 'count', onStatisticField: 'UnitID', outStatisticFieldName: 'n' }], 'StatusName')),
       settle(arc.count(L.stormResp, d)), settle(arc.count(L.stormDisp, d)), settle(arc.count(L.stormPub, d)),
       settle(arc.query(L.shelters, "status IN ('Open','Alert','Standby')", { fields: 'facname,status,capacity,occupancy,fulladdr,allowpets', geom: true })),

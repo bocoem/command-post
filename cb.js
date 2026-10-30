@@ -92,7 +92,10 @@
     staging: '<path d="M7 20V4h6a4 4 0 0 1 0 8H7"/>',
     traffic: '<path d="M12 3l7 17H5zM9.5 14h5M10.6 10h2.8"/>',
     tools: '<path d="M14 6l4 4-8 8-4-4zM16 4l4 4M4 20l2-2"/>',
-    triage: '<path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h3"/>'
+    triage: '<path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h3"/>',
+    pen: '<path d="M4 20l1-5L16 4l4 4L9 19zM14 6l4 4"/>',
+    eraser: '<path d="M8 20h12M5 15l9-9 5 5-7 7H8z"/>',
+    cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>'
   };
   function svg(k, cls) { return '<svg class="cbi ' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (SVG[k] || SVG.flag) + '</svg>'; }
   function unitLook(r) {
@@ -159,7 +162,7 @@
     if (!A.signedIn()) { CB.list = []; CB.cad = []; return; }
     try { var r = await A.listRemote(); CB.closedList = r.filter(function (x) { return x.status === 'Closed' && x.closed_time && Date.now() - x.closed_time < 3 * 864e5; }).slice(0, 8); CB.list = r.filter(function (x) { return x.status !== 'Closed'; }).sort(function (a, b) { return (b.start_time || 0) - (a.start_time || 0); }).slice(0, 25); } catch (e) { CB.list = CP.store.list().filter(function (x) { return x.status !== 'Closed'; }).map(function (x) { return { incident_key: x.id, incident_name: x.name, incident_number: x.number, incident_type: x.type, start_time: Date.parse(x.start) }; }); }
     try {
-      var f = await A.query(A.L.cad, '1=1', { geom: true, order: 'calldate DESC', n: 60, fields: 'callid,callcat,calltype,fulladdr,city,calldate,agency' });
+      var f = await A.query(A.L.cad, A.CAD_FIRE_EMS, { geom: true, order: 'calldate DESC', n: 60, fields: 'callid,callcat,calltype,fulladdr,city,calldate,agency' });
       var u = await A.query(A.L.cadUnits, "CFSNumber IS NOT NULL AND CFSNumber<>'' AND CFSNumber<>'0'", { fields: 'UnitID,StatusName,UnitTypeDesc,DeptName,CFSNumber', n: 1000 }).catch(function () { return []; });
       var by = {}; u.forEach(function (x) { var a = x.attributes; (by[a.CFSNumber] = by[a.CFSNumber] || []).push({ id: a.UnitID, st: a.StatusName, type: a.UnitTypeDesc, dept: a.DeptName }); });
       CB.cad = f.map(function (x) { var a = x.attributes; return { callid: String(a.callid), type: a.calltype, cat: a.callcat, addr: [a.fulladdr, a.city].filter(Boolean).join(', '), ll: x.geometry ? toLL(x.geometry) : null, units: by[String(a.callid)] || [] }; })
@@ -203,12 +206,15 @@
   function addUnit(name, kind, agency, status, quiet) {
     name = String(name || '').trim().toUpperCase(); if (!name) return null;
     var ex = units().find(function (r) { return (r.name || '').toUpperCase() === name; }); if (ex) return ex;
-    var r = CP.addItem(inc(), 'resources', { name: name, kind: kind || kindOf(name), type: '', agency: agency || '', leader: '', persons: 0, contact: '', orderNo: '', checkinLoc: 'Scene', status: status || 'Checked In', assign: '', checkin: CP.now() });
+    var r = CP.addItem(inc(), 'resources', { name: name, kind: kind || kindOf(name), type: '', agency: agency || '', leader: '', persons: crewDefault(kind || kindOf(name)), contact: '', orderNo: '', checkinLoc: 'Scene', status: status || 'Checked In', assign: '', checkin: CP.now() });
     if (!quiet) log(name + (status === 'En Route' ? ' responding' : ' on scene'), 'Resource');
     return r;
   }
   function moveUnit(r, aid) {
     var a = aid ? CP.byId(inc().assignments, aid) : null;
+    var was = r.assign ? CP.byId(inc().assignments, r.assign) : null;
+    if (isWork(a)) { if (!r.workT || !isWork(was)) r.workT = CP.now(); } else r.workT = '';
+    if (a && aid !== r.assign) { r.asgT = CP.now(); r.ack = ''; }
     r.assign = aid || ''; r.status = !a ? 'Checked In' : a.staging ? 'Staged' : 'Assigned'; r.u = CP.now(); if (r.status !== 'En Route' && !r.arrived) r.arrived = CP.now(); CP.touch(inc(), 'resources');
     commit(r.name + (a ? ' assigned to ' + aName(a) : ' available (unassigned)'), 'Resource');
   }
@@ -234,9 +240,10 @@
     // top: where, clock, PAR, MAYDAY
     h += '<div class="cbtop' + (may ? ' mayday' : '') + '"><div class="cbaddr">' + svg(tplOf(i).icon || 'flag', 'big t-' + kv('tpl', 'other')) + '<div><b>' + E(i.location.desc || i.name) + '</b><span>' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (ic ? ' · IC ' + E(ic) : '') + (i.exercise ? ' · <span class="chip practice">PRACTICE</span>' : '') + (kv('mci') ? ' · <span class="chip red">MCI</span>' : '') + '</span></div><span class="sync on" id="cbSync"></span></div>' +
       '<div class="cbclock"><span>ELAPSED</span><b id="cbEl">' + since(i.start) + '</b></div>' +
-      '<button class="cbpar' + (parLeft <= 0 ? ' due' : parLeft < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR · every ' + parEvery + ' min</span><b id="cbPar">' + (parLeft <= 0 ? 'DUE ' + since(new Date(parDue).toISOString()) : Math.floor(parLeft / 60) + ':' + CP.pad(parLeft % 60)) + '</b></button>' +
+      '<button class="cbpar' + (parLeft <= 0 ? ' due' : parLeft < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR · ' + ppl(onScene()) + ' on scene</span><b id="cbPar">' + (parLeft <= 0 ? 'DUE ' + since(new Date(parDue).toISOString()) : Math.floor(parLeft / 60) + ':' + CP.pad(parLeft % 60)) + '</b><i class="cbparbar"><i id="cbParBar" style="width:' + Math.max(0, Math.min(100, parLeft / (parEvery * 60) * 100)).toFixed(1) + '%"></i></i></button>' +
       '<button class="cbmay" data-cb="mayday">' + I('warn') + (may ? 'MAYDAY ACTIVE' : 'MAYDAY') + '</button></div>';
     if (may) h += '<div class="cbmaybar">' + I('warn') + ' MAYDAY ' + E(since(may.t)) + ' · ' + E(may.who || '') + ' · ' + E(may.where || '') + ' · ' + E(may.air || '') + (may.rit ? ' · RIT: ' + E(may.rit) : '') + ' <button class="btn sm" data-cb="mayclear">Clear MAYDAY</button></div>';
+    if (CB.tab === 'map') h += mapView(); else if (CB.tab === 'wb') h += wbView(); else {
     var free = units().filter(function (r) { return !r.assign; }), enr = free.filter(function (r) { return r.status === 'En Route'; }), avail = free.filter(function (r) { return r.status !== 'En Route'; });
     var su = CB.sel ? CP.byId(i.resources, CB.sel) : null;
     h += '<div class="cb3">';
@@ -247,9 +254,9 @@
       '<div class="cbh sm">' + I('plus') + 'Add unit</div><div class="cbadd">' + KINDS.map(function (k) { return '<button data-cb="addk" data-a="' + k[0] + '" title="' + E(k[2]) + '">' + E(k[0]) + '</button>'; }).join('') + '</div>' +
       '<button class="btn cbcad" data-cb="cadunits">' + I('radio') + 'From CAD</button></section>';
     // CENTER: divisions and groups, all visible
-    h += '<section class="cbcol cbcolA">' + (su ? '<div class="cbpick"><div><b>' + E(su.name) + '</b> selected · tap a division or group to assign</div><div class="cbpickb">' +
+    h += '<section class="cbcol cbcolA">' + longBar() + (su ? '<div class="cbpick"><div><b>' + E(su.name) + '</b> selected · tap a division or group to assign</div><div class="cbpickb">' +
         (su.assign || su.status === 'En Route' ? '<button class="btn" data-cb="qa" data-a="">' + I('check') + 'Available</button>' : '') +
-        '<button class="btn" data-cb="unote" data-a="' + su.id + '">' + I('log') + (su.note ? 'Edit note' : 'Note') + '</button><button class="btn" data-cb="unit" data-a="' + su.id + '">' + I('menu') + 'Options</button><button class="btn ghost" data-cb="desel">Cancel</button></div></div>'
+        (workMin(su) ? '<button class="btn" data-cb="torehab" data-a="' + su.id + '">' + svg('rehab') + 'Rehab</button>' : '') + '<button class="btn" data-cb="crew" data-a="' + su.id + '">' + I('users') + (+su.persons ? su.persons + ' riding' : 'Crew') + '</button><button class="btn" data-cb="unote" data-a="' + su.id + '">' + I('log') + (su.note ? 'Edit note' : 'Note') + '</button><button class="btn" data-cb="umenu" data-a="' + su.id + '">' + I('menu') + 'Options</button><button class="btn ghost" data-cb="desel">Cancel</button></div></div>'
         : '<div class="cbh">' + svg('div') + 'Divisions & groups <span class="ct">' + asgs().filter(function (a) { return unitsIn(a.id).length; }).length + ' staffed</span><span class="sp" style="flex:1"></span><span class="dim cbhint">Tap a unit, then tap where it goes</span></div>') +
       '<div class="cbscroll"><div class="cbgrid">' + asgs().map(function (a) {
         var us = unitsIn(a.id), sup = a.reportTo || '', par = kv('par_' + a.id, null), can = a.cbCan || '', al = asgLook(a);
@@ -265,13 +272,14 @@
       respPanel() + mciPanel() +
       '<div class="cbh sm">' + I('check') + 'Benchmarks <span class="ct">' + marks().filter(function (m) { return m.t; }).length + '/' + marks().length + '</span></div><div class="cbmarks">' + marks().map(function (m) { return '<button class="cbmark' + (m.t ? ' done' : '') + '" data-cb="mark" data-a="' + m.id + '" title="' + (m.t ? 'Done ' + E(CP.fmtTime(m.t)) : 'Tap when done') + '">' + I(m.t ? 'check' : 'clock') + '<span>' + E(m.label) + '</span>' + (m.t ? '<i>' + E(CP.fmtTime(m.t)) + '</i>' : '') + '</button>'; }).join('') +
       '<button class="cbmark add" data-cb="addmark">' + I('plus') + '<span>Add</span></button></div>' +
-      '<div class="cbh sm">' + I('log') + 'Quick log</div><div class="cbqk">' + quickFor().map(function (q) { return '<button data-cb="quick" data-a="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>' +
+      photoStrip() + '<div class="cbh sm">' + I('log') + 'Quick log</div><div class="cbqk">' + quickFor().map(function (q) { return '<button data-cb="quick" data-a="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>' +
       '<div class="cbnote"><input id="cbQuick" class="in" placeholder="Type a note…"><button class="btn pri" data-cb="notesave">Save</button></div>' +
       '<div class="cblog">' + AL(i.log).slice(-12).reverse().map(function (l) { return '<div><span class="mono">' + E(CP.fmtTime(l.ts)) + '</span> ' + E(l.text) + '</div>'; }).join('') + '</div></div></section>';
     h += '</div>';
+    }
     // BOTTOM: big action buttons
     h += '<div class="cbact">' + (kv('mci') ? '' : '<button class="red" data-cb="mci">' + svg('mci') + '<span>Declare MCI</span></button>') +
-      '<button data-cb="can">' + I('msg') + '<span>CAN report</span></button><button data-cb="note">' + I('log') + '<span>Log entry</span></button><button data-cb="newasg">' + I('plus') + '<span>Division / group</span></button><button data-cb="report">' + I('print') + '<span>Report</span></button><button data-cb="more">' + I('menu') + '<span>More</span></button>' +
+      '<button data-cb="can">' + I('msg') + '<span>CAN report</span></button><button data-cb="note">' + I('log') + '<span>Log entry</span></button><button data-cb="xfer">' + I('users') + '<span>Transfer IC</span></button><button data-cb="photo">' + svg('cam') + '<span>Photo</span></button><button data-cb="report">' + I('print') + '<span>Report</span></button><button data-cb="more">' + I('menu') + '<span>More</span></button>' +
       '<a class="pri" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener" data-cb="tocp">' + I('link') + '<span>Command Post</span></a></div>';
     return h + '</div>';
   }
@@ -289,15 +297,16 @@
   }
   function tile(r) {
     var on = CB.sel === r.id, st = r.status === 'En Route' ? 'enr' : r.status === 'Out of Service' ? 'oos' : r.assign ? 'asg' : 'av';
-    var t = r.arrived || r.checkin; var mins = t ? Math.floor((Date.now() - new Date(t).getTime()) / 60000) : 0;
-    var lk = unitLook(r);
-    return '<button class="cbunit ' + st + ' ' + lk[1] + (on ? ' sel' : '') + '" draggable="true" data-cb="unit" data-a="' + r.id + '">' + svg(lk[0]) + '<b>' + E(r.name) + '</b><span>' + E((r.kind || '').replace(/ \(.*\)/, '').replace('Overhead', 'Chief')) + (r.status === 'En Route' ? ' · resp.' : mins ? ' · ' + mins + 'm' : '') + '</span>' + (r.note ? '<em class="cbun">' + E(r.note) + '</em>' : '') + '</button>';
+    var lk = unitLook(r), wm = workMin(r), av = r.status === 'En Route' ? avlFor(r) : null, kind = E((r.kind || '').replace(/ \(.*\)/, '').replace('Overhead', 'Chief'));
+    var sub = r.status === 'En Route' ? (av && av.mi != null ? av.mi.toFixed(1) + ' mi out' : 'responding') : wm ? 'working ' + wm + 'm' : kind;
+    var wc = wm >= wkMax() ? ' wkover' : wm >= wkWarn() ? ' wkwarn' : '';
+    return '<button class="cbunit ' + st + ' ' + lk[1] + (on ? ' sel' : '') + wc + '" draggable="true" data-cb="unit" data-a="' + r.id + '">' + svg(lk[0]) + '<b>' + E(r.name) + (+r.persons ? '<em class="cbpp">' + r.persons + '</em>' : '') + (r.ack && r.asgT && r.ack >= r.asgT ? '<em class="cback" title="Acknowledged">✓</em>' : '') + (CB.tab === 'map' && r.lat != null && r.lat !== '' ? '<em class="cbpin" title="On the map">●</em>' : '') + '</b><span>' + sub + '</span>' + (r.note ? '<em class="cbun">' + E(r.note) + '</em>' : '') + '</button>';
   }
 
   // ---------- phone view (read-only, live) ----------
   function phoneView() {
     var i = inc(), may = kv('mayday', null), parEvery = +kv('parEvery', 20), parDue = new Date(kv('parT', i.start)).getTime() + parEvery * 60000, left = Math.round((parDue - Date.now()) / 1000);
-    var h = '<div class="cbph"><div class="cbaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + E(kv('mode', '')) + ' · ' + E(kv('cond', '')) + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
+    var h = '<div class="cbph">' + myUnitCard() + '<div class="cbaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + E(kv('mode', '')) + ' · ' + E(kv('cond', '')) + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
       '<div class="cbphrow"><div><span>Elapsed</span><b id="cbEl">' + since(i.start) + '</b></div><div class="' + (left <= 0 ? 'bad-t' : '') + '"><span>PAR</span><b id="cbPar">' + (left <= 0 ? 'DUE' : Math.floor(left / 60) + ':' + CP.pad(left % 60)) + '</b></div><div><span>Units</span><b>' + units().length + '</b></div></div>' +
       (may ? '<div class="cbmaybar">' + I('warn') + ' MAYDAY · ' + E(may.who || '') + ' · ' + E(may.where || '') + '</div>' : '') + mciPanel() +
       asgs().map(function (a) { var us = unitsIn(a.id); return '<div class="cbphasg"><b>' + E(aName(a)) + '</b>' + (a.reportTo ? ' <span class="dim">· ' + E(a.reportTo) + '</span>' : '') + '<div>' + (us.length ? us.map(function (r) { return '<span class="chip">' + E(r.name) + (r.note ? ' · ' + E(r.note) : '') + '</span>'; }).join(' ') : '<span class="dim">—</span>') + '</div></div>'; }).join('') +
@@ -328,6 +337,8 @@
     var force = new URLSearchParams(location.search).get('view');
     m.innerHTML = inc().status === 'Closed' ? closedScreen() : (force === '0' ? false : phone()) ? phoneView() : board();
     document.body.classList.toggle('cbfit', !!m.querySelector('.cbx'));
+    var ts = document.getElementById('cbTabSlot'); if (ts) ts.innerHTML = m.querySelector('.cbx') ? tabs() : '';
+    if (m.querySelector('#cbMapHost')) mapMount(); if (m.querySelector('#cbWbHost')) wbMount();
     document.body.classList.toggle('practice', !!inc().exercise); CP.practice = !!inc().exercise;
     var q2 = document.getElementById('cbQuick'); if (q2 && qv) { q2.value = qv; } if (q2 && qf) { q2.focus(); try { q2.setSelectionRange(qv.length, qv.length); } catch (x) {} }
     paintSync(); window.scrollTo(0, y);
@@ -335,11 +346,11 @@
   setInterval(function () {
     if (!inc()) return; var i = inc();
     var el = document.getElementById('cbEl'); if (el) el.textContent = since(i.start);
-    var p = document.getElementById('cbPar'); if (p) { var due = new Date(kv('parT', i.start)).getTime() + (+kv('parEvery', 20)) * 60000, left = Math.round((due - Date.now()) / 1000); p.textContent = left <= 0 ? 'DUE ' + since(new Date(due).toISOString()) : Math.floor(left / 60) + ':' + CP.pad(left % 60); var b = p.closest('.cbpar'); if (b) { b.classList.toggle('due', left <= 0); b.classList.toggle('soon', left > 0 && left < 120); if (left === 0 && navigator.vibrate) navigator.vibrate([200, 100, 200]); } }
+    var p = document.getElementById('cbPar'); if (p) { var due = new Date(kv('parT', i.start)).getTime() + (+kv('parEvery', 20)) * 60000, left = Math.round((due - Date.now()) / 1000); p.textContent = left <= 0 ? 'DUE ' + since(new Date(due).toISOString()) : Math.floor(left / 60) + ':' + CP.pad(left % 60); var b = p.closest('.cbpar'); if (b) { b.classList.toggle('due', left <= 0); b.classList.toggle('soon', left > 0 && left < 120); if (left === 0 && navigator.vibrate) navigator.vibrate([200, 100, 200]); } var pb = document.getElementById('cbParBar'); if (pb) pb.style.width = Math.max(0, Math.min(100, left / ((+kv('parEvery', 20)) * 60) * 100)).toFixed(1) + '%'; }
   }, 1000);
   // pull others' changes (phones and other tablets stay in step)
   setInterval(async function () {
-    if (!inc() || A.status !== 'on' || CB.saving || document.getElementById('modal')) return;
+    if (!inc() || A.status !== 'on' || CB.saving || CB.drawing || document.getElementById('modal')) return;
     try { var m = await A.checkRemote(inc()); if (m) { CB.inc = m; CP.store.put(m); render(); } } catch (e) {}
     if (kv('mci') && (!CB.mciLive || Date.now() - (CB.mciLive.t || 0) > 15000)) { var before = JSON.stringify(CB.mciLive || {}); await loadMci(); if (JSON.stringify(CB.mciLive || {}) !== before && !document.getElementById('modal')) render(); }
   }, 5000);
@@ -353,6 +364,305 @@
 
   // ---------- actions ----------
   var act = {};
+  // =================== tabs: board · map · whiteboard ===================
+  CB.tab = CB.tab || 'board';
+  act.tab = function (t) { CB.tab = t; CB.sel = null; CB.placing = null; render(); };
+  function tabs() { return '<div class="cbtabs">' + [['board', 'truck', 'Board'], ['map', 'map', 'Map'], ['wb', 'pen', 'Whiteboard']].map(function (t) { return '<button class="' + (CB.tab === t[0] ? 'on' : '') + '" data-cb="tab" data-a="' + t[0] + '">' + (t[1] === 'pen' ? svg('pen') : I(t[1])) + '<span>' + t[2] + '</span></button>'; }).join('') + '</div>'; }
+
+  // =================== crews: riding count, names, split ===================
+  var CREW = [['Engine', 4], ['Ladder', 4], ['Tanker', 2], ['Rescue', 3], ['Ambulance', 2], ['Brush', 2], ['Overhead', 1], ['Law', 1]];
+  function crewDefault(kind) { var c = CREW.find(function (x) { return (kind || '').indexOf(x[0]) === 0; }); return c ? c[1] : 2; }
+  function ppl(list) { return list.reduce(function (s, r) { return s + (+r.persons || 0); }, 0); }
+  function onScene() { return units().filter(function (r) { return r.status !== 'En Route' && r.status !== 'Out of Service'; }); }
+  function rideRow(n, max, from) { var h = '<div class="cbride">'; for (var k = from || 1; k <= (max || 8); k++) h += '<button data-rd="' + k + '" class="' + (k === n ? 'on' : '') + '">' + k + '</button>'; return h + '</div>'; }
+  function rideWire(bg) { bg.addEventListener('click', function (e) { var b = e.target.closest('[data-rd]'); if (!b) return; e.preventDefault(); bg.querySelectorAll('[data-rd]').forEach(function (x) { x.classList.toggle('on', x === b); }); }); }
+  function rideVal(bg, d) { var b = bg.querySelector('[data-rd].on'); return b ? +b.dataset.rd : d; }
+  function unitCrew(id) {
+    var r = CP.byId(inc().resources, id); if (!r) return;
+    var bg = U.modal('Crew · ' + r.name, '<div class="cbh sm">Riding (people on this unit)</div>' + rideRow(+r.persons || crewDefault(r.kind), 8) + '<label class="f" style="margin-top:10px"><span>Names (optional)</span><textarea class="in" name="crew" rows="3" placeholder="Capt. Smith, FF Jones, FF Lee">' + E(r.crew || '') + '</textarea></label>',
+      [{ label: 'Cancel', cls: 'ghost' }, { label: 'Save', cls: 'pri', fn: function (b) { r.persons = rideVal(b, r.persons); r.crew = U.val(b, 'crew'); r.u = CP.now(); CP.touch(inc(), 'resources'); commit(r.name + ' crew: ' + r.persons + (r.crew ? ' (' + r.crew + ')' : ''), 'Resource'); } }], { nofocus: true });
+    rideWire(bg);
+  }
+  function nextSplit(name) { var L2 = 'BCDEFG'; for (var k = 0; k < L2.length; k++) { var c = name + L2[k]; if (!units().some(function (u) { return u.name === c; })) return c; } return name + 'X'; }
+  function unitSplit(id) {
+    var r = CP.byId(inc().resources, id); if (!r) return; var n = +r.persons || 0;
+    if (n < 2) { U.toast('Set the crew count first (a split needs 2 or more).', 'err'); return; }
+    var nm = nextSplit(r.name);
+    var bg = U.modal('Split ' + r.name, '<p style="margin-top:0">How many of the ' + n + ' go with <b>' + E(nm) + '</b>?</p>' + rideRow(1, n - 1) + '<p class="dim" style="font-size:13px">' + E(nm) + ' shows up as its own unit so you can send it to a different task. Rejoin it from its options when the crew comes back together.</p>',
+      [{ label: 'Cancel', cls: 'ghost' }, { label: 'Split crew', cls: 'pri', fn: function (b) { var k = rideVal(b, 1), s = addUnit(nm, r.kind, r.agency, 'Checked In', true); s.persons = k; s.parent = r.id; s.arrived = CP.now(); r.persons = n - k; r.u = CP.now(); CP.touch(inc(), 'resources'); CB.sel = s.id; commit(r.name + ' split: ' + k + ' to ' + nm + ', ' + (n - k) + ' stay with ' + r.name, 'Resource'); } }], { nofocus: true });
+    rideWire(bg);
+  }
+  function unitRejoin(id) {
+    var s = CP.byId(inc().resources, id), p = s && CP.byId(inc().resources, s.parent); if (!p) return;
+    p.persons = (+p.persons || 0) + (+s.persons || 0); p.u = CP.now(); s.status = 'Released'; s.assign = ''; s.released = CP.now(); s.u = CP.now(); CP.touch(inc(), 'resources'); commit(s.name + ' rejoined ' + p.name + ' (' + p.persons + ' riding)', 'Resource');
+  }
+
+  // =================== work timers ===================
+  function isWork(a) { return !!a && !a.staging && !/rehab/i.test(aName(a)); }
+  function workMin(r) { if (!r.assign || !r.workT) return 0; var a = CP.byId(inc().assignments, r.assign); if (!isWork(a)) return 0; return Math.floor((Date.now() - new Date(r.workT).getTime()) / 60000); }
+  function wkWarn() { return +kv('workWarn', 20); } function wkMax() { return +kv('workMax', 30); }
+  function longCrews() { return units().filter(function (r) { return workMin(r) >= wkWarn(); }).sort(function (a, b) { return workMin(b) - workMin(a); }); }
+  function rehabAsg() { var a = asgs().find(function (x) { return /rehab/i.test(aName(x)); }); return a || CP.addItem(inc(), 'assignments', { branch: '', division: '', group: 'Rehab', staging: '', work: '', special: '', needs: [], reportTo: '' }); }
+  act.torehab = function (id) { var r = CP.byId(inc().resources, id); if (!r) return; CB.sel = null; moveUnit(r, rehabAsg().id); };
+  function longBar() {
+    var l = longCrews(); if (!l.length) return '';
+    return '<div class="cblong">' + I('clock') + '<b>Work time</b>' + l.map(function (r) { var m = workMin(r); return '<button class="' + (m >= wkMax() ? 'over' : 'warn') + '" data-cb="torehab" data-a="' + r.id + '"><b>' + E(r.name) + '</b> ' + m + ' min <span>→ Rehab</span></button>'; }).join('') + '</div>';
+  }
+  act.worktimes = function () {
+    var bg = U.modal('Crew work timers', '<p style="margin-top:0">A crew turns amber after this long on a working assignment (not Staging or Rehab), and red at the limit. Rehab or Staging resets it.</p><div class="cbh sm">Amber at</div><div class="cbride">' + [10, 15, 20, 25].map(function (n) { return '<button data-ww="' + n + '" class="' + (n === wkWarn() ? 'on' : '') + '">' + n + ' min</button>'; }).join('') + '</div><div class="cbh sm">Red at</div><div class="cbride">' + [20, 30, 40, 45, 60].map(function (n) { return '<button data-wm="' + n + '" class="' + (n === wkMax() ? 'on' : '') + '">' + n + ' min</button>'; }).join('') + '</div>', [{ label: 'Done', cls: 'pri' }], { nofocus: true });
+    bg.addEventListener('click', function (e) { var b = e.target.closest('[data-ww],[data-wm]'); if (!b) return; e.preventDefault(); var k = b.dataset.ww ? 'workWarn' : 'workMax'; setKV(k, +(b.dataset.ww || b.dataset.wm)); bg.querySelectorAll(b.dataset.ww ? '[data-ww]' : '[data-wm]').forEach(function (x) { x.classList.toggle('on', x === b); }); commit(null, null, true); });
+  };
+
+  // =================== transfer of command ===================
+  act.xfer = function () {
+    var cur = CP.personName(inc(), 'IC') || 'not set', chiefs = units().filter(function (r) { return /Overhead/.test(r.kind || ''); }).map(function (r) { return r.name; });
+    var bg = U.modal('Transfer command', '<p style="margin-top:0">Current Incident Commander: <b>' + E(cur) + '</b></p><label class="f"><span>New Incident Commander (name or unit)</span><input class="in big" name="ic"></label>' + (chiefs.length ? '<div class="cbmenu grid">' + chiefs.map(function (c) { return '<button data-ic="' + E(c) + '">' + E(c) + '</button>'; }).join('') + '</div>' : '') +
+      '<label class="f"><span>Command name (optional)</span><input class="in" name="cn" value="' + E(kv('cmdName', '') || '') + '" placeholder="Main Street Command"></label><label class="chk"><input type="checkbox" name="b1"> Briefing given: conditions, actions, needs</label><label class="chk"><input type="checkbox" name="b2"> Assignments and accountability reviewed on this board</label>',
+      [{ label: 'Cancel', cls: 'ghost' }, { label: 'Transfer command', cls: 'pri', fn: function (b) {
+        var n = U.val(b, 'ic'); if (!n) { U.toast('Who is taking command?', 'err'); return false; }
+        var p = CP.person(inc(), 'IC'); if (p) { p.name = n; p.u = CP.now(); } else CP.addItem(inc(), 'org', { pos: 'IC', label: '', name: n, agency: '', phone: '', radio: '', email: '', checkin: CP.now() }); CP.touch(inc(), 'org');
+        var cn = U.val(b, 'cn'); if (cn) setKV('cmdName', cn);
+        var br = [b.querySelector('[name=b1]').checked ? 'briefing given' : '', b.querySelector('[name=b2]').checked ? 'board reviewed' : ''].filter(Boolean);
+        setKV('xfers', (kv('xfers', []) || []).concat([{ t: CP.now(), from: cur, to: n }]));
+        commit('COMMAND TRANSFERRED: ' + cur + ' to ' + n + (cn ? ' (' + cn + ')' : '') + (br.length ? '. ' + br.join(', ') : '') + '.', 'Decision');
+      } }], { nofocus: true });
+    bg.addEventListener('click', function (e) { var c = e.target.closest('[data-ic]'); if (!c) return; e.preventDefault(); bg.querySelector('[name=ic]').value = c.dataset.ic; });
+  };
+
+  // =================== scene photos ===================
+  var PDB = null;
+  function pdb() { return PDB || (PDB = new Promise(function (ok, no) { var r = indexedDB.open('beacon-cb-photos', 1); r.onupgradeneeded = function () { r.result.createObjectStore('p'); }; r.onsuccess = function () { ok(r.result); }; r.onerror = function () { no(r.error); }; })); }
+  async function pput(k, v) { var d = await pdb(); return new Promise(function (ok, no) { var t = d.transaction('p', 'readwrite'); if (v === undefined) t.objectStore('p').delete(k); else t.objectStore('p').put(v, k); t.oncomplete = function () { ok(); }; t.onerror = function () { no(t.error); }; }); }
+  async function pget(k) { try { var d = await pdb(); return await new Promise(function (ok) { var q = d.transaction('p').objectStore('p').get(k); q.onsuccess = function () { ok(q.result); }; q.onerror = function () { ok(null); }; }); } catch (e) { return null; } }
+  function shrink(file, max, q) { return new Promise(function (ok, no) { var u = URL.createObjectURL(file), im = new Image(); im.onload = function () { var s = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * s); c.height = Math.round(im.height * s); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); var d = c.toDataURL('image/jpeg', q); c.toBlob(function (b) { ok({ blob: b, url: d }); }, 'image/jpeg', q); }; im.onerror = function () { no(new Error('Not an image')); }; im.src = u; }); }
+  function photos() { return AL(inc().cbPhotos); }
+  act.photo = function () {
+    var f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*'; f.multiple = true;
+    f.onchange = async function () {
+      var n = 0;
+      for (var k = 0; k < f.files.length; k++) { try { var full = await shrink(f.files[k], 1600, 0.82), th = await shrink(f.files[k], 220, 0.55), p = { id: CP.uid(), t: CP.now(), by: CP.me.name || '', cap: '', th: th.url, item: '', u: CP.now() }; await pput(p.id, full.blob); inc().cbPhotos = inc().cbPhotos || []; inc().cbPhotos.push(p); n++; } catch (e) { console.warn(e); } }
+      if (!n) { U.toast('Could not read that photo', 'err'); return; }
+      CP.touch(inc(), 'cbPhotos'); commit(n + ' scene photo' + (n > 1 ? 's' : '') + ' added', 'Event'); uploadPhotos();
+    };
+    f.click();
+  };
+  var upBusy = false, grpIds = null;
+  async function uploadPhotos() {
+    if (upBusy || A.status !== 'on' || !inc() || !A.user) return; var pend = photos().filter(function (p) { return !p.item; }); if (!pend.length) return; upBusy = true;
+    try {
+      if (!grpIds) { var me = await A.req(A.portal + '/sharing/rest/community/self'); grpIds = (me.groups || []).filter(function (g) { return /^BOCO Access [1-4] /.test(g.title); }).map(function (g) { return g.id; }); }
+      for (var k = 0; k < pend.length; k++) {
+        var p = pend[k], blob = await pget(p.id); if (!blob) continue;
+        var u = A.user.username, fd = new FormData();
+        fd.append('f', 'json'); fd.append('token', (A.auth() || {}).token || ''); fd.append('type', 'Image'); fd.append('title', 'Incident ' + inc().number + ' scene photo ' + CP.fmtTime(p.t)); fd.append('tags', 'BEACON,Command Board,Scene photo,' + inc().number); fd.append('snippet', (inc().location.desc || inc().name) + (p.cap ? ' · ' + p.cap : '')); fd.append('file', blob, 'scene-' + p.id + '.jpg');
+        var r = await fetch(A.portal + '/sharing/rest/content/users/' + u + '/addItem', { method: 'POST', body: fd }).then(function (x) { return x.json(); });
+        if (!r.success) throw new Error((r.error && r.error.message) || 'Photo upload failed');
+        if (grpIds.length) await A.req(A.portal + '/sharing/rest/content/users/' + u + '/items/' + r.id + '/share', { groups: grpIds.join(','), everyone: false, org: false }, true);
+        p.item = r.id; p.u = CP.now(); CP.touch(inc(), 'cbPhotos'); await pput(p.id, undefined); commit(null, null, true);
+      }
+    } catch (e) { console.warn('photo upload', e); } finally { upBusy = false; }
+  }
+  setInterval(uploadPhotos, 60000);
+  function photoUrl(p) { return p.item && A.signedIn() ? A.portal + '/sharing/rest/content/items/' + p.item + '/data?token=' + encodeURIComponent((A.auth() || {}).token || '') : ''; }
+  act.pview = async function (id) {
+    var p = CP.byId(inc().cbPhotos, id); if (!p) return; var src = p.th, b = await pget(p.id); if (b) src = URL.createObjectURL(b); else if (photoUrl(p)) src = photoUrl(p);
+    U.modal('Photo · ' + CP.fmtTime(p.t) + (p.by ? ' · ' + p.by : ''), '<img src="' + E(src) + '" alt="" style="width:100%;max-height:62vh;object-fit:contain;border-radius:8px;background:#000"><label class="f" style="margin-top:8px"><span>Caption</span><input class="in" name="cap" value="' + E(p.cap || '') + '" placeholder="Side C, second floor"></label><div class="dim" style="font-size:12px">' + (p.item ? 'Saved to county ArcGIS.' : 'Saved on this device. It uploads to county ArcGIS when online.') + '</div>',
+      [{ label: 'Delete', cls: 'ghost', fn: function () { sure('Delete this photo?', 'It comes off the incident record.', 'Delete', function () { p.del = true; p.u = CP.now(); CP.touch(inc(), 'cbPhotos'); commit('Scene photo removed', 'Event'); }); } }, { label: 'Close', cls: 'ghost' }, { label: 'Save caption', cls: 'pri', fn: function (bg) { p.cap = U.val(bg, 'cap'); p.u = CP.now(); CP.touch(inc(), 'cbPhotos'); commit(p.cap ? 'Photo ' + CP.fmtTime(p.t) + ': ' + p.cap : null, 'Event'); } }]);
+  };
+  function photoStrip() {
+    var ps = photos();
+    return '<div class="cbh sm">' + svg('cam') + 'Photos <span class="ct">' + ps.length + '</span></div><div class="cbphotos">' + ps.slice(-8).reverse().map(function (p) { return '<button data-cb="pview" data-a="' + p.id + '" title="' + E(p.cap || CP.fmtTime(p.t)) + '"><img src="' + E(p.th) + '" alt="">' + (p.item ? '' : '<i title="Uploads when online">•</i>') + '</button>'; }).join('') + '<button class="add" data-cb="photo">' + svg('cam') + '<span>Add</span></button></div>';
+  }
+
+  // =================== acknowledge (phone view) ===================
+  act.myunit = function (n) { CP.store.setPref('cbMyUnit', CP.store.prefs().cbMyUnit === n ? '' : n); render(); };
+  act.ack = function (id) { var r = CP.byId(inc().resources, id); if (!r) return; var a = r.assign && CP.byId(inc().assignments, r.assign); r.ack = CP.now(); r.u = CP.now(); CP.touch(inc(), 'resources'); if (navigator.vibrate) navigator.vibrate(80); commit(r.name + ' acknowledged ' + (a ? aName(a) : 'assignment'), 'Communication'); };
+  function needsAck(r) { return !!(r && r.assign && r.asgT && (!r.ack || r.ack < r.asgT)); }
+  function myUnitCard() {
+    var my = CP.store.prefs().cbMyUnit || '', mu = units().find(function (r) { return r.name === my; });
+    var h = '<div class="cbmyu"><div class="cbh">' + I('truck') + 'My unit</div><div class="cbmyus">' + units().map(function (r) { return '<button class="' + (r.name === my ? 'on' : '') + (needsAck(r) ? ' need' : '') + '" data-cb="myunit" data-a="' + E(r.name) + '">' + E(r.name) + '</button>'; }).join('') + '</div>';
+    if (!mu) return h + '<div class="dim" style="font-size:13px">Tap your unit to see your assignment and acknowledge it.</div></div>';
+    var a = mu.assign && CP.byId(inc().assignments, mu.assign), need = needsAck(mu);
+    if (need && !CB.lastNeed && navigator.vibrate) navigator.vibrate([250, 120, 250]); CB.lastNeed = need;
+    return h + '<div class="cbmycard' + (need ? ' need' : '') + '"><b>' + E(mu.name) + ' → ' + (a ? E(aName(a)) : 'Not assigned') + '</b><span>' + (mu.asgT && a ? 'Assigned ' + E(CP.fmtTime(mu.asgT)) : '') + (mu.ack && !need ? ' · acknowledged ' + E(CP.fmtTime(mu.ack)) : '') + (workMin(mu) ? ' · working ' + workMin(mu) + ' min' : '') + '</span>' +
+      (need ? '<button class="btn big pri" data-cb="ack" data-a="' + mu.id + '">' + I('check') + 'Acknowledge</button>' : '') + (a && (a.cbCan || a.work) ? '<div class="dim" style="margin-top:6px">' + E(a.cbCan || a.work) + '</div>' : '') + '</div></div>';
+  }
+
+  // =================== send the report ===================
+  function summaryText(short) {
+    var i = inc(), call = kv('call', null), ic = CP.personName(i, 'IC'), dmin = Math.round((new Date(i.closed || Date.now()) - new Date(i.start)) / 60000);
+    var L1 = [(i.exercise ? 'PRACTICE · ' : '') + 'BOTETOURT COUNTY FIRE & EMS · INCIDENT ' + i.number, (i.location.desc || i.name), (call ? call.type : (TEMPLATES[kv('tpl', 'other')] || {}).n || i.type) + ' · ' + i.status,
+      'Start ' + CP.fmtDT(i.start) + (i.closed ? ' · Closed ' + CP.fmtDT(i.closed) : '') + ' · ' + (dmin >= 60 ? Math.floor(dmin / 60) + ' h ' + (dmin % 60) + ' min' : dmin + ' min'),
+      'IC: ' + (ic || '-') + ' · ' + (kv('mode', '') || '') + (kv('cond', '') ? ' · ' + kv('cond', '') : ''), 'Units: ' + AL(i.resources).length + ' · Personnel: ' + ppl(AL(i.resources).filter(function (r) { return !r.parent; }))];
+    if (kv('mci', null)) { var c = mciCounts(); L1.push('MCI: ' + c.total + ' patients (R ' + c.red + ', Y ' + c.yellow + ', G ' + c.green + ', B ' + c.black + ')'); }
+    if (short) return L1.join('\n');
+    L1.push('', 'BENCHMARKS'); marks().forEach(function (m) { L1.push((m.t ? CP.fmtTime(m.t) : '----') + '  ' + m.label); });
+    L1.push('', 'ASSIGNMENTS'); asgs().forEach(function (a) { var us = AL(i.resources).filter(function (r) { return r.assign === a.id; }); if (us.length) L1.push(aName(a) + ': ' + us.map(function (r) { return r.name; }).join(', ')); });
+    L1.push('', 'TIMELINE (latest)'); AL(i.log).slice(-25).forEach(function (l) { L1.push(CP.fmtTime(l.ts) + '  ' + l.text); });
+    L1.push('', 'Full record: ' + location.origin + location.pathname.replace(/[^\/]*$/, '') + 'index.html?incident=' + encodeURIComponent(i.id));
+    return L1.join('\n');
+  }
+  function sendBtns(html, fname) {
+    var i = inc(), subj = 'Incident report ' + i.number + ' · ' + (i.location.desc || i.name), out = [
+      { label: I('msg') + 'Email', cls: 'ghost', fn: function () { var t = summaryText(false); if (t.length > 1800) t = t.slice(0, 1800) + '\n…'; location.href = 'mailto:?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(t); return false; } },
+      { label: I('phone') + 'Text', cls: 'ghost', fn: function () { location.href = 'sms:?&body=' + encodeURIComponent(summaryText(true)); return false; } }];
+    try { var f = new File([html], fname, { type: 'text/html' }); if (navigator.canShare && navigator.canShare({ files: [f] })) out.push({ label: I('up') + 'Share file', cls: 'ghost', fn: function () { navigator.share({ files: [f], title: subj, text: summaryText(true) }).catch(function () {}); return false; } }); } catch (e) {}
+    return out;
+  }
+
+  // =================== live unit locations (CAD AVL) ===================
+  var HYD = A.L.cad.replace(/CAD%20Calls.*$/, 'Hydrants/FeatureServer/0');
+  function norm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function miles(a, b) { var R = 3958.8, t = Math.PI / 180, dl = (b[0] - a[0]) * t, dn = (b[1] - a[1]) * t, x = Math.sin(dl / 2) * Math.sin(dl / 2) + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dn / 2) * Math.sin(dn / 2); return 2 * R * Math.asin(Math.sqrt(x)); }
+  function incLL() { var l = inc() && inc().location; return l && l.lat != null && l.lat !== '' ? [+l.lat, +l.lng] : null; }
+  async function loadAvl() {
+    if (A.status !== 'on' || !inc()) return false;
+    try {
+      var f = await A.query(A.L.cadUnits, "(MainTypeDesc IN ('FIRE','EMS') OR UnitTypeDesc IN ('FIRE MUTUAL','EMS MUTUAL','MEDEVAC')) AND Latitude IS NOT NULL", { fields: 'UnitID,StatusName,UnitTypeDesc,MainTypeDesc,DeptName,CFSNumber,Latitude,Longitude,LastPositionCheck', n: 500 });
+      var c = incLL(), now = Date.now();
+      CB.avl = f.map(function (x) { var a = x.attributes, ll = [+a.Latitude, +a.Longitude]; return { id: a.UnitID, st: a.StatusName || '', type: a.UnitTypeDesc || '', main: a.MainTypeDesc || '', dept: a.DeptName || '', cfs: a.CFSNumber || '', ll: ll, t: a.LastPositionCheck, stale: !a.LastPositionCheck || now - a.LastPositionCheck > 15 * 60000, mi: c ? miles(c, ll) : null }; }).filter(function (v) { return v.ll[0] && v.ll[1]; });
+      CB.avlT = now; return true;
+    } catch (e) { CB.avlT = Date.now(); console.warn('AVL', e); return false; }
+  }
+  function avlFor(r) { if (!CB.avl) return null; var n = norm(r.name); return CB.avl.find(function (v) { return norm(v.id) === n; }) || null; }
+  function cadKind(v) { var t = v.type; return /^ENGINE/.test(t) ? 'Engine' : /LADDER/.test(t) ? 'Ladder/Truck' : /TANKER/.test(t) ? 'Tanker/Tender' : /SQUAD|SOTT/.test(t) ? 'Rescue' : /BRUSH|WILDLAND/.test(t) ? 'Brush Truck' : /^ALS$/.test(t) ? 'Ambulance (ALS)' : /BLS|EMS MUTUAL|ALL EMS/.test(t) ? 'Ambulance (BLS)' : /DUTY|CAPTAIN|SUPERVISOR|ONCALL|ADMIN|DIRECTOR|EMERGENCY MGNT/.test(t) ? 'Overhead (single person)' : kindOf(v.id); }
+  act.avladd = function (id) { var v = (CB.avl || []).find(function (x) { return x.id === id; }); if (!v) return; var r = addUnit(v.id, cadKind(v), v.dept, /ARRIV|SCENE/i.test(v.st) ? 'Checked In' : 'En Route'); commit(null); U.toast(v.id + ' added to the board', 'ok'); };
+  setInterval(function () { if (!inc() || A.status !== 'on' || inc().status === 'Closed') return; var enr = units().some(function (r) { return r.status === 'En Route'; }); if (CB.tab !== 'map' && !enr) return; loadAvl().then(function () { if (CB.tab === 'map') { if (CB.map) mapDraw(); } else if (enr && !document.getElementById('modal') && !CB.sel && !(document.activeElement && document.activeElement.id === 'cbQuick')) render(); }); }, 15000);
+  // keep work timers fresh on the board
+  setInterval(function () { if (!inc() || CB.tab !== 'board' || CB.drawing || document.getElementById('modal') || (document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) return; if (units().some(function (r) { return r.workT && r.assign; })) render(); }, 30000);
+
+  // =================== scene map ===================
+  function offset(c, brg, m) { var b = brg * Math.PI / 180; return [c[0] + m * Math.cos(b) / 111320, c[1] + m * Math.sin(b) / (111320 * Math.cos(c[0] * Math.PI / 180))]; }
+  act.setloc = function () { CB.placing = CB.placing === 'inc' ? null : 'inc'; CB.sel = null; render(); if (CB.placing) U.toast('Tap the map where the incident is', 'ok'); };
+  act.sidea = function (d) { setKV('sideA', +d); commit('Side A faces ' + ({ 0: 'north', 90: 'east', 180: 'south', 270: 'west' })[d], 'Event', true); render(); };
+  act.lyr = function (k) { CB['hide_' + k] = !CB['hide_' + k]; render(); };
+  act.mapfit = function () { if (!CB.map) return; var c = incLL(); var pts = units().filter(function (r) { return r.lat != null; }).map(function (r) { return [r.lat, r.lng]; }); if (c) pts.push(c); if (pts.length > 1) CB.map.fitBounds(pts, { padding: [40, 40], maxZoom: 19 }); else if (c) CB.map.setView(c, 18); };
+  function mapView() {
+    var i = inc(), c = incLL(), su = CB.sel ? CP.byId(i.resources, CB.sel) : null, A0 = +kv('sideA', 180);
+    var side = '<section class="cbcol cbmapside"><div class="cbscroll">' +
+      (CB.placing === 'inc' ? '<div class="cbpick"><div><b>Tap the map</b> where the incident is</div><button class="btn ghost" data-cb="setloc">Cancel</button></div>' : su ? '<div class="cbpick"><div>Tap the map to place <b>' + E(su.name) + '</b></div><button class="btn ghost" data-cb="desel">Cancel</button></div>' : '') +
+      (c ? '' : '<div class="warnbox" style="margin-bottom:8px">No incident location yet. Tap <b>Set incident location</b>, then tap the map.</div>') +
+      '<div class="cbbtns"><button data-cb="setloc" class="' + (CB.placing === 'inc' ? 'on' : '') + '">' + I('pin') + (c ? 'Move incident pin' : 'Set incident location') + '</button><button data-cb="mapfit">' + I('target') + 'Fit scene</button></div>' +
+      '<div class="cbh sm">Side A (address side) faces</div><div class="cbbtns c4">' + [['N', 0], ['E', 90], ['S', 180], ['W', 270]].map(function (d) { return '<button class="' + (A0 === d[1] ? 'on' : '') + '" data-cb="sidea" data-a="' + d[1] + '">' + d[0] + '</button>'; }).join('') + '</div>' +
+      '<div class="cbh sm">Show</div><div class="cbbtns"><button class="' + (CB.hide_hyd ? '' : 'on') + '" data-cb="lyr" data-a="hyd">Hydrants</button><button class="' + (CB.hide_avl ? '' : 'on') + '" data-cb="lyr" data-a="avl">Live units (CAD)</button></div>' +
+      '<div class="cbh sm">' + I('truck') + 'Units · tap, then the map</div><div class="cbuw">' + (units().length ? units().map(tile).join('') : '<div class="dim cbempty">No units on the board yet.</div>') + '</div>' +
+      '<div class="cbh sm">Nearest hydrants</div>' + (!c ? '<div class="dim cbempty">Set the incident location first.</div>' : !CB.hyd ? '<div class="dim cbempty">' + (A.status === 'on' ? 'Loading…' : 'Sign in to see hydrants.') + '</div>' : !CB.hyd.length ? '<div class="dim cbempty">No hydrants within about 1,000 yards. Plan for tanker water supply.</div>' :
+        CB.hyd.slice(0, 5).map(function (h) { return '<div class="cbrow2' + (h.out ? ' bad' : '') + '"><b>' + Math.round(h.ft) + ' ft</b><span>' + E(h.name) + (h.psi ? ' · ' + h.psi + ' psi' : '') + (h.out ? ' · OUT OF SERVICE' : '') + '</span></div>'; }).join('')) +
+      '<div class="cbh sm">Live fire & EMS units (CAD)</div>' + (A.status !== 'on' ? '<div class="dim cbempty">Sign in to see live unit locations.</div>' : !CB.avl ? '<div class="dim cbempty">Loading…</div>' :
+        CB.avl.filter(function (v) { return v.mi != null && v.mi < 25; }).sort(function (a, b) { return a.mi - b.mi; }).slice(0, 14).map(function (v) { var on = units().some(function (r) { return norm(r.name) === norm(v.id); }); return '<div class="cbrow2' + (v.stale ? ' stale' : '') + '"><b>' + E(v.id) + '</b><span>' + E(v.st.toLowerCase()) + ' · ' + v.mi.toFixed(1) + ' mi' + (v.stale ? ' · old position' : '') + '</span>' + (on ? '<em>on board</em>' : '<button class="btn xs" data-cb="avladd" data-a="' + E(v.id) + '">+ Add</button>') + '</div>'; }).join('') || '<div class="dim cbempty">No fire or EMS units reporting a location.</div>') +
+      '</div></section>';
+    return '<div class="cbmapv">' + side + '<div class="cbmaphost" id="cbMapHost"></div></div>';
+  }
+  async function loadHyd() {
+    var c = incLL(); if (!c || A.status !== 'on') return; var key = c.join(','); if (CB.hydFor === key) return; CB.hydFor = key;
+    try {
+      var d = 0.01, f = await A.query(HYD, '1=1', { geom: true, fields: 'Location_Name,Location,Static_Pressure,Operational_Status,Authority,Icon_Color', n: 300, extra: { geometry: JSON.stringify({ xmin: c[1] - d * 1.25, ymin: c[0] - d, xmax: c[1] + d * 1.25, ymax: c[0] + d, spatialReference: { wkid: 4326 } }), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects' } });
+      CB.hyd = f.filter(function (x) { return x.geometry; }).map(function (x) { var a = x.attributes, ll = [x.geometry.y, x.geometry.x]; return { ll: ll, name: a.Location_Name || 'Hydrant', where: a.Location || '', psi: a.Static_Pressure, out: a.Operational_Status && !/INUSE|IN USE|ACTIVE/i.test(a.Operational_Status), st: a.Operational_Status || '', auth: a.Authority || '', ft: miles(c, ll) * 5280 }; }).sort(function (a, b) { return a.ft - b.ft; });
+    } catch (e) { CB.hyd = []; CB.hydFor = null; console.warn('hydrants', e); }
+    if (CB.tab === 'map') render();
+  }
+  function mapMount() {
+    var host = document.getElementById('cbMapHost'); if (!host) return;
+    if (!window.L || !CP.map) { host.innerHTML = '<div class="empty" style="padding:30px">The map needs a connection the first time it opens.</div>'; return; }
+    var i = inc(), c = incLL();
+    if (!CB.mapEl) {
+      CB.mapEl = document.createElement('div'); CB.mapEl.className = 'cbmapel'; host.appendChild(CB.mapEl);
+      var m = CB.map = CP.map.create(CB.mapEl, { center: c, zoom: c ? 18 : null });
+      try { var bm = m._cpBase; Object.keys(bm).forEach(function (k) { if (m.hasLayer(bm[k])) m.removeLayer(bm[k]); }); bm.Imagery.addTo(m); } catch (e) {}
+      CB.lyr = { hyd: L.layerGroup().addTo(m), avl: L.layerGroup().addTo(m), scene: L.layerGroup().addTo(m), units: L.layerGroup().addTo(m) };
+      m.on('click', mapClick); CB.mapInc = i.id; CB.mapC = c ? c.join() : '';
+    } else host.appendChild(CB.mapEl);
+    if (CB.mapInc !== i.id || (c && CB.mapC !== c.join())) { CB.mapInc = i.id; CB.mapC = c ? c.join() : ''; if (c) CB.map.setView(c, 18); }
+    CB.mapEl.classList.toggle('placing', !!(CB.placing || CB.sel));
+    setTimeout(function () { CB.map.invalidateSize(); }, 40);
+    mapDraw(); loadHyd(); if (!CB.avl || Date.now() - (CB.avlT || 0) > 15000) loadAvl().then(function (ok) { if (ok && CB.tab === 'map') render(); });
+  }
+  function mapClick(e) {
+    var p = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)], i = inc();
+    if (CB.placing === 'inc') { i.location.lat = p[0]; i.location.lng = p[1]; CP.touch(i, 'location'); CB.placing = null; CB.hyd = null; CB.hydFor = null; commit('Incident location set on the map', 'Event'); return; }
+    if (CB.sel) { var r = CP.byId(i.resources, CB.sel); CB.sel = null; if (r) { r.lat = p[0]; r.lng = p[1]; r.u = CP.now(); CP.touch(i, 'resources'); } commit(null); }
+  }
+  function mapDraw() {
+    if (!CB.map || !inc()) return; var i = inc(), Ly = CB.lyr, c = incLL();
+    Ly.scene.clearLayers(); Ly.units.clearLayers(); Ly.avl.clearLayers(); Ly.hyd.clearLayers();
+    if (c) {
+      Ly.scene.addLayer(L.marker(c, { icon: CP.map.pinIcon('#FDB833', '★', 34), zIndexOffset: 900, interactive: false }));
+      var A0 = +kv('sideA', 180); ['A', 'B', 'C', 'D'].forEach(function (s, k) { Ly.scene.addLayer(L.marker(offset(c, A0 + k * 90, 28), { interactive: false, icon: L.divIcon({ className: '', iconSize: [28, 28], iconAnchor: [14, 14], html: '<div class="cbsideA s' + s + '">' + s + '</div>' }) })); });
+    }
+    if (!CB.hide_hyd) (CB.hyd || []).forEach(function (h) { Ly.hyd.addLayer(L.marker(h.ll, { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="cbhyd' + (h.out ? ' out' : '') + '">H</div>' }) }).bindPopup('<b>' + E(h.name) + '</b><br>' + E(h.where) + '<br>' + Math.round(h.ft) + ' ft from the incident' + (h.psi ? '<br>Static ' + h.psi + ' psi' : '') + '<br>' + E(h.st) + (h.auth ? ' · ' + E(h.auth) : ''))); });
+    var board = {}; units().forEach(function (r) { board[norm(r.name)] = r; });
+    if (!CB.hide_avl) (CB.avl || []).forEach(function (v) {
+      var r = board[norm(v.id)], cls = /ARRIV|SCENE/i.test(v.st) ? 'os' : /ENROUTE|EN ROUTE|RESPOND|DISPATCH/i.test(v.st) ? 'er' : 'av';
+      if (!r && cls === 'av' && v.mi != null && v.mi > 8) return;
+      Ly.avl.addLayer(L.marker(v.ll, { zIndexOffset: 500, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbavl ' + cls + (v.stale ? ' stale' : '') + (r ? ' mine' : '') + '">' + E(v.id) + '</div>' }) }).bindPopup('<b>' + E(v.id) + '</b> · ' + E(v.type) + '<br>' + E(v.st) + (v.cfs && v.cfs !== '0' ? ' · call ' + E(v.cfs) : '') + (v.mi != null ? '<br>' + v.mi.toFixed(1) + ' mi from the incident' : '') + '<br>Position ' + (v.t ? E(CP.fmtTime(new Date(v.t).toISOString())) : 'unknown') + ' (CAD)' + (r ? '' : '<br><button class="btn xs" data-cb="avladd" data-a="' + E(v.id) + '">+ Add to board</button>')));
+    });
+    units().forEach(function (r) {
+      if (r.lat == null || r.lat === '') return; var lk = unitLook(r), a = r.assign && CP.byId(i.assignments, r.assign), wm = workMin(r);
+      var mk = L.marker([r.lat, r.lng], { draggable: true, zIndexOffset: 800, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbmu ' + lk[1] + (CB.sel === r.id ? ' sel' : '') + (wm >= wkMax() ? ' wkover' : wm >= wkWarn() ? ' wkwarn' : '') + '">' + svg(lk[0]) + '<b>' + E(r.name) + '</b>' + (a ? '<i>' + E(aName(a)) + '</i>' : '') + '</div>' }) });
+      mk.on('dragend', function (ev) { var p = ev.target.getLatLng(); r.lat = +p.lat.toFixed(6); r.lng = +p.lng.toFixed(6); r.u = CP.now(); CP.touch(inc(), 'resources'); commit(null, null, true); });
+      mk.on('click', function () { act.unit(r.id); });
+      Ly.units.addLayer(mk);
+    });
+  }
+
+  // =================== whiteboard ===================
+  var WBW = 2000, WBC = [['#ff3030', 'Red'], ['#f2f2f2', 'White'], ['#FDB833', 'Yellow'], ['#5aa9ff', 'Blue']], WBS = [[4, 'Fine'], [8, 'Medium'], [16, 'Thick']];
+  CB.wbColor = CB.wbColor || '#ff3030'; CB.wbSize = CB.wbSize || 8; CB.wbTool = CB.wbTool || 'pen';
+  function strokes() { return AL(inc().cbDraw); }
+  act.wbc = function (c) { CB.wbColor = c; CB.wbTool = 'pen'; wbBar(); };
+  act.wbs = function (s) { CB.wbSize = +s; CB.wbTool = 'pen'; wbBar(); };
+  act.wbt = function (t) { CB.wbTool = t; wbBar(); };
+  act.wbundo = function () { var me = CP.me.name || '', s = strokes(), last = null; for (var k = s.length - 1; k >= 0; k--) { if (!me || s[k].by === me) { last = s[k]; break; } } if (!last) return; last.del = true; last.u = CP.now(); CP.touch(inc(), 'cbDraw'); commit(null, null, true); wbDraw(); };
+  act.wbclear = function () { if (!strokes().length) return; sure('Clear the whiteboard?', 'Erases everything on it for everyone.', 'Clear', function () { strokes().forEach(function (s) { s.del = true; s.u = CP.now(); }); CP.touch(inc(), 'cbDraw'); commit('Whiteboard cleared', 'Event', true); wbDraw(); }); };
+  function wbBarHtml() {
+    return WBC.map(function (c) { return '<button class="sw' + (CB.wbTool === 'pen' && CB.wbColor === c[0] ? ' on' : '') + '" data-cb="wbc" data-a="' + c[0] + '" title="' + c[1] + '"><i style="background:' + c[0] + '"></i></button>'; }).join('') + '<span class="sep"></span>' +
+      WBS.map(function (s) { return '<button class="sz' + (CB.wbSize === s[0] ? ' on' : '') + '" data-cb="wbs" data-a="' + s[0] + '" title="' + s[1] + '"><i style="width:' + (s[0] + 4) + 'px;height:' + (s[0] + 4) + 'px"></i></button>'; }).join('') + '<span class="sep"></span>' +
+      '<button class="tl' + (CB.wbTool === 'pen' ? ' on' : '') + '" data-cb="wbt" data-a="pen">' + svg('pen') + 'Pen</button><button class="tl' + (CB.wbTool === 'erase' ? ' on' : '') + '" data-cb="wbt" data-a="erase">' + svg('eraser') + 'Eraser</button><span class="sp"></span><button class="tl" data-cb="wbundo">' + I('refresh') + 'Undo</button><button class="tl" data-cb="wbclear">' + I('trash') + 'Clear</button>';
+  }
+  function wbBar() { var b = document.getElementById('cbWbBar'); if (b) b.innerHTML = wbBarHtml(); }
+  function wbView() { return '<div class="cbwb"><div class="cbwbbar" id="cbWbBar">' + wbBarHtml() + '</div><div class="cbwbhost" id="cbWbHost"></div></div>'; }
+  function wbPt(e) { var r = CB.wb.getBoundingClientRect(), s = WBW / r.width; return [Math.round((e.clientX - r.left) * s), Math.round((e.clientY - r.top) * s)]; }
+  function wbCtx() { var c = CB.wb, x = c.getContext('2d'), s = c.width / WBW; x.setTransform(s, 0, 0, s, 0, 0); x.lineCap = 'round'; x.lineJoin = 'round'; return x; }
+  function pts(st) { return typeof st.p === 'string' ? st.p.split(' ').map(function (q) { return q.split(',').map(Number); }) : st.p; }
+  function drawStroke(x, st) { var ps = pts(st); if (!ps.length) return; x.strokeStyle = st.c; x.lineWidth = st.w; x.beginPath(); x.moveTo(ps[0][0], ps[0][1]); if (ps.length === 1) x.lineTo(ps[0][0] + 0.5, ps[0][1] + 0.5); for (var k = 1; k < ps.length; k++) { if (k < ps.length - 1) { var mx = (ps[k][0] + ps[k + 1][0]) / 2, my = (ps[k][1] + ps[k + 1][1]) / 2; x.quadraticCurveTo(ps[k][0], ps[k][1], mx, my); } else x.lineTo(ps[k][0], ps[k][1]); } x.stroke(); }
+  function wbBg(x, w, h) { x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#080b10'; x.fillRect(0, 0, w, h); x.restore(); }
+  function wbDraw() { var c = CB.wb; if (!c || !c.width) return; var x = c.getContext('2d'); wbBg(x, c.width, c.height); x = wbCtx(); strokes().forEach(function (s) { drawStroke(x, s); }); }
+  function wbSize() { var c = CB.wb, h = c.parentNode; if (!h) return; var dpr = Math.min(window.devicePixelRatio || 1, 2), w = h.clientWidth, hh = h.clientHeight; c.width = Math.round(w * dpr); c.height = Math.round(hh * dpr); c.style.width = w + 'px'; c.style.height = hh + 'px'; }
+  function eraseAt(p) { var hit = false, rad = 24; strokes().forEach(function (s) { if (pts(s).some(function (q) { return Math.abs(q[0] - p[0]) < rad && Math.abs(q[1] - p[1]) < rad; })) { s.del = true; s.u = CP.now(); hit = true; } }); if (hit) { CB.erased = true; wbDraw(); } }
+  function wbMount() {
+    var host = document.getElementById('cbWbHost'); if (!host) return;
+    if (!CB.wb) {
+      var c = CB.wb = document.createElement('canvas'); c.className = 'cbwbc'; var cur = null, penSeen = false;
+      c.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'pen') penSeen = true; else if (penSeen && e.pointerType === 'touch') return; // palm rejection once a pencil is used
+        e.preventDefault(); try { c.setPointerCapture(e.pointerId); } catch (x) {} var p = wbPt(e); CB.drawing = true;
+        if (CB.wbTool === 'erase') { cur = { erase: true }; eraseAt(p); return; }
+        cur = { id: CP.uid(), c: CB.wbColor, w: CB.wbSize, pts: [p], last: p }; var x = wbCtx(); x.fillStyle = cur.c; x.beginPath(); x.arc(p[0], p[1], cur.w / 2, 0, 7); x.fill();
+      });
+      c.addEventListener('pointermove', function (e) {
+        if (!cur) return; e.preventDefault(); var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; if (!evs.length) evs = [e];
+        evs.forEach(function (ev) { var p = wbPt(ev); if (cur.erase) { eraseAt(p); return; } var l = cur.last; if (Math.abs(p[0] - l[0]) + Math.abs(p[1] - l[1]) < 3) return; var x = wbCtx(); x.strokeStyle = cur.c; x.lineWidth = cur.w; x.beginPath(); x.moveTo(l[0], l[1]); x.lineTo(p[0], p[1]); x.stroke(); cur.pts.push(p); cur.last = p; });
+      });
+      var end = function () {
+        if (!cur) return; var s = cur; cur = null; CB.drawing = false;
+        if (s.erase) { if (CB.erased) { CB.erased = false; CP.touch(inc(), 'cbDraw'); commit(null, null, true); } return; }
+        inc().cbDraw = inc().cbDraw || []; inc().cbDraw.push({ id: s.id, c: s.c, w: s.w, p: s.pts.map(function (q) { return q[0] + ',' + q[1]; }).join(' '), by: CP.me.name || '', u: CP.now() });
+        CP.touch(inc(), 'cbDraw'); commit(null, null, true); wbDraw();
+      };
+      c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end); c.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') end(); });
+      window.addEventListener('resize', function () { if (CB.wb && CB.wb.parentNode) { wbSize(); wbDraw(); } });
+    }
+    host.appendChild(CB.wb); wbSize(); wbDraw();
+  }
+  // whiteboard as an image for the report
+  function wbImage() {
+    var s = strokes(); if (!s.length) return '';
+    var maxY = 0; s.forEach(function (st) { pts(st).forEach(function (q) { if (q[1] > maxY) maxY = q[1]; }); });
+    var w = 1000, sc = w / WBW, h = Math.max(400, Math.min(2000, Math.round((maxY + 40) * sc))), c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d'); x.fillStyle = '#080b10'; x.fillRect(0, 0, w, h); x.setTransform(sc, 0, 0, sc, 0, 0); x.lineCap = 'round'; x.lineJoin = 'round'; s.forEach(function (st) { drawStroke(x, st); });
+    return c.toDataURL('image/png');
+  }
+
   act.signin = function () { A.signIn(); };
   act.local = function () { CB.localOk = true; CB.list = []; CB.cad = []; render(); };
   act.tpl = function (k) { CB.tpl = k; if (CB.call && CB.call[2] !== k) CB.call = null; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; render(); };
@@ -383,8 +693,9 @@
   act.addk = function (k) {
     var kind = KINDS.find(function (x) { return x[0] === k; });
     var bg = U.modal('Add ' + kind[1], '<div class="cbpad"><input class="in big" id="cbUn" value="' + (k === 'U' ? '' : k) + '" style="font-size:28px;font-weight:800;text-transform:uppercase;text-align:center"><div class="cbkeys">' + '1 2 3 4 5 6 7 8 9 ⌫ 0 ✓'.split(' ').map(function (d) { return '<button data-k="' + d + '">' + d + '</button>'; }).join('') + '</div>' +
-      '<label class="chk"><input type="checkbox" id="cbEnr"> Responding (not on scene yet)</label><input class="in" id="cbAg" placeholder="Agency (optional)" style="margin-top:8px"></div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Add unit', cls: 'pri', fn: function (b) { go(b); } }], { nofocus: true });
-    function go(b) { var n = b.querySelector('#cbUn').value; if (!n || n === k) { U.toast('Unit number?', 'err'); return false; } var r = addUnit(n, kind[2], b.querySelector('#cbAg').value, b.querySelector('#cbEnr').checked ? 'En Route' : 'Checked In'); U.closeModal(); CB.sel = r && r.id; commit(null); }
+      '<div class="cbh sm" style="margin-top:10px">Riding</div>' + rideRow(crewDefault(kind[2]), 8) + '<label class="chk"><input type="checkbox" id="cbEnr"> Responding (not on scene yet)</label><input class="in" id="cbAg" placeholder="Agency (optional)" style="margin-top:8px"></div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Add unit', cls: 'pri', fn: function (b) { go(b); } }], { nofocus: true });
+    function go(b) { var n = b.querySelector('#cbUn').value; if (!n || n === k) { U.toast('Unit number?', 'err'); return false; } var r = addUnit(n, kind[2], b.querySelector('#cbAg').value, b.querySelector('#cbEnr').checked ? 'En Route' : 'Checked In'); if (r) r.persons = rideVal(b, r.persons); U.closeModal(); CB.sel = r && r.id; commit(null); }
+    rideWire(bg);
     bg.addEventListener('click', function (e) { var b = e.target.closest('[data-k]'); if (!b) return; e.preventDefault(); var i = bg.querySelector('#cbUn'); if (b.dataset.k === '⌫') i.value = i.value.slice(0, -1); else if (b.dataset.k === '✓') go(bg); else i.value += b.dataset.k; });
   };
   function unitNote(id) {
@@ -396,11 +707,15 @@
   }
   function unitMenu(id) {
     var r = CP.byId(inc().resources, id); if (!r) return;
-    var opts = [['note', r.note ? 'Edit note: ' + r.note : 'Add a note']].concat(r.note ? [['clrnote', 'Clear note']] : []).concat([['onscene', 'On scene (unassigned)'], ['oos', 'Out of service'], ['release', 'Release from incident'], ['rename', 'Rename / agency'], ['cancel', 'Deselect']]);
-    var bg = U.modal(r.name, '<div class="cbmenu">' + opts.map(function (o) { return '<button data-um="' + o[0] + '"' + (o[0] === 'release' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div><p class="dim" style="font-size:12.5px">Tip: tap a unit, then tap an assignment to move it.</p>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    var opts = [['crew', 'Crew: ' + (+r.persons ? r.persons + ' riding' : 'set riding count') + (r.crew ? ' (' + r.crew + ')' : '')]].concat(+r.persons >= 2 ? [['split', 'Split crew']] : []).concat(r.parent ? [['rejoin', 'Rejoin ' + ((CP.byId(inc().resources, r.parent) || {}).name || 'parent unit')]] : []).concat(r.assign && workMin(r) ? [['rehab', 'Send to Rehab (working ' + workMin(r) + ' min)']] : []).concat([['note', r.note ? 'Edit note: ' + r.note : 'Add a note']]).concat(r.note ? [['clrnote', 'Clear note']] : []).concat([['onscene', 'On scene (unassigned)'], ['oos', 'Out of service'], ['release', 'Release from incident'], ['rename', 'Rename / agency'], ['cancel', 'Deselect']]);
+    var bg = U.modal(r.name, '<div class="cbmenu">' + opts.map(function (o) { return '<button data-um="' + o[0] + '"' + (o[0] === 'release' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div><p class="dim" style="font-size:12.5px">' + (r.asgT ? (needsAck(r) ? 'Assignment not acknowledged yet.' : 'Acknowledged ' + E(CP.fmtTime(r.ack)) + '.') + ' ' : '') + 'Tip: tap a unit, then tap an assignment to move it.</p>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-um]'); if (!b) return; e.preventDefault(); U.closeModal(); CB.sel = null; var k = b.dataset.um;
-      if (k === 'note') setTimeout(function () { unitNote(r.id); }, 30);
+      if (k === 'crew') setTimeout(function () { unitCrew(r.id); }, 30);
+      else if (k === 'split') setTimeout(function () { unitSplit(r.id); }, 30);
+      else if (k === 'rejoin') unitRejoin(r.id);
+      else if (k === 'rehab') act.torehab(r.id);
+      else if (k === 'note') setTimeout(function () { unitNote(r.id); }, 30);
       else if (k === 'clrnote') { r.note = ''; r.u = CP.now(); CP.touch(inc(), 'resources'); commit(r.name + ': note cleared', 'Resource'); }
       else if (k === 'onscene') { r.status = 'Checked In'; r.assign = ''; if (!r.arrived) r.arrived = CP.now(); r.u = CP.now(); CP.touch(inc(), 'resources'); commit(r.name + ' on scene', 'Resource'); }
       else if (k === 'oos') { r.status = 'Out of Service'; r.u = CP.now(); CP.touch(inc(), 'resources'); commit(r.name + ' out of service', 'Resource'); }
@@ -441,11 +756,11 @@
   act.addmark = function () { ask('Add benchmark', [{ l: 'Benchmark' }], 'Add', function (v) { inc().cbMarks = inc().cbMarks || []; inc().cbMarks.push({ id: CP.uid(), label: v[0], t: '', by: '', u: CP.now() }); CP.touch(inc(), 'cbMarks'); commit(null); }); };
   act.par = function () {
     var list = asgs().filter(function (a) { return unitsIn(a.id).length; }), every = +kv('parEvery', 20);
-    var bg = U.modal('PAR · Personnel Accountability', '<div class="cbmenu">' + list.map(function (a) { return '<label class="cbparrow"><input type="checkbox" data-pa="' + a.id + '"> <b>' + E(aName(a)) + '</b> <span class="dim">' + E(unitsIn(a.id).map(function (r) { return r.name; }).join(', ')) + '</span></label>'; }).join('') + '</div>' +
+    var bg = U.modal('PAR · Personnel Accountability', '<div class="cbmenu">' + list.map(function (a) { return '<label class="cbparrow"><input type="checkbox" data-pa="' + a.id + '"> <b>' + E(aName(a)) + '</b> <span class="dim">' + E(unitsIn(a.id).map(function (r) { return r.name + (+r.persons ? ' (' + r.persons + ')' : ''); }).join(', ')) + '</span><em class="cbparn">' + ppl(unitsIn(a.id)) + '</em></label>'; }).join('') + '</div>' +
       '<div class="row" style="margin-top:10px;gap:8px"><span class="dim">PAR timer every</span>' + [10, 15, 20, 30].map(function (n) { return '<button class="btn xs' + (n === every ? ' pri' : '') + '" data-pe="' + n + '">' + n + ' min</button>'; }).join('') + '</div>',
       [{ label: 'Cancel', cls: 'ghost' }, { label: 'Record PAR', cls: 'pri', fn: function (b) {
-        var ok = [], miss = []; b.querySelectorAll('[data-pa]').forEach(function (x) { var a = CP.byId(inc().assignments, x.dataset.pa); (x.checked ? ok : miss).push(aName(a)); if (x.checked) setKV('par_' + a.id, CP.now()); });
-        setKV('parT', CP.now()); commit('PAR: ' + ok.length + ' of ' + list.length + ' assignments accounted' + (miss.length ? '. NOT ACCOUNTED: ' + miss.join(', ') : ''), 'Safety');
+        var ok = [], miss = [], pOk = 0, pAll = 0; b.querySelectorAll('[data-pa]').forEach(function (x) { var a = CP.byId(inc().assignments, x.dataset.pa), n = ppl(unitsIn(a.id)); pAll += n; if (x.checked) pOk += n; (x.checked ? ok : miss).push(aName(a)); if (x.checked) setKV('par_' + a.id, CP.now()); });
+        setKV('parT', CP.now()); commit('PAR: ' + ok.length + ' of ' + list.length + ' assignments, ' + pOk + ' of ' + pAll + ' personnel accounted' + (miss.length ? '. NOT ACCOUNTED: ' + miss.join(', ') : ''), 'Safety');
         if (miss.length) U.toast('NOT ACCOUNTED: ' + E(miss.join(', ')), 'err', 9000);
       } }], { nofocus: true });
     bg.addEventListener('click', function (e) { var p = e.target.closest('[data-pe]'); if (!p) return; e.preventDefault(); setKV('parEvery', +p.dataset.pe); bg.querySelectorAll('[data-pe]').forEach(function (x) { x.classList.toggle('pri', x === p); }); commit(null, null, true); });
@@ -469,12 +784,15 @@
   act.notesave = function () { var b = document.getElementById('cbQuick'); if (!b) return; var t = b.value; if (!t.trim()) { b.focus(); U.toast('Type a note first', 'err'); return; } b.value = ''; saveNote(t); U.toast('Note saved', 'ok'); };
   act.quick = function (q) { var b = document.getElementById('cbQuick'), extra = b && b.value.trim(); if (b) b.value = ''; saveNote(q + (extra ? '. ' + extra : '')); U.toast('Logged: ' + q, 'ok'); };
   act.unote = function (id) { unitNote(id); };
+  act.crew = function (id) { unitCrew(id); };
+  act.umenu = function (id) { unitMenu(id); };
   act.note = function () { U.modal('Log entry', '<textarea class="in" id="cbNote" style="min-height:90px"></textarea><div class="cbmenu grid" style="margin-top:8px">' + quickFor().map(function (q) { return '<button data-q="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log', cls: 'pri', fn: function (b) { var t = b.querySelector('#cbNote').value.trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); } }], { onOpen: function (b) { b.addEventListener('click', function (e) { var q = e.target.closest('[data-q]'); if (!q) return; e.preventDefault(); var n = b.querySelector('#cbNote'); n.value = (n.value ? n.value + '. ' : '') + q.dataset.q; }); } }); };
   act.more = function () {
-    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], ['phonelink', 'Phone view link / QR'], ['tocp', 'Move to Command Post (full ICS)'], [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list']].map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], ['phonelink', 'Phone view link / QR'], ['tocp', 'Move to Command Post (full ICS)'], [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list']].map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-mo]'); if (!b) return; e.preventDefault(); var k = b.dataset.mo; U.closeModal();
-      if (k === 'ic') setTimeout(function () { ask('Transfer command', [{ l: 'New Incident Commander (name / unit)' }], 'Transfer', function (v) { var n = v[0], p = CP.person(inc(), 'IC'); if (p) { p.name = n; p.u = CP.now(); } else CP.addItem(inc(), 'org', { pos: 'IC', label: '', name: n, agency: '', phone: '', radio: '', email: '', checkin: CP.now() }); CP.touch(inc(), 'org'); commit('Command transferred to ' + n, 'Decision'); }); }, 30);
+      if (k === 'ic') setTimeout(act.xfer, 30);
+      if (k === 'work') setTimeout(act.worktimes, 30);
       if (k === 'upgrade') upgrade();
       if (k === 'phonelink') phoneLink();
       if (k === 'tocp') toCP();
@@ -494,8 +812,8 @@
       '<div class="sub">' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (i.exercise ? ' · PRACTICE' : '') + ' · Status ' + E(i.status) + '</div>' +
       (kv('call', null) ? '<p><b>Call type:</b> ' + E(kv('call').type) + ' · <b>Recommended response:</b> ' + E(kv('call').resp || 'none') + '</p>' : '') + (kv('mci', null) ? '<p><b>MCI declared</b> ' + E(CP.fmtDT(kv('mci').t)) + ' · patients ' + mciCounts().total + ' (red ' + mciCounts().red + ', yellow ' + mciCounts().yellow + ', green ' + mciCounts().green + ', black ' + mciCounts().black + ')</p>' : '') +
       tbl(['Started', 'Closed', 'Duration', 'Incident Commander', 'Final strategy', 'Conditions', 'Units'], [row([CP.fmtDT(i.start), i.closed ? CP.fmtDT(i.closed) : 'Open', dur(i.start, i.closed || null), CP.personName(i, 'IC'), kv('mode', ''), kv('cond', ''), all.length])]) +
-      '<h2>Benchmarks</h2>' + tbl(['Benchmark', 'Time', 'Into incident', 'By'], marks().map(function (m) { return row([m.label, m.t ? CP.fmtTime(m.t) : 'not reached', m.t ? dur(i.start, m.t) : '', m.by]); })) +
-      '<h2>Units</h2>' + tbl(['Unit', 'Type', 'Agency', 'Arrived', 'Last assignment', 'Status', 'Released', 'Time on scene', 'Note'], all.map(function (r) { return row([r.name, r.kind, r.agency, r.arrived || r.checkin ? CP.fmtTime(r.arrived || r.checkin) : '', asgName(r.assign) || (lg.slice().reverse().find(function (l) { return l.text.indexOf(r.name + ' assigned to ') === 0; }) || { text: '' }).text.replace(r.name + ' assigned to ', ''), r.status, r.released ? CP.fmtTime(r.released) : '', dur(r.arrived || r.checkin, r.released || i.closed || null), r.note || '']); })) +
+      (function () { var ps = photos(), wb = wbImage(); return (ps.length ? '<h2>Scene photos</h2><div style="display:flex;flex-wrap:wrap;gap:8px">' + ps.map(function (p) { return '<figure style="margin:0;width:150px"><img src="' + p.th + '" style="width:150px;border-radius:4px"><figcaption style="font-size:10px">' + E(CP.fmtTime(p.t)) + (p.cap ? ' · ' + E(p.cap) : '') + '</figcaption></figure>'; }).join('') + '</div><p style="font-size:10px;color:#555">Full-size photos: county ArcGIS, tag "' + E(inc().number) + '".</p>' : '') + (wb ? '<h2>Whiteboard</h2><img src="' + wb + '" style="width:100%;max-width:700px;border-radius:6px">' : ''); })() + '<h2>Benchmarks</h2>' + tbl(['Benchmark', 'Time', 'Into incident', 'By'], marks().map(function (m) { return row([m.label, m.t ? CP.fmtTime(m.t) : 'not reached', m.t ? dur(i.start, m.t) : '', m.by]); })) +
+      '<h2>Units</h2>' + tbl(['Unit', 'Riding', 'Type', 'Agency', 'Arrived', 'Last assignment', 'Status', 'Released', 'Time on scene', 'Note'], all.map(function (r) { return row([r.name + (r.parent ? ' (split)' : ''), r.persons || '', r.kind, r.agency, r.arrived || r.checkin ? CP.fmtTime(r.arrived || r.checkin) : '', asgName(r.assign) || (lg.slice().reverse().find(function (l) { return l.text.indexOf(r.name + ' assigned to ') === 0; }) || { text: '' }).text.replace(r.name + ' assigned to ', ''), r.status, r.released ? CP.fmtTime(r.released) : '', dur(r.arrived || r.checkin, r.released || i.closed || null), r.note || '']); })) +
       '<h2>Divisions & groups</h2>' + tbl(['Assignment', 'Supervisor', 'Task', 'Last CAN report'], asgs().map(function (a) { return row([aName(a), a.reportTo, a.work, a.cbCan]); })) +
       '<h2>Safety: PAR and MAYDAY</h2>' + tbl(['Time', 'Entry'], lg.filter(function (l) { return /^(PAR|MAYDAY)/.test(l.text); }).map(function (l) { return row([CP.fmtTime(l.ts), l.text]); }).concat(lg.some(function (l) { return /^(PAR|MAYDAY)/.test(l.text); }) ? [] : [row(['', 'No PAR or MAYDAY recorded'])])) +
       '<h2>Complete timeline</h2>' + tbl(['Time', 'Elapsed', 'Category', 'Entry', 'By'], lg.map(function (l) { return row([CP.fmtTime(l.ts), dur(i.start, l.ts), l.cat, l.text, l.author]); })) +
@@ -504,7 +822,7 @@
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Incident report ' + E(i.number) + '</title>' + css + '</head><body>' + body + '</body></html>';
     var fname = 'Incident report ' + i.number + ' ' + (i.location.desc || '').replace(/[^\w ,-]+/g, '').slice(0, 40) + '.html';
     var bg = U.modal('Incident report', '<div class="cbreport">' + body + '</div>', [{ label: I('down') + 'Download', cls: 'ghost', fn: function () { U.download(fname, html, 'text/html'); return false; } }, { label: I('print') + 'Print / save as PDF', cls: 'pri', fn: function () {
-      var w = window.open('', '_blank'); if (w) { w.document.write(html + '<script>setTimeout(function(){print()},300)<\/script>'); w.document.close(); } else { U.download(fname, html, 'text/html'); U.toast('Downloaded. Open it and print to save a PDF.', 'ok', 6000); } return false; } }, { label: 'Close', cls: 'ghost' }], { wide: true });
+      var w = window.open('', '_blank'); if (w) { w.document.write(html + '<script>setTimeout(function(){print()},300)<\/script>'); w.document.close(); } else { U.download(fname, html, 'text/html'); U.toast('Downloaded. Open it and print to save a PDF.', 'ok', 6000); } return false; } }, { label: 'Close', cls: 'ghost' }].slice(0, 2).concat(sendBtns(html, fname)).concat([{ label: 'Close', cls: 'ghost' }]), { wide: true });
     return bg;
   }
 
@@ -606,7 +924,7 @@
   // ---------- boot ----------
   CB.boot = async function () {
     CP.me = CP.store.prefs().me || {};
-    document.getElementById('app').innerHTML = '<header class="cbfire"><div class="cbpatchbox"><img class="cbpatch" src="' + PATCH + '" alt="Botetourt County Fire &amp; EMS patch" onerror="this.onerror=null;this.src=\'seal.png\'"></div><div class="cblock"><div class="k">BOTETOURT COUNTY</div><div class="t">FIRE <i>&amp;</i> EMS</div><div class="s">COMMAND BOARD</div></div><span class="sp" style="flex:1"></span><button class="btn cbhome" data-cb="home" title="Command Board home: all open incidents">' + I('home') + 'Home</button>' + CP.beaconMark() + '</header><main id="cbmain" class="cbwrap"></main>';
+    document.getElementById('app').innerHTML = '<header class="cbfire"><div class="cbpatchbox"><img class="cbpatch" src="' + PATCH + '" alt="Botetourt County Fire &amp; EMS patch" onerror="this.onerror=null;this.src=\'seal.png\'"></div><div class="cblock"><div class="k">BOTETOURT COUNTY</div><div class="t">FIRE <i>&amp;</i> EMS</div><div class="s">COMMAND BOARD</div></div><span class="sp" style="flex:1"></span><nav id="cbTabSlot" class="cbhtabs"></nav><span class="sp" style="flex:1"></span><button class="btn cbhome" data-cb="home" title="Command Board home: all open incidents">' + I('home') + 'Home</button>' + CP.beaconMark() + '</header><main id="cbmain" class="cbwrap"></main>';
     try { if (await A.handleRedirect() === 'away') return; } catch (e) {}
     var qs = new URLSearchParams(location.search), want = qs.get('incident');
     render();

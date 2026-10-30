@@ -22,7 +22,7 @@
   C.refresh = async function (quiet) {
     if (!CP.arc.signedIn()) return;
     try {
-      var f = await CP.arc.query(CP.arc.L.cad, '1=1', { geom: true, order: 'calldate DESC', n: 300, fields: 'callid,callcat,calltype,priority,description,fulladdr,city,locdesc,calldate,dispatchdate,arrivaldate,agency,firstunit,unittotal,disposition,comments' });
+      var f = await CP.arc.query(CP.arc.L.cad, CP.arc.CAD_FIRE_EMS, { geom: true, order: 'calldate DESC', n: 300, fields: 'callid,callcat,calltype,priority,description,fulladdr,city,locdesc,calldate,dispatchdate,arrivaldate,agency,firstunit,unittotal,disposition,comments' });
       var u = await CP.arc.query(CP.arc.L.cadUnits, "CFSNumber IS NOT NULL AND CFSNumber<>'' AND CFSNumber<>'0'", { fields: 'UnitID,StatusName,UnitTypeDesc,DeptName,CFSNumber', n: 1000 }).catch(function () { return []; });
       var units = {}; u.forEach(function (x) { var a = x.attributes; (units[a.CFSNumber] = units[a.CFSNumber] || []).push({ id: a.UnitID, st: a.StatusName, type: a.UnitTypeDesc, dept: a.DeptName }); });
       C.units = units;

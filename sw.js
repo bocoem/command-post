@@ -4,9 +4,9 @@
    - ArcGIS reads (GET): network first, last copy when offline. Sign-in tokens are stripped from the stored key.
      Records with personal information (protected services, shelter registry) are never stored on the device.
    - Writes (POST) are never cached; the app's outbox handles them. */
-var V = 'cp-v10', SHELL = 'cp-shell-' + V, DATA = 'cp-data-' + V, LIB = 'cp-lib-' + V;
+var V = 'cp-v13', SHELL = 'cp-shell-' + V, DATA = 'cp-data-' + V, LIB = 'cp-lib-' + V;
 var PRIVATE = /BOCO_EM_Protected|BOCO_EMS_PatientCare|Shelter_Registry|Shelter_Checkouts|Reunification|oauth2|\/generateToken/i;
-var PAGES = ['./', 'index.html', 'ops.html', 'mci.html', 'reunify.html', 'checkin.html', 'family.html', 'hotline.html', 'faq.html', 'commandboard.html', 'cb.css', 'cb.js', 'sync.js', 'lib/jsQR.js', 'app.css', 'seal.png', 'patch.png', 'icon.png', 'cp_lockup.png', 'manifest.webmanifest'];
+var PAGES = ['./', 'index.html', 'ops.html', 'mci.html', 'reunify.html', 'checkin.html', 'family.html', 'hotline.html', 'faq.html', 'commandboard.html', 'cb.css', 'cb.js', 'sync.js', 'map.js', 'lib/jsQR.js', 'app.css', 'seal.png', 'patch.png', 'icon.png', 'cp_lockup.png', 'manifest.webmanifest'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(SHELL).then(function (c) { return Promise.all(PAGES.map(function (p) { return c.add(new Request(p, { cache: 'reload' })).catch(function () {}); })); }).then(function () { return self.skipWaiting(); }));
