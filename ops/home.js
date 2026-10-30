@@ -125,7 +125,7 @@
   async function run(o) {
     var out = [], box = function () { return document.getElementById('buildLog'); };
     var log = function (s) { out.push(s); OPS._buildLog = out.join('\n'); var b = box(); if (b) b.textContent = OPS._buildLog; };
-    var step = async function (name, fn) { log('… ' + name); var at = out.length - 1; try { var r = await fn(); out[at] = '✓ ' + name + (r ? ': ' + r : ''); } catch (e) { out[at] = '✗ ' + name + ': ' + e.message; } OPS._buildLog = out.join('\n'); var b = box(); if (b) b.textContent = OPS._buildLog; };
+    var step = async function (name, fn) { log('… ' + name); var at = out.length - 1; try { var r = await fn(); out[at] = '✓ ' + name + (r ? ': ' + r : ''); } catch (e) { console.warn(name, e); out[at] = '✗ ' + name + ': ' + OPS.errText(e); } OPS._buildLog = out.join('\n'); var b = box(); if (b) b.textContent = OPS._buildLog; };
     if (OPS.st.tool !== 'setup') OPS.go('setup');
     await OPS.findServices();
     var eg = gsFind();

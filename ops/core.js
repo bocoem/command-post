@@ -76,6 +76,19 @@
     }
     return d;
   }
+  function errText(e) { return (e && e.message || 'error') + (e && e.details && e.details.length ? ' (' + e.details.join('; ') + ')' : ''); }
+  // add layers in one call; if ArcGIS refuses, add them one at a time so one bad layer can't block the rest, and report which failed and why
+  async function addLayers(admin, ls) {
+    var body = function (x) { return { addToDefinition: { layers: x.filter(function (l) { return l.type !== 'Table'; }), tables: x.filter(function (l) { return l.type === 'Table'; }) } }; };
+    try { var r = await A.req(admin + '/addToDefinition', body(ls), true); if (r.success) return; } catch (e) { console.warn('bulk addToDefinition', e, e.details); }
+    var bad = [];
+    for (var l of ls) {
+      try { var r1 = await A.req(admin + '/addToDefinition', body([l]), true); if (!r1.success) bad.push(l.name + ': not added'); }
+      catch (e) { bad.push(l.name + ': ' + errText(e)); }
+    }
+    if (bad.length) throw new Error(bad.length + ' of ' + ls.length + ' layers failed. ' + bad.join(' | '));
+  }
+  OPS.errText = errText;
   OPS.layersFor = function (svc) { return Object.keys(OPS.LAYERS).map(function (k) { return OPS.LAYERS[k]; }).filter(function (l) { return l.svc === svc; }); };
   OPS.createService = async function (key) {
     var d = OPS.SERVICES[key], u = A.user.username;
@@ -87,8 +100,8 @@
     if (!r.success) throw new Error('ArcGIS could not create ' + d.name);
     var ls = OPS.layersFor(key).map(layerDef);
     var admin = r.encodedServiceURL.replace('/rest/services/', '/rest/admin/services/');
-    var a = await A.req(admin + '/addToDefinition', { addToDefinition: { layers: ls.filter(function (l) { return l.type !== 'Table'; }), tables: ls.filter(function (l) { return l.type === 'Table'; }) } }, true);
-    if (!a.success) throw new Error('Could not add the layers to ' + d.name);
+    var p0 = CP.store.prefs().opsSvc || {}; p0[key] = r.encodedServiceURL.replace(/\/$/, ''); CP.store.setPref('opsSvc', p0);
+    await addLayers(admin, ls);
     await A.req(A.portal + '/sharing/rest/content/users/' + u + '/items/' + r.itemId + '/update', { title: d.name, description: d.desc + '<br><br>Created by the Botetourt County EM Ops tools. Do not rename layers or fields; the apps find them by name.' }, true).catch(function () {});
     var p = CP.store.prefs().opsSvc || {}; p[key] = r.encodedServiceURL.replace(/\/$/, ''); CP.store.setPref('opsSvc', p);
     await OPS.findServices();
@@ -111,10 +124,9 @@
     if (g.layers.length) {
       var used = Object.keys(s.ids).map(function (n) { return s.ids[n]; });
       var ls = g.layers.map(function (l) { var d = layerDef(l); if (used.indexOf(d.id) >= 0) d.id = Math.max.apply(null, used.concat([0])) + 1; used.push(d.id); return d; });
-      var r = await A.req(admin + '/addToDefinition', { addToDefinition: { layers: ls.filter(function (l) { return l.type !== 'Table'; }), tables: ls.filter(function (l) { return l.type === 'Table'; }) } }, true);
-      if (!r.success) throw new Error('Could not add layers');
+      await addLayers(admin, ls);
     }
-    for (var x of g.fields) { var r2 = await A.req(admin + '/' + s.ids[x.l.name] + '/addToDefinition', { addToDefinition: { fields: x.f.map(fieldDef) } }, true); if (!r2.success) throw new Error('Could not add fields to ' + x.l.name); }
+    for (var x of g.fields) { var r2 = await A.req(admin + '/' + s.ids[x.l.name] + '/addToDefinition', { addToDefinition: { fields: x.f.map(fieldDef) } }, true).catch(function (e) { throw new Error('Could not add fields to ' + x.l.name + ': ' + errText(e)); }); if (!r2.success) throw new Error('Could not add fields to ' + x.l.name); }
     await OPS.findServices();
     return g.layers.length + ' layers, ' + g.fields.reduce(function (n, x) { return n + x.f.length; }, 0) + ' fields added';
   };
