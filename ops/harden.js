@@ -21,7 +21,9 @@
   async function myGroups() { var me = await A.req(P('/community/self'), {}); return me.groups || []; }
   function admin(url) { return url.replace('/rest/services/', '/rest/admin/services/'); }
   async function itemGroups(id) { var g = await A.req(P('/content/items/' + id + '/groups'), {}); return (g.admin || []).concat(g.member || [], g.other || []); }
-  async function share(item, groupIds) { if (!groupIds.length) return; var r = await A.req(P('/content/users/' + item.owner + '/items/' + item.id + '/share'), { everyone: false, org: false, groups: groupIds.join(',') }, true); if (r.notSharedWith && r.notSharedWith.length) throw new Error('could not share with ' + r.notSharedWith.length + ' group(s)'); }
+  async function share(item, groupIds) {
+    var cur = await itemGroups(item.id).catch(function () { return []; }); groupIds = groupIds.filter(function (g) { return !cur.some(function (c) { return c.id === g; }); });
+    if (!groupIds.length) return; var r = await A.req(P('/content/users/' + item.owner + '/items/' + item.id + '/share'), { everyone: false, org: false, groups: groupIds.join(',') }, true); if (r.notSharedWith && r.notSharedWith.length) throw new Error('could not share with ' + r.notSharedWith.length + ' group(s)'); }
   async function unshare(item, groupIds) { if (!groupIds.length) return; await A.req(P('/content/users/' + item.owner + '/items/' + item.id + '/unshare'), { groups: groupIds.join(',') }, true); }
   async function protect(item) { if (item.protected) return false; await A.req(P('/content/users/' + item.owner + '/items/' + item.id + '/protect'), {}, true); return true; }
   async function fullItem(id) { return A.req(P('/content/items/' + id), {}); }
@@ -79,12 +81,21 @@
       var a = await slow(function () { return A.req(admin(url) + '/addToDefinition', { addToDefinition: add }, true); }); if (!a.success && !a._lost) throw new Error('could not add layers to the view');
       info = await A.req(url, {}); (info.layers || []).concat(info.tables || []).forEach(function (x) { have[x.name] = x.id; });
     }
-    if (v.where) for (var lk2 of v.layers) {
+    var problems = [];
+    for (var lk2 of v.layers) {
       var l2 = OPS.LAYERS[lk2], id = have[l2.name]; if (id == null) continue;
-      if (/practice/.test(v.where) && !l2.fields.some(function (f) { return f[0] === 'practice'; })) continue;
-      var li = await A.req(url + '/' + id, {}); if ((li.viewDefinitionQuery || li.definitionQuery || '') === v.where) continue;
-      await slow(function () { return A.req(admin(url) + '/' + id + '/updateDefinition', { updateDefinition: { viewDefinitionQuery: v.where } }, true); });
+      var li = await A.req(url + '/' + id, {}), upd = {};
+      var wantQ = v.where && !(/practice/.test(v.where) && !l2.fields.some(function (f) { return f[0] === 'practice'; })) ? v.where : null;
+      if (wantQ && (li.viewDefinitionQuery || '') !== wantQ) upd.viewDefinitionQuery = wantQ;
+      var hide = ((v.hideFields || {})[lk2] || []).filter(function (n) { return (li.fields || []).some(function (f) { return f.name === n; }); });
+      if (hide.length) upd.fields = hide.map(function (n) { return { name: n, visible: false }; });
+      if (!Object.keys(upd).length) continue;
+      await slow(function () { return A.req(admin(url) + '/' + id + '/updateDefinition', { updateDefinition: upd }, true); });
+      var chk = await A.req(url + '/' + id, {}); // read back: did it take?
+      if (upd.viewDefinitionQuery && (chk.viewDefinitionQuery || '') !== wantQ) problems.push(l2.name + ' filter');
+      var still = hide.filter(function (n) { return (chk.fields || []).some(function (f) { return f.name === n; }); }); if (still.length) problems.push(l2.name + ' still shows ' + still.join(', '));
     }
+    if (problems.length) throw new Error('view made, but not fully locked down: ' + problems.join('; '));
     if ((info.capabilities || '') !== v.caps) await A.req(admin(url) + '/updateDefinition', { updateDefinition: { capabilities: v.caps } }, true).catch(function () {});
     // share with its groups; take the full service away from those groups (least access)
     var gs = await myGroups(), want = gs.filter(function (g) { return v.groups.some(function (re) { return re.test(g.title); }); });
