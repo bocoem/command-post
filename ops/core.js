@@ -39,9 +39,9 @@
     return s.url + '/' + id;
   };
   OPS.ready = function (k) { return !!OPS.url(k); };
-  function need(k) { var u = OPS.url(k); if (u) return u; var l = OPS.LAYERS[k]; var e = new Error(OPS.svc[l.svc] ? 'The ' + l.title + ' layer is missing. Open Setup and choose Update layers.' : (l.svc === 'prot' ? 'The protected EM service is not set up or not shared with you.' : 'The EM Operations service is not set up yet. Open Setup.')); e.setup = true; throw e; }
+  function need(k) { var u = OPS.url(k); if (u) return u; var l = OPS.LAYERS[k]; var e = new Error(OPS.svc[l.svc] ? 'The ' + l.title + ' layer is missing. Open Setup and choose Update layers.' : (l.svc === 'prot' ? 'The protected EM service is not set up or not shared with you.' : l.svc === 'ems' ? 'The EMS Patient Care service is not set up or not shared with you.' : 'The EM Operations service is not set up yet. Open Setup.')); e.setup = true; throw e; }
   OPS.findServices = async function () {
-    for (var key of ['main', 'prot']) {
+    for (var key of OPS.SVC_KEYS) {
       var d = OPS.SERVICES[key], fixed = (CP.store.prefs().opsSvc || {})[key];
       var r = await A.req(A.portal + '/sharing/rest/search', { q: 'title:"' + d.name + '" AND type:"Feature Service" AND orgid:' + A.user.orgId, num: 5 }).catch(function () { return { results: [] }; });
       var it = (r.results || []).find(function (x) { return x.title === d.name; });
@@ -82,7 +82,7 @@
     var cp = { name: d.name, serviceDescription: d.desc, hasStaticData: false, maxRecordCount: 2000, supportedQueryFormats: 'JSON', capabilities: 'Create,Delete,Query,Update,Editing,ChangeTracking',
       spatialReference: { wkid: 4326 }, initialExtent: { xmin: -80.2, ymin: 37.3, xmax: -79.4, ymax: 37.85, spatialReference: { wkid: 4326 } }, allowGeometryUpdates: true, units: 'esriDecimalDegrees',
       xssPreventionInfo: { xssPreventionEnabled: true, xssPreventionRule: 'InputOnly', xssInputRule: 'rejectInvalid' },
-      editorTrackingInfo: { enableEditorTracking: true, enableOwnershipAccessControl: false, allowOthersToUpdate: true, allowOthersToDelete: key !== 'prot' } };
+      editorTrackingInfo: { enableEditorTracking: true, enableOwnershipAccessControl: false, allowOthersToUpdate: true, allowOthersToDelete: !OPS.SVC_PRIVATE[key] } };
     var r = await A.req(A.portal + '/sharing/rest/content/users/' + u + '/createService', { createParameters: cp, outputType: 'featureService', tags: d.tags, snippet: d.desc }, true);
     if (!r.success) throw new Error('ArcGIS could not create ' + d.name);
     var ls = OPS.layersFor(key).map(layerDef);
@@ -126,7 +126,7 @@
   };
   OPS.makeWebMap = async function () {
     var ops = [];
-    ['main', 'prot'].forEach(function (k) { var s = OPS.svc[k]; if (!s) return; OPS.layersFor(k).forEach(function (l) { if (s.ids[l.name] == null) return; var it = { id: l.name, title: l.title, url: s.url + '/' + s.ids[l.name], itemId: s.id, layerType: 'ArcGISFeatureLayer', visibility: !!l.geom && k === 'main', opacity: 1, _tbl: !l.geom }; ops.push(it); }); });
+    OPS.SVC_KEYS.forEach(function (k) { var s = OPS.svc[k]; if (!s) return; OPS.layersFor(k).forEach(function (l) { if (s.ids[l.name] == null) return; var it = { id: l.name, title: l.title, url: s.url + '/' + s.ids[l.name], itemId: s.id, layerType: 'ArcGISFeatureLayer', visibility: !!l.geom && k === 'main', opacity: 1, _tbl: !l.geom }; ops.push(it); }); });
     [['Command Post incidents', A.own && A.own.url + '/0'], ['Shelters', A.L.shelters], ['PODs (public)', A.L.pods], ['Critical infrastructure', A.L.critInfra], ['Road closures', A.L.closures], ['Evacuation notices', A.L.notices], ['CAD calls', A.L.cad]].forEach(function (x) { if (x[1]) ops.push({ id: x[0].replace(/\W/g, ''), title: x[0], url: x[1], layerType: 'ArcGISFeatureLayer', visibility: true, opacity: 1 }); });
     var clean = function (o) { var c = Object.assign({}, o); delete c._tbl; delete c.visibility; delete c.opacity; c.layerType = undefined; delete c.layerType; return c; };
     var tables = ops.filter(function (o) { return o._tbl; }).map(clean);

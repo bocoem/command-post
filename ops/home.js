@@ -29,15 +29,15 @@
     n: 'Setup', sub: 'ArcGIS Services & Sharing', icon: 'gear', d: 'Create and maintain the ArcGIS services behind the EM Ops tools.',
     render: function () {
       var u = A.user || {}, canPub = u.canPublish;
-      var h = '<div class="phead"><div><h1 class="pg">ArcGIS setup</h1><p class="pgsub" style="margin:0">Every Ops tool reads and writes hosted feature layers in county ArcGIS Online. Staff data goes in <b>BOCO_EM_Operations</b>. Personal information (AFN registry, reunification, MCI patients) goes in <b>BOCO_EM_Protected</b>, which you share only with a restricted group.</p></div></div>';
-      var built = OPS.svc.main && OPS.svc.prot;
-      h += '<div class="card" style="margin-bottom:14px;border-left:4px solid var(--gold)"><h3>' + I('build') + 'Build everything' + (built ? '<span class="x">' + OPS.chip('Active') + '</span>' : '') + '</h3><p class="dim" style="margin-top:0">One click, with your publisher account: creates both services with every layer, adds anything missing, shares them with the groups you pick, turns on the public family check-in (kiosk & QR), builds the EM Operations web map, and loads the EOP starter content (trauma centers, plan library entries for the EOP annexes with their checklists).</p>' +
+      var h = '<div class="phead"><div><h1 class="pg">ArcGIS setup</h1><p class="pgsub" style="margin:0">Every Ops tool reads and writes hosted feature layers in county ArcGIS Online. Staff data goes in <b>BOCO_EM_Operations</b>. Personal information (AFN registry, reunification) goes in <b>BOCO_EM_Protected</b>, shared only with EM. MCI patient records go in <b>BOCO_EMS_PatientCare</b>, shared only with the EMS patient care group and EM.</p></div></div>';
+      var built = OPS.SVC_KEYS.every(function (k) { return OPS.svc[k]; });
+      h += '<div class="card" style="margin-bottom:14px;border-left:4px solid var(--gold)"><h3>' + I('build') + 'Build everything' + (built ? '<span class="x">' + OPS.chip('Active') + '</span>' : '') + '</h3><p class="dim" style="margin-top:0">One click, with your publisher account: creates the three services with every layer, adds anything missing, shares them with the groups you pick, turns on the public family check-in (kiosk & QR), builds the EM Operations web map, and loads the EOP starter content (trauma centers, plan library entries for the EOP annexes with their checklists).</p>' +
         '<div id="buildLog" class="mono" style="font-size:12.5px;white-space:pre-wrap;margin-bottom:10px">' + E(OPS._buildLog || '') + '</div><button class="btn pri" data-act="buildAll"' + (canPub ? '' : ' disabled') + '>' + I('play') + (built ? 'Run again (adds only what is missing)' : 'Build everything') + '</button></div>';
-      h += '<div class="grid g2">' + ['main', 'prot'].map(function (key) {
+      h += '<div class="grid g3">' + OPS.SVC_KEYS.map(function (key) {
         var d = OPS.SERVICES[key], s = OPS.svc[key];
         var gaps = s ? OPS.load('gaps:' + key, function () { return OPS.schemaGaps(key); }) : null;
         var gtxt = !s ? '' : gaps === undefined ? '<span class="dim">Checking layers…</span>' : gaps && gaps._err ? E(gaps._err) : (gaps.layers.length || gaps.fields.length) ? '<span class="warn-t">' + gaps.layers.length + ' layers and ' + gaps.fields.reduce(function (n, x) { return n + x.f.length; }, 0) + ' fields missing.</span> <button class="btn xs pri" data-act="upgrade" data-a="' + key + '">Update layers</button>' : '<span class="ok-t">' + I('check') + ' All ' + OPS.layersFor(key).length + ' layers up to date.</span>';
-        return '<div class="card"><h3>' + I(key === 'prot' ? 'shield' : 'cloud') + E(d.title) + '<span class="x">' + (s ? OPS.chip('Active') : '<span class="chip red">Not set up</span>') + '</span></h3>' +
+        return '<div class="card"><h3>' + I(OPS.SVC_PRIVATE[key] ? 'shield' : 'cloud') + E(d.title) + '<span class="x">' + (s ? OPS.chip('Active') : '<span class="chip red">Not set up</span>') + '</span></h3>' +
           '<div class="mono dim" style="font-size:12px;word-break:break-all;margin-bottom:8px">' + E(s ? s.url : d.name) + '</div>' +
           (s ? '<p style="margin:0 0 8px">' + gtxt + '</p><p style="margin:0 0 10px" class="dim">Owner ' + E(s.owner || '?') + ' · shared: ' + E(s.access || '?') + '</p>' +
             '<div class="row">' + (s.id ? '<a class="btn sm" target="_blank" href="' + A.portal + '/home/item.html?id=' + s.id + '">' + I('link') + 'Item page</a><button class="btn sm" data-act="shareDlg" data-a="' + key + '">' + I('users') + 'Share</button>' : '') + '</div>'
@@ -66,8 +66,8 @@
   OPS.act.shareDlg = async function (key) {
     var me = await A.req(A.portal + '/sharing/rest/community/self', {}).catch(function () { return { groups: [] }; });
     var gs = (me.groups || []).sort(function (a, b) { return a.title.localeCompare(b.title); });
-    var prot = key === 'prot';
-    U.modal('Share ' + OPS.SERVICES[key].name, (prot ? '<div class="warnbox" style="margin-bottom:10px">This service holds names, addresses, medical needs and patient records. Share it only with a small restricted group, not the whole organization.</div>' : '<p class="dim" style="margin-top:0">Share with the groups whose members use the Ops tools. Everyone who can see it can add and edit records.</p>') +
+    var prot = !!OPS.SVC_PRIVATE[key];
+    U.modal('Share ' + OPS.SERVICES[key].name, (prot ? '<div class="warnbox" style="margin-bottom:10px">' + (key === 'ems' ? 'This service holds patient records (protected health information).' : 'This service holds names, addresses and medical needs.') + ' Share it only with a small restricted group, not the whole organization.</div>' : '<p class="dim" style="margin-top:0">Share with the groups whose members use the Ops tools. Everyone who can see it can add and edit records.</p>') +
       (prot ? '' : '<label class="chk" style="margin-bottom:8px"><input type="checkbox" name="org"> Whole Botetourt County organization</label>') +
       '<div class="multi" id="grpList">' + (gs.map(function (g) { return '<label class="chk"><input type="checkbox" value="' + E(g.id) + '"> ' + E(g.title) + '</label>'; }).join('') || '<span class="dim">You are not in any groups.</span>') + '</div>',
       [{ label: 'Cancel', cls: 'ghost' }, { label: 'Share', cls: 'pri', fn: function (bg) { var ids = Array.prototype.map.call(bg.querySelectorAll('#grpList input:checked'), function (x) { return x.value; }); var org = !!(bg.querySelector('[name="org"]') || {}).checked; OPS.share(key, ids, org).then(function () { U.toast('Shared', 'ok'); OPS.render(); }).catch(function (e) { U.toast(E(e.message), 'err'); }); } }]);
@@ -108,23 +108,34 @@
   }
   OPS.act.buildAll = async function () {
     var me = await A.req(A.portal + '/sharing/rest/community/self', {}).catch(function () { return { groups: [] }; });
-    var gs = (me.groups || []).sort(function (a, b) { return a.title.localeCompare(b.title); });
+    var gs = (me.groups || []).sort(function (a, b) { return a.title.localeCompare(b.title); }); _gs = gs;
     var list = function (n) { return '<div class="multi" id="' + n + '">' + (gs.map(function (g) { return '<label class="chk"><input type="checkbox" value="' + E(g.id) + '"> ' + E(g.title) + '</label>'; }).join('') || '<span class="dim">You are not in any groups. Create them in ArcGIS first, or share later.</span>') + '</div>'; };
     U.modal('Build everything', '<div class="fgrp">Share EM Operations (staff data) with</div><label class="chk" style="margin-bottom:6px"><input type="checkbox" id="bOrg"> Whole Botetourt County organization</label>' + list('bMain') +
-      '<div class="fgrp">Share EM Protected (AFN, reunification, patients) with</div><div class="warnbox" style="margin-bottom:6px">Pick a small restricted group only (EM, DSS, Sheriff\'s Office leads).</div>' + list('bProt') +
+      '<div class="fgrp">Share EM Protected (AFN registry, reunification) with</div><div class="warnbox" style="margin-bottom:6px">Pick a small restricted group only (EM, DSS, Sheriff\'s Office leads).</div>' + list('bProt') +
+      '<div class="fgrp">Share EMS Patient Care (MCI patients) with</div><div class="warnbox" style="margin-bottom:6px">Patient records only. EMS crews in this group see MCI patients, not the AFN registry or reunification.</div>' +
+      (gs.some(function (g) { return g.title === OPS.EMS_GROUP; }) ? '' : '<label class="chk" style="margin-bottom:6px"><input type="checkbox" id="bEmsGrp" checked> Create the <b>' + E(OPS.EMS_GROUP) + '</b> group (private, invite only) and share with it</label>') + list('bEms') +
       '<label class="chk" style="margin-top:12px"><input type="checkbox" id="bView" checked> Turn on the public family check-in (kiosk & QR)</label><br><label class="chk"><input type="checkbox" id="bMap" checked> Create the EM Operations web map</label><br><label class="chk"><input type="checkbox" id="bSeed" checked> Load EOP starter content</label>',
       [{ label: 'Cancel', cls: 'ghost' }, { label: I('play') + 'Build', cls: 'pri', fn: function (bg) {
         var pick = function (id) { return Array.prototype.map.call(bg.querySelectorAll('#' + id + ' input:checked'), function (x) { return x.value; }); };
-        run({ main: pick('bMain'), prot: pick('bProt'), org: bg.querySelector('#bOrg').checked, view: bg.querySelector('#bView').checked, map: bg.querySelector('#bMap').checked, seed: bg.querySelector('#bSeed').checked });
+        var eg = bg.querySelector('#bEmsGrp'); run({ main: pick('bMain'), prot: pick('bProt'), ems: pick('bEms'), emsGrp: !!(eg && eg.checked), org: bg.querySelector('#bOrg').checked, view: bg.querySelector('#bView').checked, map: bg.querySelector('#bMap').checked, seed: bg.querySelector('#bSeed').checked });
       } }], { wide: true });
   };
+  var _gs = [];
+  function gsFind() { return _gs.find(function (g) { return g.title === OPS.EMS_GROUP; }); }
   async function run(o) {
     var out = [], box = function () { return document.getElementById('buildLog'); };
     var log = function (s) { out.push(s); OPS._buildLog = out.join('\n'); var b = box(); if (b) b.textContent = OPS._buildLog; };
     var step = async function (name, fn) { log('… ' + name); var at = out.length - 1; try { var r = await fn(); out[at] = '✓ ' + name + (r ? ': ' + r : ''); } catch (e) { out[at] = '✗ ' + name + ': ' + e.message; } OPS._buildLog = out.join('\n'); var b = box(); if (b) b.textContent = OPS._buildLog; };
     if (OPS.st.tool !== 'setup') OPS.go('setup');
     await OPS.findServices();
-    for (var k of ['main', 'prot']) {
+    var eg = gsFind();
+    if (eg) { if (o.ems.indexOf(eg.id) < 0) o.ems.push(eg.id); }
+    else if (o.emsGrp) await step('Create group ' + OPS.EMS_GROUP, async function () {
+      var r = await A.req(A.portal + '/sharing/rest/community/createGroup', { title: OPS.EMS_GROUP, access: 'private', isInvitationOnly: true, isViewOnly: false, tags: 'EMS,Restricted,PHI,EM Ops', snippet: 'EMS crews and supervisors who can see MCI patient records in the EM Ops MCI app. Protected health information.', sortField: 'title', sortOrder: 'asc' }, true);
+      if (!r.success || !r.group) throw new Error('ArcGIS did not create the group');
+      o.ems.push(r.group.id); return 'created; add EMS members in ArcGIS';
+    });
+    for (var k of OPS.SVC_KEYS) {
       var nm = OPS.SERVICES[k].name;
       if (!OPS.svc[k]) await step('Create ' + nm, function () { return OPS.createService(k).then(function () { return OPS.layersFor(k).length + ' layers'; }); });
       else await step('Update ' + nm, function () { return OPS.upgrade(k); });

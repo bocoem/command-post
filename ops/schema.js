@@ -58,8 +58,12 @@
 
   OPS.SERVICES = {
     main: { name: 'BOCO_EM_Operations', title: 'EM Operations', desc: 'County EM operations data: resources, requests, cost recovery, check-in, volunteers, training, plans, infrastructure status, PODs, flood watch.', tags: 'Emergency Management,EM Ops,Botetourt' },
-    prot: { name: 'BOCO_EM_Protected', title: 'EM Protected', desc: 'Personal information (access & functional needs registry, family reunification, MCI patients). Share ONLY with the restricted EM group.', tags: 'Emergency Management,EM Ops,Restricted,PII' }
+    prot: { name: 'BOCO_EM_Protected', title: 'EM Protected', desc: 'Personal information (access & functional needs registry, family reunification). Share ONLY with the restricted EM group.', tags: 'Emergency Management,EM Ops,Restricted,PII' },
+    ems: { name: 'BOCO_EMS_PatientCare', title: 'EMS Patient Care', desc: 'MCI patient records (triage, transport, hospital destination). Protected health information: share ONLY with the EMS patient care group and EM.', tags: 'Emergency Management,EM Ops,EMS,Restricted,PHI' }
   };
+  OPS.SVC_KEYS = ['main', 'prot', 'ems'];
+  OPS.SVC_PRIVATE = { prot: 1, ems: 1 };
+  OPS.EMS_GROUP = 'BOCO Role - EMS Patient Care (Protected)';
 
   // key: {svc, id, name, geom, fields, attach}
   OPS.LAYERS = {
@@ -152,7 +156,7 @@
       S('id_type', 40, 'Photo ID checked', { o: ['Driver license', 'State ID', 'Passport', 'Military ID', 'Other photo ID', 'None (DSS/LE approval)'], req: 1 }), S('id_last4', 10, 'ID # (last 4)'), S('id_matches', 5, 'ID name matches guardian on record', { o: K.yesno, req: 1 }),
       S('custody_docs', 30, 'Custody documents', { o: ['Not needed', 'Checked', 'Conflict - DSS/LE decided'] }), S('child_recognizes', 5, 'Child recognizes adult (age-appropriate)', { o: ['Yes', 'No', 'N/A (too young)'] }),
       S('verified_by_1', 150, 'Verified by (staff 1)', { req: 1, list: 1 }), S('verified_by_2', 150, 'Verified by (staff 2)', { req: 1 }), T('release_time', 'Released', { list: 1 }), S('phone', 30, 'Adult phone'), S('destination', 255, 'Going to'), S('notes', 1000, 'Notes', { area: 1 })]) },
-    patients: { svc: 'prot', id: 3, name: 'PROT_MCI_Patients', title: 'MCI patients', geom: 'point', fields: INC.concat([
+    patients: { svc: 'ems', id: 0, name: 'PROT_MCI_Patients', title: 'MCI patients', geom: 'point', fields: INC.concat([
       S('tag_no', 30, 'Triage tag #', { req: 1, list: 1 }), S('triage', 30, 'Triage', { o: K.triage, list: 1, req: 1 }), S('status', 30, 'Status', { o: K.ptStatus, list: 1 }), S('age_group', 20, 'Age group', { o: K.ageGroup }), I('age', 'Age'), S('sex', 10, 'Sex', { o: K.sex }),
       S('first_name', 80, 'First name', { list: 1 }), S('last_name', 80, 'Last name', { list: 1 }), S('injuries', 1000, 'Injuries / chief complaint', { area: 1 }), S('vitals', 255, 'Vitals'), S('treatment', 1000, 'Treatment given', { area: 1 }),
       S('found_at', 255, 'Found at / sector'), S('unit', 40, 'Transport unit', { list: 1 }), S('hospital', 150, 'Destination', { list: 1 }), T('triage_time', 'Triaged'), T('transport_time', 'Transported'), T('arrive_time', 'Arrived'),
