@@ -52,7 +52,7 @@
 
   // ---------- auth ----------
   function b64url(buf) { return btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
-  function redirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+  function redirectUri() { return location.origin + location.pathname.replace(/[^\/]*$/, ''); } // always the site folder, so every page (Command Post, Ops tools) shares one registered redirect
   arc.auth = function () { try { return JSON.parse(localStorage.getItem(TK) || 'null'); } catch (e) { return null; } };
   function setAuth(a) { if (a) localStorage.setItem(TK, JSON.stringify(a)); else localStorage.removeItem(TK); }
   arc.signedIn = function () { var a = arc.auth(); return !!(a && a.token); };
@@ -63,7 +63,7 @@
     var v = b64url(crypto.getRandomValues(new Uint8Array(32)));
     var ch = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)));
     var st = b64url(crypto.getRandomValues(new Uint8Array(12)));
-    sessionStorage.setItem('cp.pkce', JSON.stringify({ v: v, st: st, back: location.hash }));
+    var here = location.pathname.replace(/^.*\//, ''); sessionStorage.setItem('cp.pkce', JSON.stringify({ v: v, st: st, back: location.hash, page: here && here !== 'index.html' ? here + location.search : '' }));
     location.href = arc.portal + '/sharing/rest/oauth2/authorize?' + new URLSearchParams({ client_id: arc.clientId, response_type: 'code', redirect_uri: redirectUri(), code_challenge: ch, code_challenge_method: 'S256', state: st, expiration: '20160' });
   };
   arc.handleRedirect = async function () {
@@ -75,6 +75,7 @@
     var r = await fetch(arc.portal + '/sharing/rest/oauth2/token', { method: 'POST', body: new URLSearchParams({ client_id: arc.clientId, grant_type: 'authorization_code', code: q.get('code'), redirect_uri: redirectUri(), code_verifier: pk.v }) }).then(function (x) { return x.json(); });
     if (!r.access_token) { CP.ui.toast('Sign-in failed: ' + ((r.error && r.error.message) || 'no token'), 'err', 6000); return false; }
     setAuth({ token: r.access_token, exp: Date.now() + (r.expires_in - 60) * 1000, refresh: r.refresh_token, user: r.username });
+    if (pk.page && location.pathname.replace(/^.*\//, '') !== pk.page.split('?')[0]) { location.replace(location.pathname.replace(/[^\/]*$/, '') + pk.page + (pk.back || '')); return 'away'; }
     return true;
   };
   async function token() {
@@ -85,6 +86,7 @@
     if (!r.access_token) { setAuth(null); arc.user = null; arc.status = 'local'; CP.app && CP.app.paintChrome(); return null; }
     a.token = r.access_token; a.exp = Date.now() + (r.expires_in - 60) * 1000; setAuth(a); return a.token;
   }
+  arc.token = token;
   arc.signOut = function () { setAuth(null); arc.user = null; arc.own = null; arc.status = 'local'; };
 
   // ---------- REST ----------
