@@ -151,3 +151,28 @@ body.cbdragging .cbasg[data-a]{border-color:var(--gold)}
 @media (max-width:1250px){.cbmain{grid-template-columns:minmax(0,1fr)}.cbside{grid-column:auto}}
 @media (max-width:900px){.cbtray{max-height:55vh}.cbqb{flex:1 1 44%}}
 .cbside{position:static;max-height:none}
+/* notes */
+.cbnote{display:flex;gap:6px;align-items:stretch;margin-bottom:6px}.cbnote textarea{flex:1;min-height:52px;font-size:15px;resize:vertical}.cbnote .btn{min-width:70px}
+.cbqk{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.cbqk button{font-size:12.5px;font-weight:600;padding:6px 9px;min-height:34px;border-radius:16px;border:1px solid var(--line2);background:var(--card);color:var(--text);cursor:pointer}
+.cbqk button:active{background:var(--gold-bg);border-color:var(--gold)}
+.cbunit .cbun{display:block;max-width:150px;font-style:normal;font-size:11px;font-weight:700;color:#1a1200;background:var(--gold);border-radius:5px;padding:1px 5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* compact benchmarks */
+.cbmarks{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+.cbmark{display:inline-flex;width:auto;min-height:34px;padding:5px 10px;margin:0;gap:5px;border-radius:17px;font-size:12.5px;justify-content:flex-start}
+.cbmark span{font-size:12.5px;font-weight:600}.cbmark .ic{width:14px;height:14px}
+.cbmark i{font-size:11px;color:var(--green)}
+.cbmark.add{border-style:dashed;color:var(--muted);background:transparent}
+/* who's on what: always on screen */
+.cbwho{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid #2a3c58}
+.cbwhol{font:700 11px var(--cond);letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.cbwh{display:inline-flex;align-items:center;gap:5px;min-height:38px;padding:4px 10px 4px 8px;border-radius:9px;border:1px solid #3a5476;background:#16294a;color:#fff;cursor:pointer;font-size:13px}
+.cbwh .cbi{width:16px;height:16px}.cbwh b{font:700 13.5px var(--cond);letter-spacing:.5px;margin-right:2px}
+.cbwh span{font:800 13.5px var(--cond);background:rgba(255,255,255,.12);border-radius:5px;padding:1px 6px}
+.cbwh span.nt{background:var(--gold);color:#1a1200}
+.cbwh i{font-style:normal;color:var(--muted)}
+.cbwh.empty{opacity:.55;border-style:dashed}
+.cbasg{min-height:0;scroll-margin-top:200px}
+.cbasg .cbau{min-height:62px}
+.cbasg.flash{animation:cbflashb 1.2s}
+@keyframes cbflashb{0%,60%{box-shadow:0 0 0 4px var(--gold)}100%{box-shadow:none}}
