@@ -7,3 +7,5 @@ window.CP_CONFIG = {
   serviceName: 'BOCO_Command_Post',
   serviceUrl: ''
 };
+// System name shown on every app, sign-in page and hub page.
+window.CP_BRAND = { name: 'BEACON', long: 'Botetourt Emergency Activity, Coordination & Operations Network' };

@@ -446,3 +446,7 @@ body.practice .hdr{position:relative;padding-bottom:18px}
 .practicechk{padding:10px 12px;border:1px dashed #a8740e;border-radius:8px;display:block}
 @media (max-width:640px){.modal-bg{padding:0}.modal{border-radius:0;min-height:100dvh}.modal .mf,.modal .mfoot{position:sticky;bottom:0;background:var(--panel)}}
 @media (pointer:coarse){.btn{min-height:44px}.in{font-size:16px}}
+/* BEACON system mark */
+.bcn{display:inline-flex;align-items:center;gap:6px;margin-left:12px;padding:4px 10px 4px 7px;border:1px solid rgba(253,184,51,.45);border-radius:999px;font:800 13px/1 'Barlow Condensed',sans-serif;letter-spacing:3px;color:#FDB833;background:rgba(253,184,51,.07);position:relative;white-space:nowrap}
+.bcn svg{width:18px;height:18px}
+@media (max-width:640px){.bcn{display:none}}

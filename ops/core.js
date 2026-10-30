@@ -432,8 +432,8 @@
   function tick() { var d = new Date(), el = document.getElementById('clock'); if (el) el.innerHTML = CP.pad(d.getHours()) + CP.pad(d.getMinutes()) + '<small>' + d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase() + '</small>'; }
   OPS.paintChrome = function () {
     var t = OPS.tools[OPS.st.tool] || OPS.tools.home;
-    document.getElementById('lock').innerHTML = '<div class="k">BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t">' + E(t.n.toUpperCase()) + '</div><div class="s">' + E((t.sub || '').toUpperCase()) + '</div>';
-    document.title = t.n + ' · Botetourt County Emergency Management';
+    document.getElementById('lock').innerHTML = '<div class="k">' + E(CP.BRAND) + ' · BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t">' + E(t.n.toUpperCase()) + '</div><div class="s">' + E((t.sub || '').toUpperCase()) + '</div>';
+    document.title = t.n + ' · ' + CP.BRAND + ' · Botetourt County EM';
     var st = A.status, sync = !A.signedIn() ? '<span class="sync">' + I('cloud') + 'Not signed in</span>' : st === 'busy' ? '<span class="sync busy">' + I('cloud') + 'Connecting…</span>' : st === 'err' ? '<span class="sync err" title="' + E(A.err) + '">' + I('cloud') + 'Offline</span>' : '<span class="sync on" title="County ArcGIS Online">' + I('cloud') + 'ArcGIS</span>';
     var sel = '<select class="in incsel" data-chg="inc"><option value="">County-wide (no incident)</option>' + OPS.incList.filter(function (a) { return a.status !== 'Closed' || (OPS.inc && a.incident_key === OPS.inc.key); }).map(function (a) { return '<option value="' + E(a.incident_key) + '"' + (OPS.inc && OPS.inc.key === a.incident_key ? ' selected' : '') + '>' + E(a.incident_name) + ' · ' + E(a.incident_number) + (a.status === 'Closed' ? ' (closed)' : '') + '</option>'; }).join('') +
       (OPS.incList.some(function (a) { return a.status === 'Closed'; }) ? '<optgroup label="Closed incidents">' + OPS.incList.filter(function (a) { return a.status === 'Closed' && !(OPS.inc && a.incident_key === OPS.inc.key); }).slice(0, 40).map(function (a) { return '<option value="' + E(a.incident_key) + '">' + E(a.incident_name) + ' · ' + E(a.incident_number) + '</option>'; }).join('') + '</optgroup>' : '') + '</select>';
@@ -462,7 +462,7 @@
   OPS.repaint = function () { if (document.getElementById('modal') && OPS.st.holdForModal) return; var a = document.activeElement; if (a && a.closest && a.closest('#main') && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && a.dataset.chg !== 'search') return; OPS._keep = true; OPS.render(); };
   OPS.go = function (k) { if (!OPS.tools[k]) k = 'home'; OPS.st.tool = k; OPS.st.ui = {}; if (location.hash !== '#' + k) history.replaceState(null, '', location.pathname + location.search.replace(/([?&])tool=[^&]*&?/, '$1').replace(/[?&]$/, '') + '#' + k); document.getElementById('main').scrollTop = 0; OPS.render(); };
   function signInPage(t) {
-    return '<div class="wrap"><div class="hero"><h2>' + E(t.n) + '</h2><p>' + E(t.d || '') + '</p><p>All EM Ops tools keep their records in Botetourt County ArcGIS Online and share incidents with Command Post. Sign in with your county ArcGIS account to continue.</p><button class="btn big pri" data-act="signin">' + I('cloud') + 'Sign in with ArcGIS</button></div></div>';
+    return '<div class="wrap"><div class="hero"><h2>' + E(t.n) + '</h2><p>' + E(t.d || '') + '</p><p>Part of <b>' + E(CP.BRAND) + '</b>' + (CP.BRAND_LONG ? ' (' + E(CP.BRAND_LONG) + ')' : '') + ', the county\'s emergency operations system. Records live in Botetourt County ArcGIS Online and share incidents with Command Post. Sign in with your county ArcGIS account to continue.</p><button class="btn big pri" data-act="signin">' + I('cloud') + 'Sign in with ArcGIS</button></div></div>';
   }
 
   // ---------- events ----------

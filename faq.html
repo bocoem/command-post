@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Questions people are asking · Botetourt County Emergency Management</title>
+<meta name="description" content="Answers from Botetourt County Emergency Management to the questions coming in to the public information hotline.">
+<meta name="theme-color" content="#0E2033">
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+:root{--navy:#0E2033;--red:#CD2028;--gold:#FDB833;--mu:#5b6b7e;--ln:#d7dee7}
+*{box-sizing:border-box}body{margin:0;font:16px/1.55 "Helvetica Neue",Arial,sans-serif;color:var(--navy);background:#EEF1F5}
+header{background:var(--navy);color:#fff;padding:22px 20px 18px;border-bottom:6px solid var(--red)}
+header .in{max-width:900px;margin:0 auto;display:flex;gap:16px;align-items:center}header img{width:64px;height:64px}
+header .k{font:700 12px Arial;letter-spacing:2px;color:#A9B8CA;text-transform:uppercase}header h1{margin:2px 0 0;font-size:26px}
+main{max-width:900px;margin:0 auto;padding:18px 20px 40px}
+.e911{background:#fff;border-left:6px solid var(--red);padding:12px 16px;margin-bottom:14px}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+input{flex:1 1 260px;padding:12px 14px;font-size:16px;border:1px solid var(--ln);border-radius:4px}
+.lang button{padding:10px 14px;border:1px solid var(--ln);background:#fff;font-weight:700;cursor:pointer}.lang button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+h2{font-size:15px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mu);margin:22px 0 8px}
+details{background:#fff;border:1px solid var(--ln);border-top:4px solid var(--gold);margin-bottom:8px;padding:0 16px}
+summary{cursor:pointer;padding:14px 0;font-weight:700;font-size:17px;list-style:none}summary::-webkit-details-marker{display:none}summary:before{content:'+ ';color:var(--red)}details[open] summary:before{content:'– '}
+.ans{white-space:pre-wrap;padding:0 0 14px}.meta{font-size:13px;color:var(--mu);padding-bottom:12px}.meta a{color:var(--navy)}
+.empty{background:#fff;padding:22px;border:1px solid var(--ln)}
+footer{max-width:900px;margin:0 auto;padding:0 20px 30px;font-size:13px;color:var(--mu)}
+</style>
+</head>
+<body>
+<header><div class="in"><img src="seal.png" alt="Botetourt County Emergency Management seal"><div><div class="k">Botetourt County Emergency Management</div><h1 id="h1">Questions people are asking</h1></div></div></header>
+<main>
+<div class="e911" id="e911"><strong>In an emergency, call 9-1-1.</strong> Non-emergency Dispatch: <a href="tel:5404738631">540-473-8631</a></div>
+<div class="tools"><input id="q" placeholder="Search: shelter, water, power, roads, pets…" aria-label="Search answers"><div class="lang"><button id="en" class="on">English</button><button id="es">Español</button></div></div>
+<div id="list"><div class="empty">Loading current answers…</div></div>
+</main>
+<footer>These answers are approved by Botetourt County Emergency Management and change as the situation changes. Last checked <span id="t">just now</span>. For official alerts, sign up for <a href="https://member.everbridge.net/76864345341996/login">Everbridge</a>.</footer>
+<script>
+(function () {
+  var ORG = '6h5xc2eGkGuRiFia', PORTAL = 'https://www.arcgis.com', VIEW = 'BOCO_Hotline_Public_Answers', es = false, rows = [];
+  var T = { en: { h: 'Questions people are asking', none: 'No current answers are posted. For emergencies call 9-1-1.', ph: 'Search: shelter, water, power, roads, pets…', upd: 'Updated', src: 'More information' }, es: { h: 'Preguntas frecuentes', none: 'No hay respuestas publicadas en este momento. En una emergencia llame al 9-1-1.', ph: 'Buscar: refugio, agua, electricidad, carreteras, mascotas…', upd: 'Actualizado', src: 'Más información' } };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function paint() {
+    var L = es ? T.es : T.en, q = document.getElementById('q').value.toLowerCase();
+    document.getElementById('h1').textContent = L.h; document.getElementById('q').placeholder = L.ph; document.documentElement.lang = es ? 'es' : 'en';
+    var now = Date.now(), list = rows.filter(function (r) { return (!r.expires || r.expires > now) && (!q || [r.topic, r.question, r.answer, r.spanish].join(' ').toLowerCase().indexOf(q) >= 0); });
+    if (!list.length) { document.getElementById('list').innerHTML = '<div class="empty">' + esc(L.none) + '</div>'; return; }
+    var by = {}; list.forEach(function (r) { (by[r.topic || 'General'] = by[r.topic || 'General'] || []).push(r); });
+    document.getElementById('list').innerHTML = Object.keys(by).sort().map(function (k) {
+      return '<h2>' + esc(k) + '</h2>' + by[k].map(function (r) { var a = es && r.spanish ? r.spanish : r.answer; return '<details><summary>' + esc(r.question) + '</summary><div class="ans">' + esc(a) + '</div><div class="meta">' + esc(L.upd) + ' ' + esc(new Date(r.EditDate || r.effective || now).toLocaleString(es ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + (r.source && /^https?:/.test(r.source) ? ' · <a href="' + esc(r.source) + '" target="_blank" rel="noopener">' + esc(L.src) + '</a>' : '') + '</div></details>'; }).join('');
+    }).join('');
+  }
+  async function load() {
+    try {
+      var s = await fetch(PORTAL + '/sharing/rest/search?f=json&num=3&q=' + encodeURIComponent('title:"' + VIEW + '" AND orgid:' + ORG)).then(function (r) { return r.json(); });
+      var it = (s.results || []).find(function (x) { return x.title === VIEW; }); if (!it) { rows = []; paint(); return; }
+      var u = it.url.replace(/\/$/, '') + '/0/query?f=json&where=1%3D1&outFields=topic,question,answer,spanish,source,effective,expires,EditDate&orderByFields=topic,question&resultRecordCount=500';
+      var j = await fetch(u).then(function (r) { return r.json(); });
+      rows = (j.features || []).map(function (f) { return f.attributes; });
+      document.getElementById('t').textContent = new Date().toLocaleTimeString();
+      paint();
+    } catch (e) { document.getElementById('list').innerHTML = '<div class="empty">Could not load answers right now. Try again in a minute. For emergencies call 9-1-1.</div>'; }
+  }
+  document.getElementById('q').addEventListener('input', paint);
+  document.getElementById('en').onclick = function () { es = false; this.classList.add('on'); document.getElementById('es').classList.remove('on'); paint(); };
+  document.getElementById('es').onclick = function () { es = true; this.classList.add('on'); document.getElementById('en').classList.remove('on'); paint(); };
+  if (/^es/i.test(navigator.language || '')) document.getElementById('es').click();
+  load(); setInterval(load, 120000);
+})();
+</script>
+</body>
+</html>

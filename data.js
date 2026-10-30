@@ -136,6 +136,8 @@ window.CP = window.CP || {};
     var m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
     return (d ? d + 'd ' : '') + (d || h ? h + 'h ' : '') + mm + 'm';
   };
+  CP.BRAND = (window.CP_BRAND || {}).name || 'Command Post'; CP.BRAND_LONG = (window.CP_BRAND || {}).long || '';
+  CP.beaconMark = function () { return '<span class="bcn" title="' + CP.esc(CP.BRAND + (CP.BRAND_LONG ? ': ' + CP.BRAND_LONG : '')) + '"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="#FDB833"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4M3.5 3.5a12 12 0 0 0 0 17M20.5 3.5a12 12 0 0 1 0 17" fill="none" stroke="#FDB833" stroke-width="1.8" stroke-linecap="round"/></svg>' + CP.esc(CP.BRAND) + '</span>'; };
   CP.esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   CP.nl = function (s) { return CP.esc(s).replace(/\n/g, '<br>'); };
   CP.clone = function (o) { return JSON.parse(JSON.stringify(o)); };

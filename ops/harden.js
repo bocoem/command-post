@@ -51,6 +51,14 @@
     return out.join(', ') || 'already in place';
   };
 
+  // Command Post incidents must be reachable by everyone who works incidents (EM, Sheriff, Fire & EMS, Dispatch)
+  H.cpShare = async function () {
+    var it = A.own && A.own.id ? await fullItem(A.own.id) : await find(A.serviceName, 'Feature Service'); if (!it) throw new Error('Command Post service not found');
+    var gs = await myGroups(), want = gs.filter(function (g) { return /^BOCO Access [1-4] /.test(g.title); });
+    await share(it, want.map(function (g) { return g.id; }));
+    var now = await itemGroups(it.id); return 'shared with ' + now.map(function (g) { return g.title.replace(/^BOCO (Role|Access \d) - /, ''); }).join(', ');
+  };
+
   // ---------- views ----------
   H.view = async function (vk) {
     var v = OPS.VIEWS[vk], src = OPS.svc[v.svc]; if (!src || src.view) throw new Error('full ' + OPS.SERVICES[v.svc].name + ' service not available to you');
@@ -91,7 +99,7 @@
       if (hide.length) upd.fields = hide.map(function (n) { return { name: n, visible: false }; });
       if (!Object.keys(upd).length) continue;
       await slow(function () { return A.req(admin(url) + '/' + id + '/updateDefinition', { updateDefinition: upd }, true); });
-      var chk = await A.req(url + '/' + id, {}); // read back: did it take?
+      await sleep(2500); var chk = await A.req(url + '/' + id, { _: Date.now() }); // read back (after ArcGIS refreshes): did it take?
       if (upd.viewDefinitionQuery && (chk.viewDefinitionQuery || '') !== wantQ) problems.push(l2.name + ' filter');
       var still = hide.filter(function (n) { return (chk.fields || []).some(function (f) { return f.name === n; }); }); if (still.length) problems.push(l2.name + ' still shows ' + still.join(', '));
     }
@@ -206,6 +214,7 @@
     await OPS.findServices();
     for (var k of OPS.SVC_KEYS) { if (OPS.svc[k] && !OPS.svc[k].view) { var kk = k; await step('Update ' + OPS.SERVICES[kk].name, function () { return OPS.upgrade(kk); }); } }
     await step('Command Post service (safe saves, practice)', H.cpService);
+    await step('Command Post incidents shared with incident groups', H.cpShare);
     await OPS.findServices();
     for (var vk of Object.keys(OPS.VIEWS)) { var v2 = vk; await step('View: ' + OPS.VIEWS[v2].title, function () { return H.view(v2); }); }
     await step('Leadership map and dashboard', H.leadership);
@@ -237,6 +246,7 @@
       }
     }
     try { var ch = await A.changes.table(); add(!!ch, 'Command Post: safe simultaneous saves ' + (ch ? 'on' : 'not set up'), 'Run Secure & connect.'); } catch (e) { add(false, 'Command Post service', CP.friendly(e.message)); }
+    try { var cpi = A.own && A.own.id ? A.own.id : ((await find(A.serviceName, 'Feature Service')) || {}).id; var cpg = cpi ? (await itemGroups(cpi)).map(function (g) { return g.title; }) : []; add(['1', '2', '3', '4'].every(function (n) { return cpg.some(function (t) { return t.indexOf('BOCO Access ' + n + ' ') === 0; }); }), 'Command Post incidents reachable by EM, Sheriff, Fire & EMS and Dispatch', 'Run Secure & connect.'); } catch (e) {}
     add(!!(A.own && A.own.fields && A.own.fields.exercise), 'Command Post: practice mode field ' + (A.own && A.own.fields && A.own.fields.exercise ? 'present' : 'missing'), 'Run Secure & connect.');
     for (var vk of Object.keys(OPS.VIEWS)) { var v = OPS.VIEWS[vk], vi = await find(v.name, 'Feature Service').catch(function () { return null; }); if (!vi) { add(false, 'View missing: ' + v.title, 'Run Secure & connect.'); continue; } var vg = await itemGroups(vi.id).catch(function () { return []; }); add(vg.length > 0 && vi.access !== 'public', 'View ' + v.title + ': shared with ' + (vg.map(function (x) { return x.title; }).join(', ') || 'nobody'), vg.length ? 'Unshare from Everyone.' : 'Create the group in ArcGIS, then run Secure & connect.'); }
     var view = await find('BOCO_Reunification_Public_Intake', 'Feature Service').catch(function () { return null; });

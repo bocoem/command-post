@@ -29,7 +29,7 @@
   }
   app.mount = function () {
     document.getElementById('app').innerHTML =
-      '<header class="hdr">' + headerArt() + '<button class="ibtn mnav" data-act="menu" style="position:relative;margin-left:8px;color:#fff">' + I('menu') + '</button><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock" data-act="home" title="All incidents"><img class="lockimg" src="cp_lockup.png?v=1" alt="Botetourt County Emergency Management. Command Post, Incident Management."></div>' +
+      '<header class="hdr">' + headerArt() + '<button class="ibtn mnav" data-act="menu" style="position:relative;margin-left:8px;color:#fff">' + I('menu') + '</button><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><div class="lock" data-act="home" title="All incidents"><img class="lockimg" src="cp_lockup.png?v=1" alt="Botetourt County Emergency Management. Command Post, Incident Management."></div>' + CP.beaconMark() +
       '<div class="right"><div class="clock" id="clock"></div></div></header>' +
       '<div id="ibar"></div><div class="body"><nav class="nav" id="nav"></nav><main class="main" id="main"></main><aside class="calls" id="calls"></aside><aside class="apps" id="apps"></aside></div><button class="callstab" id="callstab" data-act="callsToggle" title="Live CAD calls"></button><button class="callstab appstab" id="appstab" data-act="appsToggle" title="Overwatch and Stormwatch Responder"></button>' +
       '<datalist id="dl_kinds">' + CP.RES_KINDS.map(function (k) { return '<option value="' + E(k) + '">'; }).join('') + '</datalist>' +
