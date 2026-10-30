@@ -13,6 +13,9 @@
   var H = OPS.harden = {};
   var LEAD_MAP = 'EM Leadership Map', LEAD_DASH = 'EM Leadership Dashboard';
 
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  // long ArcGIS admin operations sometimes finish on the server but the answer never arrives: wait, then let the caller re-check
+  async function slow(fn) { try { return await fn(); } catch (e) { if (!e.offline) throw e; if (CP.net) CP.net.up(); await sleep(8000); return { _lost: true }; } }
   function P(path) { return A.portal + '/sharing/rest' + path; }
   async function find(title, type) { var r = await A.req(P('/search'), { q: 'title:"' + title + '"' + (type ? ' AND type:"' + type + '"' : '') + ' AND orgid:' + A.user.orgId, num: 5 }); return (r.results || []).find(function (x) { return x.title === title; }) || null; }
   async function myGroups() { var me = await A.req(P('/community/self'), {}); return me.groups || []; }
@@ -51,7 +54,8 @@
     var v = OPS.VIEWS[vk], src = OPS.svc[v.svc]; if (!src || src.view) throw new Error('full ' + OPS.SERVICES[v.svc].name + ' service not available to you');
     var it = await find(v.name, 'Feature Service'), made = false;
     if (!it) {
-      var r = await A.req(P('/content/users/' + A.user.username + '/createService'), { createParameters: { name: v.name, isView: true, sourceSchemaChangesAllowed: true, isUpdatableView: true, capabilities: v.caps, spatialReference: { wkid: 4326 } }, outputType: 'featureService', isView: true, tags: 'Emergency Management,EM Ops,View', snippet: v.desc }, true);
+      var r = await slow(function () { return A.req(P('/content/users/' + A.user.username + '/createService'), { createParameters: { name: v.name, isView: true, sourceSchemaChangesAllowed: true, isUpdatableView: true, capabilities: v.caps, spatialReference: { wkid: 4326 } }, outputType: 'featureService', isView: true, tags: 'Emergency Management,EM Ops,View', snippet: v.desc }, true); });
+      if (r._lost) { var again = await find(v.name, 'Feature Service'); if (!again) throw new Error('ArcGIS did not answer; run Secure & connect again'); r = { success: true, itemId: again.id, serviceurl: again.url }; }
       if (!r.success) throw new Error('ArcGIS could not create the view');
       it = { id: r.itemId, url: r.serviceurl || r.encodedServiceURL, owner: A.user.username }; made = true;
       await A.req(P('/content/users/' + A.user.username + '/items/' + r.itemId + '/update'), { title: v.name, description: v.desc + '<br>View of ' + OPS.SERVICES[v.svc].name + '. Made by EM Ops Setup; do not rename layers.' }, true).catch(function () {});
@@ -72,14 +76,14 @@
     if (add.layers.length || add.tables.length) {
       var used = Object.keys(have).map(function (k) { return have[k]; }); var nid = used.length ? Math.max.apply(null, used) + 1 : 0;
       add.layers.concat(add.tables).forEach(function (d) { d.id = nid++; });
-      var a = await A.req(admin(url) + '/addToDefinition', { addToDefinition: add }, true); if (!a.success) throw new Error('could not add layers to the view');
+      var a = await slow(function () { return A.req(admin(url) + '/addToDefinition', { addToDefinition: add }, true); }); if (!a.success && !a._lost) throw new Error('could not add layers to the view');
       info = await A.req(url, {}); (info.layers || []).concat(info.tables || []).forEach(function (x) { have[x.name] = x.id; });
     }
     if (v.where) for (var lk2 of v.layers) {
       var l2 = OPS.LAYERS[lk2], id = have[l2.name]; if (id == null) continue;
       if (/practice/.test(v.where) && !l2.fields.some(function (f) { return f[0] === 'practice'; })) continue;
       var li = await A.req(url + '/' + id, {}); if ((li.viewDefinitionQuery || li.definitionQuery || '') === v.where) continue;
-      await A.req(admin(url) + '/' + id + '/updateDefinition', { updateDefinition: { viewDefinitionQuery: v.where } }, true);
+      await slow(function () { return A.req(admin(url) + '/' + id + '/updateDefinition', { updateDefinition: { viewDefinitionQuery: v.where } }, true); });
     }
     if ((info.capabilities || '') !== v.caps) await A.req(admin(url) + '/updateDefinition', { updateDefinition: { capabilities: v.caps } }, true).catch(function () {});
     // share with its groups; take the full service away from those groups (least access)
