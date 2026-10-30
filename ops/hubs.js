@@ -52,7 +52,10 @@
     var it = await A.req(P('/content/items/' + DIR_ID), {}), d = await A.req(P('/content/items/' + DIR_ID + '/data'), {});
     var c = d.values.layout.sections[0].rows[0].cards[0].component.settings, md = c.markdown, all = apps(), by = {}; all.forEach(function (a) { by[a.k] = a; });
     // each role section: our rows go right after the role header
+    var delta = {};
     Object.keys(ROLE_APPS).forEach(function (r) {
+      var ps = md.indexOf(S('role-' + r)), pe = md.indexOf(En('role-' + r)), prev = ps >= 0 && pe > ps ? Math.max(0, (md.slice(ps, pe).match(/class="rz-row"/g) || []).length - 1) : 0;
+      delta[r] = (ROLE_APPS[r].filter(function (k) { return by[k]; }).length) - prev;
       var list = ROLE_APPS[r].map(function (k) { return by[k]; }).filter(Boolean); if (!list.length) return;
       var block = '<div class="rz-row" style="border-left:3px solid var(--au);background:rgba(253,184,51,.06)"><div class="rz-rm"><div class="rz-rt"><b>' + E(brand()) + '</b><span class="rz-ty">County operations system</span></div><p>Incident command, field and hotline apps on county ArcGIS. Sign in with your county ArcGIS account.</p></div></div>' + list.map(row).join('');
       var at = md.indexOf('id="rz-r-' + r + '"'); if (at < 0) return;
@@ -67,10 +70,8 @@
     var ph = md.indexOf('id="rz-phone"'), phh = ph >= 0 ? md.indexOf('</div>', md.indexOf('</h2>', ph)) + 6 : -1;
     md = put(md, 'offline', '<div class="rz-row"><div class="rz-rm"><div class="rz-rt"><b>Works with no signal</b></div><p>' + E(brand()) + ' apps (Command Post, EM Ops, Hotline, Check-In, MCI, Reunification) open and keep working offline once you have opened them on that device while connected. Changes wait on the device and send by themselves when the signal is back; a pill at the bottom left shows what is waiting. Don\'t sign out or clear the browser until it is empty.</p></div></div>', md.indexOf(S('offline')) >= 0 ? null : phh);
     // role tile counts
-    md = md.replace(/<a class="rz-tile" href="#rz-r-([a-z]+)"([^>]*)>([\s\S]*?)<i>\d+ tools →<\/i><\/a>/g, function (m, r, attrs, inner) {
-      var s0 = md.indexOf('id="rz-r-' + r + '"'), e0 = md.indexOf('class="rz-role"', s0 + 10); var sec = e0 < 0 ? md.slice(s0, md.indexOf('id="rz-catalog"')) : md.slice(s0, e0);
-      var n = (sec.match(/class="rz-row"/g) || []).length - (sec.indexOf(S('role-' + r)) >= 0 ? 1 : 0);
-      return '<a class="rz-tile" href="#rz-r-' + r + '"' + attrs + '>' + inner + '<i>' + n + ' tools →</i></a>';
+    md = md.replace(/<a class="rz-tile" href="#rz-r-([a-z]+)"([^>]*)>([\s\S]*?)<i>(\d+) tools →<\/i><\/a>/g, function (m, r, attrs, inner, n0) {
+      return '<a class="rz-tile" href="#rz-r-' + r + '"' + attrs + '>' + inner + '<i>' + (+n0 + (delta[r] || 0)) + ' tools →</i></a>';
     });
     c.markdown = md;
     var r2 = await A.req(P('/content/users/' + it.owner + '/items/' + DIR_ID + '/update'), { text: JSON.stringify(d) }, true);
