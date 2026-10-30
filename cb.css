@@ -446,3 +446,40 @@ body.cbdragging .cbasg[data-a]{border-color:var(--gold)}
 .cbx{width:100%}
 .cbbody .cbact>*{min-width:0;font-size:12px;line-height:1.1;text-align:center;padding:0 4px}
 .cbbody .cbact>* span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
+/* ===== header v2: slim, badge patch, live clock ===== */
+.cbbody .cbfire.cbh2{height:64px;min-height:0;padding:0 14px 0 0;gap:14px;overflow:visible;
+  background:
+    linear-gradient(100deg,rgba(200,16,46,.55) 0,rgba(200,16,46,.18) 230px,rgba(200,16,46,0) 420px),
+    repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 2px,transparent 2px 14px),
+    linear-gradient(180deg,rgba(12,19,32,.96),rgba(7,12,21,.94));
+  box-shadow:0 8px 28px rgba(0,0,0,.5),inset 0 -1px 0 rgba(255,255,255,.04)}
+.cbbody .cbfire.cbh2::after{height:2px;bottom:-1px;background:linear-gradient(90deg,transparent,var(--t-red2) 8%,var(--t-red) 30%,var(--t-gold) 55%,rgba(253,184,51,.25) 80%,transparent);background-size:200% 100%;animation:cbsheen 8s linear infinite;box-shadow:0 0 12px rgba(255,59,71,.6)}
+@keyframes cbsheen{0%{background-position:0 0}100%{background-position:200% 0}}
+.cbbadge{position:relative;align-self:stretch;width:84px;flex:none;display:flex;align-items:flex-start;justify-content:center}
+.cbbadge::before{content:'';position:absolute;top:-30px;left:-20px;width:120px;height:120px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,59,71,.45),rgba(255,59,71,0));pointer-events:none}
+.cbbody .cbbadge .cbpatch{position:relative;z-index:2;height:74px;width:auto;margin-top:5px;filter:drop-shadow(0 6px 10px rgba(0,0,0,.7)) drop-shadow(0 0 1px rgba(255,255,255,.4));transition:transform .2s}
+.cbbody .cbbadge .cbpatch:hover{transform:scale(1.05) rotate(-2deg)}
+.cbbody .cbh2 .cblock{display:flex;flex-direction:column;justify-content:center;line-height:1}
+.cbbody .cbh2 .cblock .k{font:700 10.5px var(--cond);letter-spacing:3px;text-transform:uppercase;color:rgba(253,184,51,.85);margin-bottom:4px}
+.cbbody .cbh2 .cblock .k i{font-style:normal;color:var(--t-red)}
+.cbbody .cbh2 .cblock .t{font:800 26px/1 var(--cond);letter-spacing:1.5px;text-transform:uppercase;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.6);white-space:nowrap}
+.cbbody .cbh2 .cblock .t i{font-style:normal;color:var(--t-gold)}
+.cbbody .cbh2 .cblock .t span{font-weight:600;color:#c9d6e6;letter-spacing:2.5px;margin-left:8px;padding-left:10px;border-left:2px solid rgba(255,59,71,.7)}
+.cbhclock{display:flex;flex-direction:column;align-items:flex-end;line-height:1;padding:0 6px}
+.cbhclock b{font:700 22px var(--mono);color:#fff;letter-spacing:1px;text-shadow:0 0 14px rgba(120,180,255,.35)}
+.cbhclock span{font:700 10px var(--cond);letter-spacing:2px;text-transform:uppercase;color:#8fa6c2;margin-top:3px}
+.cbbody .cbh2 .cbhome{min-height:40px;padding:0 14px}
+.cbbody .cbh2 .cbhtabs .cbtabs{padding:4px}
+.cbbody .cbh2 .cbhtabs .cbtabs button{min-height:40px;padding:0 18px;font-size:14px}
+@media (min-width:1000px) and (min-height:600px){body.cbfit .cbwrap{height:calc(100dvh - 64px)}}
+@media (max-width:1180px){.cbbody .cbh2 .cblock .t span{display:none}}
+@media (max-width:999px){.cbhclock{display:none}}
+@media (max-width:560px){.cbbody .cbfire.cbh2{height:56px;gap:8px}.cbbadge{width:62px}.cbbody .cbbadge .cbpatch{height:60px}.cbbody .cbh2 .cblock .t{font-size:20px}.cbbody .cbh2 .cblock .k{font-size:9px;letter-spacing:2px}.cbbody .cbh2 .cbhome span{display:none}}
+/* home tabs */
+.cbhome{height:100%}
+.cbcallpin{transform:translate(-50%,-100%);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:5px 10px 5px 7px;border-radius:10px;background:linear-gradient(180deg,#ff4b55,#b80d1f);color:#fff;font:800 13px var(--cond);letter-spacing:.5px;box-shadow:0 6px 16px rgba(200,16,46,.55);border:1px solid rgba(255,255,255,.35)}
+.cbcallpin.ems{background:linear-gradient(180deg,#4ea1ff,#1d5fd1);box-shadow:0 6px 16px rgba(30,100,220,.5)}
+.cbcallpin .cbi{width:16px;height:16px;fill:none;stroke:#fff}
+.cbcallpin::after{content:'';position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);border:6px solid transparent;border-bottom:0;border-top-color:inherit}
+.cbscratch{display:flex;align-items:center;gap:8px;font-size:13px;color:#9fb2c9;padding:0 4px}
