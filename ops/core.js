@@ -11,7 +11,18 @@
   CP.me = CP.store.prefs().me || {};
 
   OPS.tool = function (k, d) { d.k = k; OPS.tools[k] = d; OPS.order.push(k); };
-  OPS.GROUPS = [['Operations', ['home', 'resources', 'checkin', 'pods', 'infra', 'flood']], ['People', ['mci', 'reunify', 'afn', 'volunteers']], ['Finance & Readiness', ['costs', 'training', 'plans']], ['Setup', ['setup']]];
+  // which layers each tool needs; a person sees a tool only if their ArcGIS groups give them those layers
+  OPS.NEEDS = { resources: ['resources'], checkin: ['checkins'], pods: ['podledger'], infra: ['infra'], flood: ['watch'], mci: ['patients'], reunify: ['reunify'], afn: ['afn'], volunteers: ['volunteers'], costs: ['costs'], training: ['training'], plans: ['plans'], hotline: ['calls'] };
+  OPS.isAdmin = function () { var u = A.user || {}; return u.role === 'org_admin' || (u.canPublish && (u.groups || []).some(function (g) { return /^BOCO Access 1/.test(g); })) || OPS.SVC_KEYS.some(function (k) { return OPS.svc[k] && OPS.svc[k].owner === u.username; }); };
+  OPS.canUse = function (k) {
+    if (!A.signedIn() || !A.user || k === 'home') return true;
+    if (k === 'setup') return OPS.isAdmin();
+    var need = OPS.NEEDS[k]; if (!need) return true;
+    if (!OPS.SVC_KEYS.some(function (s) { return OPS.svc[s]; })) return true; // services not loaded yet
+    return need.every(function (l) { return OPS.LAYERS[l] && OPS.ready(l); });
+  };
+  OPS.noAccess = function (t) { return '<div class="hero" style="max-width:640px"><h2>' + E(t.n) + '</h2><p>Your ArcGIS account doesn\'t have access to ' + E(t.n) + '. If you need it for your role, ask Emergency Management (BOCO Access 1) to add you to the right ArcGIS group.</p><button class="btn" data-act="go" data-a="home">' + I('home') + 'Back to your tools</button></div>'; };
+  OPS.GROUPS = [['Operations', ['home', 'resources', 'checkin', 'pods', 'infra', 'flood']], ['People', ['hotline', 'mci', 'reunify', 'afn', 'volunteers']], ['Finance & Readiness', ['costs', 'training', 'plans']], ['Setup', ['setup']]];
 
   // ---------- small helpers ----------
   OPS.arr = function (v) { return Array.isArray(v) ? v : []; };
@@ -41,18 +52,28 @@
   OPS.ready = function (k) { return !!OPS.url(k); };
   function need(k) { var u = OPS.url(k); if (u) return u; var l = OPS.LAYERS[k]; var e = new Error(OPS.svc[l.svc] ? 'The ' + l.title + ' layer is missing. Open Setup and choose Update layers.' : (l.svc === 'prot' ? 'The protected EM service is not set up or not shared with you.' : l.svc === 'ems' ? 'The EMS Patient Care service is not set up or not shared with you.' : 'The EM Operations service is not set up yet. Open Setup.')); e.setup = true; throw e; }
   OPS.findServices = async function () {
+    OPS.hasExerciseField = !!(A.own && A.own.fields && A.own.fields.exercise);
+    if (A.status === 'offline') { var c = CP.store.prefs().opsSvcCache; if (c && c.u === (A.user || {}).username) OPS.svc = c.svc; return; }
     for (var key of OPS.SVC_KEYS) {
       var d = OPS.SERVICES[key], fixed = (CP.store.prefs().opsSvc || {})[key];
       var r = await A.req(A.portal + '/sharing/rest/search', { q: 'title:"' + d.name + '" AND type:"Feature Service" AND orgid:' + A.user.orgId, num: 5 }).catch(function () { return { results: [] }; });
-      var it = (r.results || []).find(function (x) { return x.title === d.name; });
+      var it = (r.results || []).find(function (x) { return x.title === d.name; }), via = null;
+      if (!it && d.views) { // no access to the full service: use the least-access view this person was given
+        for (var vk of d.views) {
+          var vn = OPS.VIEWS[vk].name, rv = await A.req(A.portal + '/sharing/rest/search', { q: 'title:"' + vn + '" AND type:"Feature Service" AND orgid:' + A.user.orgId, num: 3 }).catch(function () { return { results: [] }; });
+          it = (rv.results || []).find(function (x) { return x.title === vn; }); if (it) { via = vk; fixed = null; break; }
+        }
+      }
       var url = it ? it.url.replace(/\/$/, '') : fixed;
       if (!url) { OPS.svc[key] = null; continue; }
       try {
         var info = await A.req(url, {}), ids = {};
         (info.layers || []).concat(info.tables || []).forEach(function (x) { ids[x.name] = x.id; });
-        OPS.svc[key] = { url: url, id: it ? it.id : null, owner: it ? it.owner : '', ids: ids, access: it ? it.access : '' };
-      } catch (e) { OPS.svc[key] = null; console.warn(key, e); }
+        OPS.svc[key] = { url: url, id: it ? it.id : null, owner: it ? it.owner : '', ids: ids, access: it ? it.access : '', view: via, readOnly: !!(via && !/Create|Update/.test(info.capabilities || '')) };
+      } catch (e) { if (e.offline) { var c0 = CP.store.prefs().opsSvcCache; if (c0 && c0.svc) { OPS.svc = c0.svc; return; } } OPS.svc[key] = null; console.warn(key, e); }
     }
+    CP.store.setPref('opsSvcCache', { u: (A.user || {}).username, svc: OPS.svc });
+    try { var ck = OPS.url('checkins'); OPS.practiceReady = ck ? ((await A.req(ck, {})).fields || []).some(function (f) { return f.name === 'practice'; }) : false; } catch (e) { OPS.practiceReady = false; }
   };
   function fieldDef(f) {
     var t = { S: 'String', I: 'Integer', D: 'Double', T: 'Date' }[f[1]];
@@ -151,9 +172,15 @@
   };
 
   // ---------- data ----------
-  OPS.q = function (k, where, o) { return A.query(need(k), where || '1=1', o || {}); };
-  OPS.rows = function (k, where, o) { o = Object.assign({ geom: !!OPS.LAYERS[k].geom }, o || {}); return OPS.q(k, where, o).then(function (fs) { return fs.map(function (f) { var a = f.attributes; if (f.geometry && f.geometry.y != null) a._ll = [f.geometry.y, f.geometry.x]; return a; }); }); };
-  OPS.count = function (k, where) { return A.count(need(k), where || '1=1'); };
+  OPS.q = function (k, where, o) {
+    o = o || {}; where = where || '1=1';
+    if (!OPS.inc && !o.withPractice && OPS.LAYERS[k].fields.some(function (f) { return f[0] === 'incident_key'; })) {
+      var pk = OPS.practiceKeys(); if (pk.length) where = '(' + where + ') AND (incident_key IS NULL OR incident_key NOT IN (' + pk.map(A.sq).join(',') + '))';
+    }
+    return A.query(need(k), where, o);
+  };
+  OPS.rows = function (k, where, o) { o = Object.assign({ geom: !!OPS.LAYERS[k].geom }, o || {}); var url = need(k); return OPS.q(k, where, o).then(function (fs) { var rows = fs.map(function (f) { var a = f.attributes; if (f.geometry && f.geometry.y != null) a._ll = [f.geometry.y, f.geometry.x]; return a; }); return CP.sync && !o.raw ? CP.sync.overlay(url, rows) : rows; }); };
+  OPS.count = function (k, where) { where = where || '1=1'; if (!OPS.inc && OPS.LAYERS[k].fields.some(function (f) { return f[0] === 'incident_key'; })) { var pk = OPS.practiceKeys(); if (pk.length) where = '(' + where + ') AND (incident_key IS NULL OR incident_key NOT IN (' + pk.map(A.sq).join(',') + '))'; } return A.count(need(k), where); };
   OPS.save = async function (k, attrs, ll) {
     var url = need(k), f = { attributes: Object.assign({}, attrs) };
     delete f.attributes._ll; Object.keys(f.attributes).forEach(function (x) { if (/^(CreationDate|Creator|EditDate|Editor|GlobalID)$/.test(x)) delete f.attributes[x]; });
@@ -188,7 +215,7 @@
   OPS.bust = function (prefix) { Object.keys(OPS.st.cache).forEach(function (k) { if (!prefix || k === prefix || k.indexOf(prefix + ':') === 0 || k.indexOf(':' + prefix) >= 0) delete OPS.st.cache[k]; }); };
   OPS.wait = function (d, what) {
     if (d === undefined) return '<div class="empty">' + I('refresh') + ' Loading ' + E(what || '') + '…</div>';
-    if (d && d._err) return '<div class="warnbox">' + E(d._err) + (d._setup ? ' <a href="#setup" data-act="go" data-a="setup">Open Setup</a>' : '') + '</div>';
+    if (d && d._err) return '<div class="warnbox">' + E(CP.friendly(d._err)) + (d._setup ? ' <a href="#setup" data-act="go" data-a="setup">Open Setup</a>' : '') + '</div>';
     return '';
   };
   OPS.bad = function (d) { return d === undefined || (d && d._err); };
@@ -196,26 +223,35 @@
   // ---------- incidents (shared with Command Post) ----------
   OPS.loadIncidents = async function () {
     if (!A.own) { OPS.incList = []; return; }
-    var f = await A.query(A.own.url + '/0', '1=1', { fields: 'OBJECTID,incident_key,incident_number,incident_name,incident_type,complexity,status,start_time,closed_time,op_period,ic_name,location_desc,EditDate', order: 'start_time DESC', n: 300, geom: true }).catch(function () { return []; });
-    OPS.incList = f.map(function (x) { var a = x.attributes; if (x.geometry) a._ll = [x.geometry.y, x.geometry.x]; return a; });
-    var want = OPS.st.wantInc || CP.store.prefs().opsInc;
+    var f = await A.query(A.own.url + '/0', '1=1', { fields: 'OBJECTID,incident_key,incident_number,incident_name,incident_type,complexity,status,start_time,closed_time,op_period,ic_name,location_desc,EditDate' + (OPS.hasExerciseField ? ',exercise' : ''), order: 'start_time DESC', n: 300, geom: true }).catch(function (e) { return e.offline ? null : []; });
+    if (f) { OPS.incList = f.map(function (x) { var a = x.attributes; if (x.geometry) a._ll = [x.geometry.y, x.geometry.x]; return a; }); CP.store.setPref('opsIncCache', OPS.incList); }
+    else OPS.incList = CP.store.prefs().opsIncCache || [];
+    var cur = CP.store.prefs().curInc, want = OPS.st.wantInc || (cur && cur.key !== undefined ? cur.key : CP.store.prefs().opsInc);
     var hit = OPS.incList.find(function (a) { return a.incident_key === want; });
     OPS.inc = hit ? OPS.toInc(hit) : null;
   };
-  OPS.toInc = function (a) { return { key: a.incident_key, name: a.incident_name, number: a.incident_number, type: a.incident_type, status: a.status, start: a.start_time, ll: a._ll, ic: a.ic_name, loc: a.location_desc }; };
-  OPS.setInc = function (key) { var a = OPS.incList.find(function (x) { return x.incident_key === key; }); OPS.inc = a ? OPS.toInc(a) : null; CP.store.setPref('opsInc', OPS.inc ? OPS.inc.key : ''); OPS.bust(); OPS.render(); };
-  OPS.incFix = function () { return OPS.inc ? { incident_key: OPS.inc.key, incident_name: OPS.inc.name } : {}; };
+  OPS.toInc = function (a) { return { key: a.incident_key, name: a.incident_name, number: a.incident_number, type: a.incident_type, status: a.status, start: a.start_time, ll: a._ll, ic: a.ic_name, loc: a.location_desc, exercise: a.exercise === 'Yes' }; };
+  OPS.setInc = function (key, quiet) { var a = OPS.incList.find(function (x) { return x.incident_key === key; }); OPS.inc = a ? OPS.toInc(a) : null; CP.store.setPref('opsInc', OPS.inc ? OPS.inc.key : ''); if (!quiet) CP.store.setPref('curInc', { key: OPS.inc ? OPS.inc.key : '', t: Date.now() }); OPS.bust(); OPS.render(); };
+  OPS.incFix = function () { if (!OPS.inc) return {}; var o = { incident_key: OPS.inc.key, incident_name: OPS.inc.name }; if (OPS.inc.exercise && OPS.practiceReady) o.practice = 'Yes'; return o; };
+  OPS.practiceKeys = function () { return OPS.incList.filter(function (a) { return a.exercise === 'Yes'; }).map(function (a) { return a.incident_key; }); };
   OPS.incWhere = function (extra) { var w = OPS.inc ? 'incident_key=' + A.sq(OPS.inc.key) : '1=1'; return extra ? '(' + w + ') AND (' + extra + ')' : w; };
   OPS.needInc = function (what) { return OPS.inc ? '' : '<div class="hint">' + I('flag') + ' Pick the incident at the top to ' + E(what || 'work on it') + '. Incidents come from Command Post' + (OPS.incList.length ? '' : ' (none open yet: <a href="index.html" target="_blank">start one in Command Post</a>)') + '.</div>'; };
   // edit the Command Post incident record itself (same merge-safe save Command Post uses)
   OPS.cpEdit = async function (key, fn, logText, cat) {
-    if (A.status !== 'on') throw new Error('Command Post service is not connected');
-    var inc = await A.loadRemote(key); if (!inc) throw new Error('Command Post incident not found');
+    var inc = null, offline = A.status === 'offline' || (CP.net && !CP.net.ok);
+    if (!offline) {
+      if (A.status !== 'on') throw new Error('Command Post service is not connected');
+      try { inc = await A.loadRemote(key); } catch (e) { if (!e.offline) throw e; offline = true; }
+    }
+    if (offline) inc = CP.store.get(key);
+    if (!inc) throw new Error(offline ? 'No connection, and this incident has not been opened on this device yet. Connect once to load it.' : 'Command Post incident not found');
     var out = fn(inc);
     if (logText) { var op = CP.curOP(inc); CP.addItem(inc, 'log', { ts: CP.now(), author: OPS.me(), pos: CP.me.pos || '', cat: cat || 'Resource', text: logText, op: op ? op.n : 1 }); }
     inc.updatedBy = OPS.me(); inc.updated = CP.now();
-    var saved = await A.save(inc);
-    if (CP.store.get(key)) CP.store.put(saved);
+    if (offline) { CP.store.put(inc); CP.sync.markIncident(key); return out; }
+    var saved;
+    try { saved = await A.save(inc); } catch (e) { if (!e.offline) throw e; CP.store.put(inc); CP.sync.markIncident(key); return out; }
+    CP.store.put(saved); // keep a copy on this device so the tools keep working if the connection drops
     return out;
   };
   OPS.cpLink = function (view) { return 'index.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) + (view ? '&view=' + view : '') : ''); };
@@ -334,7 +370,7 @@
     var h = '<div class="tbl-wrap"><table class="t ot"><thead><tr>' + cols.map(function (c) { return '<th>' + E(c.l) + '</th>'; }).join('') + (cfg.actions ? '<th></th>' : '') + '</tr></thead><tbody>';
     if (!rows.length) h += '<tr><td colspan="' + (cols.length + 1) + '" class="muted" style="padding:18px;text-align:center">' + E(cfg.empty || 'Nothing here yet.') + '</td></tr>';
     rows.slice(0, cfg.max || 1000).forEach(function (r) {
-      h += '<tr class="' + (cfg.rowCls ? cfg.rowCls(r) : '') + '" data-act="' + (cfg.click || 'edit') + '" data-a="' + k + '|' + r.OBJECTID + '">' + cols.map(function (c) { return '<td>' + (c.fmt ? c.fmt(r) : OPS.fmtCell(k, c.f, r[c.f])) + '</td>'; }).join('') + (cfg.actions ? '<td class="act" onclick="event.stopPropagation()">' + cfg.actions(r) + '</td>' : '') + '</tr>';
+      h += '<tr class="' + (cfg.rowCls ? cfg.rowCls(r) : '') + (r._pending ? ' pending-row" title="Saved on this device, waiting to send to ArcGIS' : '') + '" data-act="' + (cfg.click || 'edit') + '" data-a="' + k + '|' + r.OBJECTID + '">' + cols.map(function (c) { return '<td>' + (c.fmt ? c.fmt(r) : OPS.fmtCell(k, c.f, r[c.f])) + '</td>'; }).join('') + (cfg.actions ? '<td class="act" onclick="event.stopPropagation()">' + cfg.actions(r) + '</td>' : '') + '</tr>';
     });
     h += '</tbody></table></div>';
     if (rows.length > (cfg.max || 1000)) h += '<div class="dim" style="font-size:12px;margin-top:4px">Showing ' + (cfg.max || 1000) + ' of ' + rows.length + '. Search to narrow.</div>';
@@ -401,14 +437,14 @@
     var st = A.status, sync = !A.signedIn() ? '<span class="sync">' + I('cloud') + 'Not signed in</span>' : st === 'busy' ? '<span class="sync busy">' + I('cloud') + 'Connecting…</span>' : st === 'err' ? '<span class="sync err" title="' + E(A.err) + '">' + I('cloud') + 'Offline</span>' : '<span class="sync on" title="County ArcGIS Online">' + I('cloud') + 'ArcGIS</span>';
     var sel = '<select class="in incsel" data-chg="inc"><option value="">County-wide (no incident)</option>' + OPS.incList.filter(function (a) { return a.status !== 'Closed' || (OPS.inc && a.incident_key === OPS.inc.key); }).map(function (a) { return '<option value="' + E(a.incident_key) + '"' + (OPS.inc && OPS.inc.key === a.incident_key ? ' selected' : '') + '>' + E(a.incident_name) + ' · ' + E(a.incident_number) + (a.status === 'Closed' ? ' (closed)' : '') + '</option>'; }).join('') +
       (OPS.incList.some(function (a) { return a.status === 'Closed'; }) ? '<optgroup label="Closed incidents">' + OPS.incList.filter(function (a) { return a.status === 'Closed' && !(OPS.inc && a.incident_key === OPS.inc.key); }).slice(0, 40).map(function (a) { return '<option value="' + E(a.incident_key) + '">' + E(a.incident_name) + ' · ' + E(a.incident_number) + '</option>'; }).join('') + '</optgroup>' : '') + '</select>';
-    var inc = OPS.inc;
+    var inc = OPS.inc; CP.practice = !!(inc && inc.exercise); document.body.classList.toggle('practice', CP.practice);
     document.getElementById('ibar').innerHTML = '<div class="ibar"><span class="dim" style="font:700 12px var(--cond);letter-spacing:1.6px">INCIDENT</span>' + sel +
-      (inc ? '<span class="chip ' + (inc.status === 'Closed' ? 'mute' : 'ok') + '">' + (inc.status === 'Closed' ? 'Closed' : '<span class="dot"></span>Active ' + E(CP.elapsed(new Date(inc.start).toISOString()))) + '</span><a class="btn sm ghost" href="' + OPS.cpLink() + '" target="_blank" rel="noopener">' + I('link') + 'Command Post</a>' : '') +
+      (inc && inc.exercise ? '<span class="chip practice">PRACTICE</span>' : '') + (inc ? '<span class="chip ' + (inc.status === 'Closed' ? 'mute' : 'ok') + '">' + (inc.status === 'Closed' ? 'Closed' : '<span class="dot"></span>Active ' + E(CP.elapsed(new Date(inc.start).toISOString()))) + '</span><a class="btn sm ghost" href="' + OPS.cpLink() + '" target="_blank" rel="noopener">' + I('link') + 'Command Post</a>' : '') +
       '<span class="sp"></span>' + sync + (A.signedIn() ? '<span class="dim" style="font-size:13px">' + E(OPS.me()) + '</span>' : '<button class="btn sm pri" data-act="signin">Sign in with ArcGIS</button>') + '</div>';
     var nav = document.getElementById('nav');
     if (OPS.st.solo) { document.body.classList.add('solo'); nav.innerHTML = ''; return; }
     var h = '';
-    OPS.GROUPS.forEach(function (g) { h += '<div class="grp">' + E(g[0]) + '</div>' + g[1].filter(function (k) { return OPS.tools[k]; }).map(function (k) { var x = OPS.tools[k]; return '<a href="#' + k + '" data-act="go" data-a="' + k + '" class="' + (OPS.st.tool === k ? 'on' : '') + '">' + I(x.icon || 'list') + E(x.n) + (x.badge ? '<span class="ct">' + x.badge + '</span>' : '') + '</a>'; }).join(''); });
+    OPS.GROUPS.forEach(function (g) { h += '<div class="grp">' + E(g[0]) + '</div>' + g[1].filter(function (k) { return OPS.tools[k] && OPS.canUse(k); }).map(function (k) { var x = OPS.tools[k]; return '<a href="#' + k + '" data-act="go" data-a="' + k + '" class="' + (OPS.st.tool === k ? 'on' : '') + '">' + I(x.icon || 'list') + E(x.n) + (x.badge ? '<span class="ct">' + x.badge + '</span>' : '') + '</a>'; }).join(''); });
     h += '<div class="grp">Linked apps</div><a href="' + OPS.cpLink() + '" target="_blank" rel="noopener">' + I('brief') + 'Command Post</a>' + CP.TOOLKIT.slice(0, 5).map(function (t) { return '<a href="' + t.u + '" target="_blank" rel="noopener">' + I('link') + E(t.n) + '</a>'; }).join('');
     nav.innerHTML = h;
   };
@@ -416,6 +452,7 @@
     var main = document.getElementById('main'); if (!main) return;
     var t = OPS.tools[OPS.st.tool] || OPS.tools.home, html;
     if (!A.signedIn()) html = signInPage(t);
+    else if (!OPS.canUse(t.k)) html = '<div class="wrap">' + OPS.noAccess(t) + '</div>';
     else { try { html = '<div class="wrap">' + t.render() + (t.eop && OPS.eopCard ? OPS.eopCard(t.eop) : '') + '</div>'; } catch (e) { console.error(e); html = '<div class="wrap"><div class="warnbox">This page hit an error: ' + E(e.message) + '</div></div>'; } }
     var y = main.scrollTop; main.innerHTML = html; if (OPS._keep) main.scrollTop = y; OPS._keep = false;
     OPS.paintChrome();
@@ -461,6 +498,14 @@
       if (A.user) { await Promise.all([OPS.findServices(), OPS.loadIncidents()]); }
       OPS.render();
     }
+    // another tab or Command Post picked a different incident: follow it
+    window.addEventListener('storage', function (ev) {
+      if (ev.key !== 'bcem.cp.prefs.v1') return; var cur = CP.store.prefs().curInc; if (!cur) return;
+      var now = OPS.inc ? OPS.inc.key : ''; if (cur.key === now || document.getElementById('modal')) return;
+      if (!cur.key || OPS.incList.some(function (a) { return a.incident_key === cur.key; })) { OPS.setInc(cur.key, true); U.toast(cur.key ? 'Switched to ' + E(OPS.inc ? OPS.inc.name : 'the incident') + ' (picked in another window)' : 'Switched to county-wide (picked in another window)'); }
+    });
+    window.addEventListener('cp-reconnected', function () { Promise.all([OPS.findServices(), OPS.loadIncidents()]).then(function () { OPS.bust(); OPS.render(); }); });
+    window.addEventListener('cp-outbox', function () { if (!CP.sync.busy) { OPS.bust(); OPS.repaint(); } });
     setInterval(function () { if (!A.signedIn() || document.getElementById('modal')) return; var t = OPS.tools[OPS.st.tool]; if (t && t.live) { OPS.bust(t.live === true ? null : t.live); OPS.repaint(); } }, 60000);
     setInterval(function () { if (A.signedIn() && A.user) OPS.loadIncidents().then(OPS.paintChrome); }, 120000);
   };

@@ -428,3 +428,21 @@ body.apps-open.apps-wide .appstab,body.apps-open.apps-wide .callstab{right:68vw}
 .owaqi{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 10.5px 'JetBrains Mono',monospace;color:#0B1A2B;border:2px solid #0B1A2B;box-shadow:0 0 0 1px rgba(255,255,255,.7)}
 .owaqi.sm{display:inline-flex;width:auto;min-width:24px;height:18px;border-radius:9px;padding:0 5px;font-size:10.5px;border-width:1px;box-shadow:none;vertical-align:middle}
 .owaqi.epa{border-radius:5px;width:30px}
+/* offline / outbox status (sync.js) */
+.netpill{position:fixed;left:14px;bottom:14px;z-index:1900;display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:1px solid var(--line2);background:#10243b;color:#fff;font:700 13.5px/1 Barlow,system-ui,sans-serif;box-shadow:var(--sh);cursor:pointer}
+.netpill .dot{width:9px;height:9px;border-radius:50%;background:var(--gold)}
+.netpill.off .dot{background:#9aa7b5}.netpill.off{background:#2a3442}
+.netpill.busy .dot{background:var(--gold);animation:np 1.2s infinite}.netpill.bad{border-color:var(--red2)}.netpill.bad .dot{background:var(--red2)}
+@keyframes np{50%{opacity:.25}}
+.oblist{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto}
+.obrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+.obrow.bad{border-color:var(--red2)}.obErr{color:#ffb3b7;font-size:12.5px;margin-top:3px}
+.pending-row td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
+@media print{.netpill{display:none}}
+/* practice / exercise incidents */
+.chip.practice{background:repeating-linear-gradient(135deg,#7a4a00 0 8px,#5c3800 8px 16px);color:#ffd27a;border-color:#a8740e;font-weight:800;letter-spacing:1px}
+body.practice .hdr::after{content:'PRACTICE INCIDENT · NOT REAL · NOT POSTED TO PUBLIC MAPS';position:absolute;left:0;right:0;bottom:0;text-align:center;font:800 11px/18px Barlow Condensed,sans-serif;letter-spacing:2px;color:#1a1000;background:repeating-linear-gradient(135deg,#FDB833 0 14px,#e09a10 14px 28px)}
+body.practice .hdr{position:relative;padding-bottom:18px}
+.practicechk{padding:10px 12px;border:1px dashed #a8740e;border-radius:8px;display:block}
+@media (max-width:640px){.modal-bg{padding:0}.modal{border-radius:0;min-height:100dvh}.modal .mf,.modal .mfoot{position:sticky;bottom:0;background:var(--panel)}}
+@media (pointer:coarse){.btn{min-height:44px}.in{font-size:16px}}

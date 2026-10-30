@@ -50,7 +50,7 @@
     render: function () {
       var u = OPS.st.ui, tab = u.tab || 'inv';
       var inv = OPS.load('resources', function () { return OPS.rows('resources', '1=1', { order: 'category,name' }); });
-      var h = '<div class="phead"><div><h1 class="pg">Resources</h1><p class="pgsub" style="margin:0">County inventory lives in ArcGIS (OPS_Resources). Assigning an item or filling a request puts it straight into the Command Post incident.</p></div><div class="acts"><button class="btn sm" data-act="refresh">' + I('refresh') + 'Refresh</button></div></div>';
+      var h = '<div class="phead"><div><h1 class="pg">Resources</h1><p class="pgsub" style="margin:0">County inventory lives in ArcGIS (OPS_Resources). Assigning an item or filling a request puts it straight into the Command Post incident.</p></div><div class="acts"><button class="btn sm" data-act="resTags">' + I('qr') + 'Print QR tags</button><button class="btn sm" data-act="refresh">' + I('refresh') + 'Refresh</button></div></div>';
       var nAsg = Array.isArray(inv) ? inv.filter(function (r) { return r.status === 'Assigned'; }).length : '';
       h += OPS.tabs('tab', [['inv', 'Inventory', Array.isArray(inv) ? inv.length : ''], ['req', 'Requests (213RR)'], ['dep', 'Deployed', nAsg], ['map', 'Map']], tab);
       if (tab === 'inv') h += invTab(inv);

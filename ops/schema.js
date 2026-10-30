@@ -47,14 +47,22 @@
     triage: ['Immediate (Red)', 'Delayed (Yellow)', 'Minor (Green)', 'Expectant (Gray)', 'Deceased (Black)'],
     ptStatus: ['On scene', 'Treatment area', 'Awaiting transport', 'Transported', 'Arrived at hospital', 'Released on scene', 'Refused', 'Deceased'],
     sex: ['Male', 'Female', 'Unknown'],
-    ageGroup: ['Adult', 'Child (1-8)', 'Infant (<1)', 'Unknown']
+    ageGroup: ['Adult', 'Child (1-8)', 'Infant (<1)', 'Unknown'],
+    callDir: ['Inbound', 'Outbound', 'Callback'],
+    callCat: ['Information request', 'Shelter', 'Evacuation', 'Road / closure', 'Utilities / power', 'Damage report', 'Needs help (not 911)', 'Welfare check / missing person', 'Access & functional needs', 'Commodities / POD', 'Donations / volunteering', 'Rumor / misinformation', 'Media', 'Other'],
+    callPri: ['Routine', 'Priority', 'Urgent'],
+    callStatus: ['Open', 'Answered', 'Routed', 'Callback needed', 'Closed'],
+    callRoute: ['', 'EOC Operations', 'EOC Planning', 'EOC Logistics', 'PIO', 'Mass Care / Shelter', 'Reunification', 'AFN team', 'Damage assessment', 'Public Works / VDOT', 'Utilities', 'Sheriff\'s Office', 'Fire & EMS', 'Volunteer / donations', 'Other'],
+    lang: ['English', 'Spanish', 'Other (interpreter)'],
+    infoStatus: ['Draft', 'Approved', 'Retired'],
+    town: ['Fincastle', 'Buchanan', 'Troutville', 'Daleville', 'Cloverdale', 'Blue Ridge', 'Eagle Rock', 'Springwood', 'Other']
   };
 
   function S(n, len, l, ui) { return [n, 'S', len, l, ui || {}]; }
   function I(n, l, ui) { return [n, 'I', 0, l, ui || {}]; }
   function D(n, l, ui) { return [n, 'D', 0, l, ui || {}]; }
   function T(n, l, ui) { return [n, 'T', 0, l, ui || {}]; }
-  var INC = [S('incident_key', 40, 'Incident key', { ro: 1, hide: 1 }), S('incident_name', 255, 'Incident', { ro: 1, hide: 1 })];
+  var INC = [S('incident_key', 40, 'Incident key', { ro: 1, hide: 1 }), S('incident_name', 255, 'Incident', { ro: 1, hide: 1 }), S('practice', 3, 'Practice', { ro: 1, hide: 1 })];
 
   OPS.SERVICES = {
     main: { name: 'BOCO_EM_Operations', title: 'EM Operations', desc: 'County EM operations data: resources, requests, cost recovery, check-in, volunteers, training, plans, infrastructure status, PODs, flood watch.', tags: 'Emergency Management,EM Ops,Botetourt' },
@@ -62,6 +70,16 @@
     ems: { name: 'BOCO_EMS_PatientCare', title: 'EMS Patient Care', desc: 'MCI patient records (triage, transport, hospital destination). Protected health information: share ONLY with the EMS patient care group and EM.', tags: 'Emergency Management,EM Ops,EMS,Restricted,PHI' }
   };
   OPS.SVC_KEYS = ['main', 'prot', 'ems'];
+  // least-access views (made by Setup → Secure & connect). When someone can't see the full service, the tools use the view they were given.
+  OPS.VIEWS = {
+    field: { svc: 'main', name: 'BOCO_EM_Operations_Field', title: 'EM Operations (field crews)', groups: [/^BOCO Access 2/, /^BOCO Access 3/, /^BOCO Access 4/], caps: 'Query,Create,Update,Editing',
+      layers: ['resources', 'requests', 'checkins', 'par', 'volunteers', 'volhours', 'plans', 'infra', 'podledger', 'impacts', 'watch', 'hospitals', 'calls', 'info'], desc: 'Field crews: everything except cost recovery and training records.' },
+    lead: { svc: 'main', name: 'BOCO_EM_Operations_Leadership', title: 'EM Operations (leadership, read-only)', groups: [/^BOCO Role - Leadership/], caps: 'Query', where: "practice IS NULL OR practice <> 'Yes'",
+      layers: ['resources', 'requests', 'checkins', 'infra', 'podledger', 'watch', 'hospitals', 'calls', 'plans'], hideFields: { checkins: ['phone', 'notes'], calls: ['caller_name', 'caller_phone', 'address', 'notes', 'response'], resources: ['phone'] }, desc: 'Read-only, no personal contact details, practice incidents left out.' },
+    emsField: { svc: 'ems', name: 'BOCO_EMS_PatientCare_Field', title: 'EMS Patient Care (last 72 hours)', groups: [/^BOCO Role - EMS Patient Care/], caps: 'Query,Create,Update,Editing', where: "CreationDate >= CURRENT_TIMESTAMP - INTERVAL '3' DAY",
+      layers: ['patients'], desc: 'EMS crews see and edit patients from the last 72 hours only. EM keeps the full record.' }
+  };
+  OPS.SERVICES.main.views = ['field', 'lead']; OPS.SERVICES.ems.views = ['emsField'];
   OPS.SVC_PRIVATE = { prot: 1, ems: 1 };
   OPS.EMS_GROUP = 'BOCO Role - EMS Patient Care (Protected)';
 
@@ -128,6 +146,15 @@
     watch: { svc: 'main', id: 14, name: 'OPS_WatchPoints', title: 'Flood watch points', geom: 'point', fields: [
       S('name', 255, 'Name', { req: 1, list: 1 }), S('wp_type', 40, 'Type', { o: K.watchType, list: 1 }), S('road', 150, 'Road / route', { list: 1 }), S('gauge_id', 40, 'Nearest gauge'), D('flood_stage_ft', 'Floods at gauge stage (ft)', { list: 1 }),
       S('status', 30, 'Status', { o: K.watchStatus, list: 1 }), T('status_time', 'Status updated', { ro: 1 }), I('homes_cut_off', 'Homes cut off when flooded'), I('block_oid', 'County road block', { hide: 1 }), S('detour', 500, 'Detour'), S('notes', 1000, 'Notes', { area: 1 })] },
+    calls: { svc: 'main', id: 16, name: 'OPS_HotlineCalls', title: 'Hotline calls', geom: 'point', fields: INC.concat([
+      S('call_id', 30, 'Call #', { ro: 1, list: 1 }), S('direction', 12, 'Direction', { o: K.callDir, list: 1, g: 'Call' }), T('call_time', 'Time', { list: 1, g: 'Call' }), T('end_time', 'Ended', { ro: 1, g: 'Call' }), S('taker', 150, 'Call taker', { g: 'Call' }), S('language', 30, 'Language', { o: K.lang, g: 'Call' }),
+      S('caller_name', 150, 'Caller name', { g: 'Caller' }), S('caller_phone', 30, 'Callback number', { g: 'Caller' }), S('callback_ok', 3, 'OK to call back', { o: ['Yes', 'No'], g: 'Caller' }), S('address', 255, 'Address / location', { g: 'Caller' }), S('town', 60, 'Community', { o: K.town, list: 1, g: 'Caller' }),
+      S('category', 60, 'Topic', { o: K.callCat, list: 1, req: 1, g: 'What they need' }), S('priority', 12, 'Priority', { o: K.callPri, list: 1, g: 'What they need' }), S('summary', 2000, 'What they said', { area: 1, req: 1, g: 'What they need' }), S('people', 10, 'People affected', { g: 'What they need' }),
+      S('response', 2000, 'What we told them', { area: 1, g: 'Response' }), S('info_ids', 200, 'Talking points used', { hide: 1 }), S('status', 20, 'Status', { o: K.callStatus, list: 1, g: 'Response' }), S('routed_to', 60, 'Routed to', { o: K.callRoute, list: 1, g: 'Response' }), S('routed_ref', 150, 'Linked record', { ro: 1, g: 'Response' }),
+      S('assigned_to', 150, 'Follow-up by', { g: 'Response' }), T('followup_due', 'Follow up by', { g: 'Response' }), T('closed_time', 'Closed', { ro: 1, g: 'Response' }), S('related_call', 30, 'Related call #', { hide: 1 }), S('notes', 2000, 'Internal notes', { area: 1, g: 'Response' })]) },
+    info: { svc: 'main', id: 17, name: 'OPS_HotlineInfo', title: 'Hotline talking points', fields: INC.concat([
+      S('topic', 60, 'Topic', { o: K.callCat, list: 1, req: 1 }), S('question', 500, 'Question callers ask', { req: 1, list: 1 }), S('answer', 4000, 'Approved answer', { area: 1, h: 120, req: 1 }), S('spanish', 4000, 'Spanish answer', { area: 1 }),
+      S('status', 12, 'Status', { o: K.infoStatus, list: 1 }), S('approved_by', 150, 'Approved by (PIO)'), T('effective', 'Effective', { list: 1 }), T('expires', 'Expires'), S('source', 255, 'Source / link'), I('times_used', 'Times used', { ro: 1, list: 1 }), I('pinned', 'Pinned (1 = top)', { hide: 1 })]) },
     hospitals: { svc: 'main', id: 15, name: 'OPS_Hospitals', title: 'MCI hospital board', geom: 'point', fields: [
       S('name', 150, 'Hospital', { req: 1, list: 1 }), S('level', 60, 'Capability', { list: 1, hint: 'Level I trauma, burn, pediatric' }), S('status', 30, 'Status', { o: ['Open', 'Limited', 'Diversion', 'Closed', 'Unknown'], list: 1 }),
       I('cap_red', 'Can take Immediate (Red)', { list: 1 }), I('cap_yellow', 'Can take Delayed (Yellow)', { list: 1 }), I('cap_green', 'Can take Minor (Green)', { list: 1 }), S('phone', 30, 'ED / med control phone'), D('drive_min', 'Drive time (min)', { list: 1 }), T('updated', 'Updated', { ro: 1 }), S('notes', 500, 'Notes', { area: 1 })] },

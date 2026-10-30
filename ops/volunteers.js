@@ -13,7 +13,7 @@
     nums: async function () { var a = await OPS.count('volunteers', "status='Active'"), d = await OPS.count('volunteers', "status='Deployed'"), p = await OPS.count('volunteers', "status LIKE 'Pending%'"); return [[a, 'active'], [d, 'deployed', d ? 'warn-t' : ''], [p, 'pending']]; },
     render: function () {
       var d = vols(), tr = training(), u = OPS.st.ui, tab = u.vt || 'roster';
-      var h = '<div class="phead"><div><h1 class="pg">Volunteers</h1><p class="pgsub" style="margin:0">Roster in ArcGIS (OPS_Volunteers). Deploy someone and they are checked in to the incident and appear in Command Post.</p></div><div class="acts"><button class="btn sm" data-act="volSpont">' + I('plus') + 'Spontaneous volunteer</button><button class="btn pri" data-act="volNew">' + I('plus') + 'Add volunteer</button></div></div>';
+      var h = '<div class="phead"><div><h1 class="pg">Volunteers</h1><p class="pgsub" style="margin:0">Roster in ArcGIS (OPS_Volunteers). Deploy someone and they are checked in to the incident and appear in Command Post.</p></div><div class="acts"><button class="btn sm" data-act="volTags">' + I('qr') + 'Print badges</button><button class="btn sm" data-act="volSpont">' + I('plus') + 'Spontaneous volunteer</button><button class="btn pri" data-act="volNew">' + I('plus') + 'Add volunteer</button></div></div>';
       if (OPS.bad(d)) return h + OPS.wait(d, 'roster');
       var trl = Array.isArray(tr) ? tr : [];
       h += OPS.tabs('vt', [['roster', 'Roster', d.length], ['call', 'Call-out list'], ['hours', 'Hours'], ['cred', 'Credentials']], tab);
@@ -43,6 +43,7 @@
   });
   OPS.chg.vteam = function (el) { OPS.st.ui.vteam = el.value; OPS.repaint(); };
   OPS.chg.vsk = function (el) { OPS.st.ui.vsk = el.value; OPS.repaint(); };
+  OPS.volForm = function (v, def) { return volForm(v, def); };
   function volForm(v, def) {
     var tr = training(), c = v ? credsFor(v, Array.isArray(tr) ? tr : []) : [];
     OPS.edit('volunteers', v, { defaults: def || (v ? null : { status: 'Active', team: 'CERT' }),

@@ -46,8 +46,9 @@
     edit: { afn: function (r) { afnForm(r); } }
   });
   OPS.chg.nf = function (el) { OPS.st.ui.nf = el.value; OPS.repaint(); };
+  OPS.afnForm = function (r) { return afnForm(r); };
   function afnForm(r) {
-    OPS.edit('afn', r, { addrField: 'address', defaults: r ? null : { active: 'Yes', consent_date: Date.now(), review_due: Date.now() + YEAR, household: 1, transport: 'None needed' },
+    OPS.edit('afn', r, { addrField: 'address', defaults: r && r.OBJECTID ? null : r ? Object.assign({ active: 'Yes', consent_date: Date.now(), review_due: Date.now() + YEAR, household: 1, transport: 'None needed' }, r) : { active: 'Yes', consent_date: Date.now(), review_due: Date.now() + YEAR, household: 1, transport: 'None needed' },
       before: function (at, old) { if (!old.OBJECTID) at.reg_id = OPS.id('AFN-'); if ((at.needs || '').match(/Oxygen|Ventilator|Dialysis|refrigeration/) && !at.power_dependent) at.power_dependent = 'Yes'; return at; } });
   }
   OPS.act.afnNew = function () { afnForm(null); };

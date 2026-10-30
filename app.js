@@ -43,9 +43,10 @@
     var inc = app.inc, ib = document.getElementById('ibar'), nav = document.getElementById('nav');
     if (!ib) return;
     var a = CP.arc, st = a.status, sync = !a.signedIn() ? '<span class="sync" title="Saved on this device only">' + I('cloud') + 'Local</span>' : st === 'on' ? '<span class="sync on" title="Shared through ArcGIS">' + I('cloud') + (app.saving ? 'Saving…' : 'Synced') + '</span>' : st === 'busy' ? '<span class="sync busy">' + I('cloud') + 'Connecting…</span>' : st === 'nosvc' ? '<span class="sync busy" title="Command Post service not set up">' + I('cloud') + 'Signed in · no service</span>' : '<span class="sync err" title="' + E(a.err) + '">' + I('cloud') + 'Offline</span>';
-    if (!inc) { ib.innerHTML = '<div class="ibar"><span class="nm" style="font-size:16px;color:var(--muted)">Incident board</span><span class="sp"></span>' + sync + (a.signedIn() ? '' : '<button class="btn sm" data-act="signin">Sign in</button>') + '</div>'; nav.innerHTML = navHtml(); return; }
+    if (!inc) { CP.practice = false; document.body.classList.remove('practice'); ib.innerHTML = '<div class="ibar"><span class="nm" style="font-size:16px;color:var(--muted)">Incident board</span><span class="sp"></span>' + sync + (a.signedIn() ? '' : '<button class="btn sm" data-act="signin">Sign in</button>') + '</div>'; nav.innerHTML = navHtml(); return; }
     var op = CP.curOP(inc);
-    ib.innerHTML = '<div class="ibar"><div style="min-width:0"><div class="nm" title="' + E(inc.name) + '">' + E(inc.name) + '</div><div class="no">' + E(inc.number) + ' · ' + E(inc.type) + '</div></div>' +
+    CP.practice = !!inc.exercise; document.body.classList.toggle('practice', CP.practice);
+    ib.innerHTML = '<div class="ibar"><div style="min-width:0"><div class="nm" title="' + E(inc.name) + '">' + (inc.exercise ? '<span class="chip practice">PRACTICE</span> ' : '') + E(inc.name) + '</div><div class="no">' + E(inc.number) + ' · ' + E(inc.type) + '</div></div>' +
       '<span class="chip gold">Type ' + inc.complexity + '</span>' + (inc.status === 'Closed' ? '<span class="chip mute">Closed</span>' : '<span class="chip ok"><span class="dot"></span>Active ' + CP.elapsed(inc.start) + '</span>') +
       (op ? '<span class="chip">Shift ' + op.n + ' · ' + CP.fmtTime(op.start) + '–' + CP.fmtTime(op.end) + '</span>' : '') + '<span class="chip blue">' + E(inc.eoc.eoc_status) + '</span>' +
       '<span class="sp"></span>' + sync + '<button class="btn sm pri" data-act="actions">' + I('plus') + 'Action</button><button class="btn sm" data-act="quicklog">' + I('log') + 'Log</button><button class="btn sm ghost" data-act="home" title="All incidents">' + I('home') + '</button></div>';
@@ -54,7 +55,7 @@
   function navHtml() {
     var inc = app.inc;
     var on = function (v) { return app.view === v ? ' class="on"' : ''; };
-    if (!inc) return '<div class="grp">Command Post</div><a href="#"' + on('home') + ' data-act="home">' + I('home') + 'Incident board</a><a href="#" data-act="new">' + I('plus') + 'New incident</a><a href="#"' + on('monitor') + ' data-nav="monitor">' + I('eye') + 'EOC Monitor</a><a href="#"' + on('checklist') + ' data-nav="checklist">' + I('check') + 'EOC Checklist</a><a href="#"' + on('arc') + ' data-nav="arc">' + I('cloud') + 'Connections</a><div class="grp">EM Ops</div><a href="ops.html" target="_blank" rel="noopener">' + I('dash') + 'All EM Ops tools</a><a href="mci.html" target="_blank" rel="noopener">' + I('med') + 'MCI app</a><a href="reunify.html" target="_blank" rel="noopener">' + I('users') + 'Reunification app</a><a href="checkin.html" target="_blank" rel="noopener">' + I('users') + 'Check-In app</a><div class="grp">EM toolkit</div>' + CP.TOOLKIT.map(function (t) { return '<a href="' + t.u + '" target="_blank" rel="noopener">' + I('link') + E(t.n) + '</a>'; }).join('');
+    if (!inc) return '<div class="grp">Command Post</div><a href="#"' + on('home') + ' data-act="home">' + I('home') + 'Incident board</a><a href="#" data-act="new">' + I('plus') + 'New incident</a><a href="#"' + on('monitor') + ' data-nav="monitor">' + I('eye') + 'EOC Monitor</a><a href="#"' + on('checklist') + ' data-nav="checklist">' + I('check') + 'EOC Checklist</a><a href="#"' + on('arc') + ' data-nav="arc">' + I('cloud') + 'Connections</a><div class="grp">EM Ops</div><a href="ops.html" target="_blank" rel="noopener">' + I('dash') + 'All EM Ops tools</a><a href="hotline.html" target="_blank" rel="noopener">' + I('phone') + 'Hotline desk</a><a href="mci.html" target="_blank" rel="noopener">' + I('med') + 'MCI app</a><a href="reunify.html" target="_blank" rel="noopener">' + I('users') + 'Reunification app</a><a href="checkin.html" target="_blank" rel="noopener">' + I('users') + 'Check-In app</a><div class="grp">EM toolkit</div>' + CP.TOOLKIT.map(function (t) { return '<a href="' + t.u + '" target="_blank" rel="noopener">' + I('link') + E(t.n) + '</a>'; }).join('');
     var cnt = { resources: A(inc.resources).filter(function (r) { return ['Released', 'Demobilized'].indexOf(r.status) < 0; }).length, log: A(inc.log).length, messages: A(inc.requests).filter(function (r) { return ['Filled', 'Cancelled'].indexOf(r.status) < 0; }).length, assign: A(inc.assignments).length, org: A(inc.org).filter(function (p) { return p.name; }).length, facilities: A(inc.facilities).length };
     var h = '', hidden = 0;
     NAV.forEach(function (g) {
@@ -63,7 +64,7 @@
       h += '<div class="grp">' + g[0] + '</div>' + items.map(function (n) { return '<a href="#' + n[0] + '" data-nav="' + n[0] + '" class="' + (app.view === n[0] ? 'on' : '') + '">' + I(n[2]) + E(n[1]) + (cnt[n[0]] ? '<span class="ct">' + cnt[n[0]] + '</span>' : '') + '</a>'; }).join('');
     });
     var ik = '&incident=' + encodeURIComponent(inc.id);
-    h += '<div class="grp">EM Ops (county tools)</div>' + [['checkin', 'Check-In & PAR', 'users'], ['resources', 'County Resources', 'truck'], ['costs', 'Cost Recovery', 'report'], ['pods', 'PODs', 'flag'], ['infra', 'Infrastructure', 'build'], ['flood', 'Flood Watch', 'lifeline'], ['reunify', 'Reunification', 'users'], ['mci', 'MCI', 'med'], ['afn', 'AFN Registry', 'med'], ['volunteers', 'Volunteers', 'users']].map(function (t) { return '<a href="ops.html?tool=' + t[0] + ik + '" target="_blank" rel="noopener">' + I(t[2]) + E(t[1]) + '</a>'; }).join('');
+    h += '<div class="grp">EM Ops (county tools)</div>' + [['hotline', 'Hotline', 'phone'], ['checkin', 'Check-In & PAR', 'users'], ['resources', 'County Resources', 'truck'], ['costs', 'Cost Recovery', 'report'], ['pods', 'PODs', 'flag'], ['infra', 'Infrastructure', 'build'], ['flood', 'Flood Watch', 'lifeline'], ['reunify', 'Reunification', 'users'], ['mci', 'MCI', 'med'], ['afn', 'AFN Registry', 'med'], ['volunteers', 'Volunteers', 'users']].filter(function (t) { return app.opsCan(t[0]); }).map(function (t) { return '<a href="ops.html?tool=' + t[0] + ik + '" target="_blank" rel="noopener">' + I(t[2]) + E(t[1]) + '</a>'; }).join('');
     if (hidden) h += '<div class="hidden-note">Quick mode: ' + hidden + ' planning pages hidden. <a href="#" data-act="showAll">Switch to Full mode</a></div>';
     return h;
   };
@@ -84,6 +85,13 @@
   app.go = function (v) { app.view = v; if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v); document.getElementById('main').scrollTop = 0; app.render(); };
 
   // ---------- data ----------
+  // which EM Ops tools this person can reach (same rule EM Ops uses: their ArcGIS groups must give them the tool's layers)
+  var OPS_LAYER = { hotline: 'OPS_HotlineCalls', checkin: 'OPS_Checkins', resources: 'OPS_Resources', costs: 'OPS_Costs', pods: 'OPS_PODLedger', infra: 'OPS_InfrastructureStatus', flood: 'OPS_WatchPoints', reunify: 'PROT_Reunification', mci: 'PROT_MCI_Patients', afn: 'PROT_AFN_Registry', volunteers: 'OPS_Volunteers' };
+  app.opsCan = function (k) {
+    var c = CP.store.prefs().opsSvcCache; if (!c || !c.svc || !CP.arc.user || c.u !== CP.arc.user.username) return true;
+    var name = OPS_LAYER[k]; if (!name) return true;
+    return Object.keys(c.svc).some(function (s) { return c.svc[s] && c.svc[s].ids && c.svc[s].ids[name] != null; });
+  };
   app.personnel = function (inc) { return A(inc.resources).filter(function (r) { return ['Released', 'Demobilized', 'Ordered', 'En Route'].indexOf(r.status) < 0; }).reduce(function (s, r) { return s + (+r.persons || 0); }, 0) + A(inc.org).filter(function (p) { return p.name; }).length; };
   app.selOP = function (inc) { var ops = A(inc.opPeriods); return ops.find(function (o) { return o.id === app.ui.opSel; }) || CP.curOP(inc); };
   app.mapImg = function (inc) { try { return localStorage.getItem('bcem.cp.map.' + inc.id) || ''; } catch (e) { return ''; } };
@@ -99,6 +107,7 @@
     inc.updatedBy = CP.me.name || ''; CP.store.put(inc);
     if (render) app.rerender(); else app.paintChrome();
     if (CP.arc.status === 'on') { clearTimeout(saveT); saveT = setTimeout(app.pushRemote, 1800); }
+    else if (CP.arc.signedIn() && CP.sync && (inc.arc && inc.arc.linked || CP.arc.status === 'offline')) CP.sync.markIncident(inc.id);
     autoPush();
   };
   app.pushRemote = async function () {
@@ -108,7 +117,11 @@
       var before = app.inc.updated, merged = await CP.arc.save(CP.clone(app.inc));
       if (app.inc.updated === before) { app.inc = merged; } else { app.inc = CP.merge(app.inc, merged); }
       CP.store.put(app.inc);
-    } catch (e) { console.warn(e); CP.arc.err = e.message; U.toast('ArcGIS save failed: ' + E(e.message) + '. Your changes are safe on this device and will retry.', 'err', 5000); clearTimeout(saveT); saveT = setTimeout(app.pushRemote, 20000); }
+    } catch (e) {
+      console.warn(e);
+      if (e.offline && CP.sync) { CP.sync.markIncident(app.inc.id); } // offline: saved on this device, sends when the connection is back
+      else { CP.arc.err = e.message; U.toast('ArcGIS save failed: ' + E(e.message) + '. Your changes are safe on this device and will retry.', 'err', 5000); clearTimeout(saveT); saveT = setTimeout(app.pushRemote, 20000); }
+    }
     app.saving = false; app.paintChrome();
   };
   // auto-push incident point/facilities when those sections change
@@ -128,7 +141,7 @@
     }
     if (!inc) { U.toast('Could not open that incident.', 'err'); return; }
     inc = migrate(inc);
-    app.inc = inc; CP.store.put(inc); CP.store.setPref('last', id);
+    app.inc = inc; CP.store.put(inc); CP.store.setPref('last', id); CP.store.setPref('curInc', { key: id, t: Date.now() });
     app.ui = {}; CP.arc.live = {};
     app.go(view || 'dash');
     if (CP.arc.signedIn()) app.refreshLive();
@@ -300,7 +313,7 @@
   act.menu = function () { document.getElementById('nav').classList.toggle('open'); };
   act.open = function (id) { app.open(id); };
   act.signin = function () { CP.arc.signIn(); };
-  act.signout = function () { CP.arc.signOut(); app.remoteList = []; U.toast('Signed out. Incidents stay on this device.'); app.render(); };
+  act.signout = function () { if (CP.arc.signOut() === false) return; app.remoteList = []; U.toast('Signed out. Incidents stay on this device.'); app.render(); };
   act.reconnect = async function () { await CP.arc.connect(); app.render(); };
   act.showAll = function () { CP.setPath(app.inc, 'showAll', true); app.commit(true); };
   act.live = function () { U.toast('Refreshing live county data…'); app.refreshLive(); };
@@ -319,7 +332,8 @@
       '<label class="f span2"><span>Initial objectives <i class="dim" style="text-transform:none;letter-spacing:0">one per line, optional</i></span><textarea class="in" name="obj" style="min-height:60px"></textarea></label>' +
       '<div class="span2"><div class="flab">Complexity</div><div class="cx" id="qscx">' + CP.COMPLEXITY.map(function (c) { return '<button type="button" class="' + (c.v === 5 ? 'on' : '') + '" data-v="' + c.v + '"><b>' + c.label + '</b><span>' + c.d.split('.')[0] + '.</span></button>'; }).join('') + '</div></div>' +
       '<label class="f"><span>Operational period</span><select class="in" name="oph"><option value="12">12 hours</option><option value="24">24 hours</option><option value="8">8 hours</option></select></label><div></div>' +
-      '<label class="f"><span>Your name</span><input class="in" name="me" value="' + E(me.name) + '"></label><label class="f"><span>Your position</span><input class="in" name="mepos" value="' + E(me.pos) + '" list="dl_pos" placeholder="e.g. Incident Commander"></label></div>';
+      '<label class="f"><span>Your name</span><input class="in" name="me" value="' + E(me.name) + '"></label><label class="f"><span>Your position</span><input class="in" name="mepos" value="' + E(me.pos) + '" list="dl_pos" placeholder="e.g. Incident Commander"></label>' +
+      '<label class="chk span2 practicechk"><input type="checkbox" name="exercise"> <b>Practice / exercise incident</b> <span class="dim">Real tools, kept out of dashboards, reports and cost recovery, and never posted to public county maps.</span></label></div>';
     var ll = null, cx = 5;
     U.modal('Start new incident', body, [{ label: 'Cancel', cls: 'ghost' }, { label: I('play') + 'Start incident', cls: 'pri', fn: function (bg) {
       var v = function (n) { return U.val(bg, n); };
@@ -327,6 +341,7 @@
       if (v('me')) app.setMe({ name: v('me'), pos: v('mepos') });
       var inc = CP.newIncident({ name: v('name'), type: v('type'), start: CP.fromLocalInput(v('start')) || CP.now(), locdesc: v('loc'), lat: ll && +ll.lat.toFixed(6), lng: ll && +ll.lng.toFixed(6), icName: v('ic'), icAgency: v('icag'), situation: v('sit'), objectives: v('obj'), complexity: cx, opHours: +v('oph'), author: v('me') });
       inc.updatedBy = CP.me.name || '';
+      if (v('exercise')) { inc.exercise = true; inc.name = /^(PRACTICE|EXERCISE)/i.test(inc.name) ? inc.name : 'PRACTICE: ' + inc.name; }
       if (cx <= 3) inc.eoc.eoc_status = 'Partial Activation';
       CP.store.put(inc);
       app.open(inc.id, 'dash').then(function () { if (CP.arc.status === 'on') app.pushRemote(); U.toast('Incident started. The briefing packet is ready in Reports.', 'ok'); });
@@ -597,6 +612,7 @@
     var qs = new URLSearchParams(location.search), want = qs.get('incident'), wantView = qs.get('view');
     if (want || wantView) history.replaceState(null, '', location.pathname + (wantView ? '#' + wantView : location.hash));
     if (wantView) h = wantView;
+    var cur = CP.store.prefs().curInc; if (!want && cur && cur.key && cur.key !== CP.store.prefs().last) { want = cur.key; }
     var last = want && CP.store.get(want) ? want : CP.store.prefs().last;
     if (want) { CP.store.setPref('last', want); app._wantRemote = want; }
     if (last && CP.store.get(last)) { app.inc = migrate(CP.store.get(last)); app.view = h && CP.views[h] ? h : 'dash'; } else app.view = ['monitor', 'checklist', 'arc'].indexOf(h) >= 0 ? h : 'home';
@@ -610,6 +626,8 @@
     if (CP.calls) CP.calls.paint();
     if (CP.liveApps) CP.liveApps.paint();
     window.addEventListener('hashchange', function () { var v = location.hash.replace('#', ''); if (v && v !== app.view && CP.views[v] && (app.inc || ['arc', 'monitor', 'checklist'].indexOf(v) >= 0)) { app.view = v; app.render(); } });
+    window.addEventListener('cp-incident-synced', function (ev) { if (app.inc && app.inc.id === ev.detail) { var s2 = CP.store.get(ev.detail); if (s2) { app.inc = CP.merge(app.inc, s2); if (!editing() && !document.getElementById('modal')) app.rerender(); else app.paintChrome(); } } });
+    window.addEventListener('cp-reconnected', function () { app.paintChrome(); app.loadRemoteList && app.loadRemoteList(); if (app.inc) app.pushRemote(); });
     setInterval(async function () { // pull others' changes
       if (!app.inc || CP.arc.status !== 'on' || app.saving) return;
       try { var m = await CP.arc.checkRemote(app.inc); if (m) { app.inc = m; CP.store.put(m); if (!editing() && !document.getElementById('modal')) app.rerender(); else app.paintChrome(); } } catch (e) { console.warn(e); }

@@ -5,6 +5,9 @@
   var ui = CP.ui = {};
 
   var P = {
+    phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z',
+    qr: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2',
+    wifioff: 'M1 1l22 22M16.7 11.1A10.9 10.9 0 0 1 19 12.6M5 12.6a10.9 10.9 0 0 1 5.2-2.5M10.7 5.1A16 16 0 0 1 22.6 9M1.4 9a15.9 15.9 0 0 1 4.7-2.9M8.5 16.1a6 6 0 0 1 7 0M12 20h.01',
     home: 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
     dash: 'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',
     brief: 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',
@@ -106,7 +109,23 @@
   };
   ui.closeModal = function () { var m = document.getElementById('modal'); if (m) m.remove(); };
   ui.confirm = function (title, text, okLabel, fn, danger) { ui.modal(title, '<p style="margin:0">' + text + '</p>', [{ label: 'Cancel', cls: 'ghost' }, { label: okLabel || 'OK', cls: danger ? 'red' : 'pri', fn: fn }]); };
+  // plain-language versions of ArcGIS and network errors: what happened and what to do
+  CP.friendly = function (m) {
+    m = String(m == null ? '' : m); var t = m.replace(/<[^>]+>/g, '');
+    var R = [
+      [/No connection|Failed to fetch|NetworkError|Load failed|network/i, 'No connection right now. Your work is saved on this device and sends by itself when the connection is back.'],
+      [/Invalid token|token required|498|499|Token Required|not signed in/i, 'Your ArcGIS sign-in has expired. Sign in again; nothing you entered is lost.'],
+      [/does not exist or is inaccessible|not shared|You do not have permissions|403|permission|not authorized|User does not have/i, 'You don\'t have access to that in ArcGIS. Ask Emergency Management (BOCO Access 1) to add you to the right group.'],
+      [/Unable to complete operation|Cannot perform operation|invalid field|Field .* not found|is not a valid|Conversion|out of range|String or binary data/i, 'ArcGIS would not accept one of the values. Check the fields you filled in (dates, numbers, very long text) and try again. If it keeps happening, tell EM: ' + t.slice(0, 140)],
+      [/layer is missing|not set up|Open Setup/i, t + (/Setup/.test(t) ? '' : ' Ask EM to run Setup.')],
+      [/Service Unavailable|503|502|504|timed? ?out|Timeout/i, 'ArcGIS is not answering right now. Wait a minute and try again; your work is saved on this device.'],
+      [/quota|storage full|QuotaExceeded/i, 'This device is out of storage. Close other tabs or free up space, then try again.']
+    ];
+    for (var i = 0; i < R.length; i++) if (R[i][0].test(t)) return R[i][1];
+    return t;
+  };
   ui.toast = function (msg, kind, ms) {
+    if (kind === 'err') { var fm = CP.friendly(msg); if (fm !== String(msg).replace(/<[^>]+>/g, '')) { msg = CP.esc ? CP.esc(fm) : fm; ms = Math.max(ms || 0, 6500); } }
     var c = document.querySelector('.toasts'); if (!c) { c = document.createElement('div'); c.className = 'toasts'; document.body.appendChild(c); }
     var t = document.createElement('div'); t.className = 'toast ' + (kind || ''); t.innerHTML = msg; c.appendChild(t);
     setTimeout(function () { t.style.opacity = '0'; t.style.transition = 'opacity .4s'; setTimeout(function () { t.remove(); }, 450); }, ms || 3200);

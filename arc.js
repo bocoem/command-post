@@ -48,7 +48,7 @@
     },
     user: null, own: null, live: {}, status: 'local', err: ''
   };
-  var TK = 'bcem.cp.auth.v1', MIR = 'bcem.cp.mirror.v1';
+  var TK = 'bcem.cp.auth.v1', MIR = 'bcem.cp.mirror.v1', SES = 'bcem.cp.session.v1';
 
   // ---------- auth ----------
   function b64url(buf) { return btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
@@ -82,7 +82,8 @@
     var a = arc.auth(); if (!a) return null;
     if (Date.now() < a.exp) return a.token;
     if (!a.refresh) { setAuth(null); return null; }
-    var r = await fetch(arc.portal + '/sharing/rest/oauth2/token', { method: 'POST', body: new URLSearchParams({ client_id: arc.clientId, grant_type: 'refresh_token', refresh_token: a.refresh }) }).then(function (x) { return x.json(); }).catch(function () { return {}; });
+    var r = await fetch(arc.portal + '/sharing/rest/oauth2/token', { method: 'POST', body: new URLSearchParams({ client_id: arc.clientId, grant_type: 'refresh_token', refresh_token: a.refresh }) }).then(function (x) { return x.json(); }).catch(function () { return { _net: true }; });
+    if (r._net) return a.token; // offline: keep the session; requests queue until the connection is back
     if (!r.access_token) { setAuth(null); arc.user = null; arc.status = 'local'; CP.app && CP.app.paintChrome(); return null; }
     a.token = r.access_token; a.exp = Date.now() + (r.expires_in - 60) * 1000; setAuth(a); return a.token;
   }
@@ -95,7 +96,11 @@
     var p = Object.assign({ f: 'json' }, params || {});
     if (t) p.token = t;
     Object.keys(p).forEach(function (k) { if (typeof p[k] === 'object') p[k] = JSON.stringify(p[k]); });
-    var res = post ? await fetch(url, { method: 'POST', body: new URLSearchParams(p) }) : await fetch(url + (url.indexOf('?') > 0 ? '&' : '?') + new URLSearchParams(p));
+    var res;
+    try { res = post ? await fetch(url, { method: 'POST', body: new URLSearchParams(p) }) : await fetch(url + (url.indexOf('?') > 0 ? '&' : '?') + new URLSearchParams(p)); }
+    catch (ne) { var oe = new Error('No connection'); oe.offline = true; if (CP.net) CP.net.down(); throw oe; }
+    if (CP.net) { if (res.headers.get('x-cp-offline')) CP.net.down(); else CP.net.up(); }
+    if (!post && res.headers.get('x-cp-offline')) res._stale = true;
     var j = await res.json();
     if (j && j.error) { var e = new Error(j.error.message || 'ArcGIS error'); e.code = j.error.code; e.details = j.error.details; throw e; }
     return j;
@@ -163,11 +168,17 @@
     try {
       var me = await arc.req(arc.portal + '/sharing/rest/community/self');
       var portal = await arc.req(arc.portal + '/sharing/rest/portals/self');
-      arc.user = { username: me.username, name: me.fullName, email: me.email, role: me.role, privileges: me.privileges || [], orgId: portal.id, canPublish: (me.privileges || []).indexOf('portal:publisher:publishFeatures') >= 0 };
+      arc.user = { username: me.username, name: me.fullName, email: me.email, role: me.role, privileges: me.privileges || [], groups: (me.groups || []).map(function (g) { return g.title; }), orgId: portal.id, canPublish: (me.privileges || []).indexOf('portal:publisher:publishFeatures') >= 0 };
       if (!CP.me || !CP.me.name) CP.app && CP.app.setMe({ name: me.fullName, pos: (CP.me && CP.me.pos) || '' });
       await arc.findOwn();
+      if (arc.own) { try { var li = await arc.req(own(0), {}); arc.own.fields = {}; (li.fields || []).forEach(function (f) { arc.own.fields[f.name.toLowerCase()] = 1; }); } catch (e4) {} }
       arc.status = arc.own ? 'on' : 'nosvc'; arc.err = '';
-    } catch (e) { arc.status = 'err'; arc.err = e.message; console.warn(e); }
+      try { localStorage.setItem(SES, JSON.stringify({ user: arc.user, own: arc.own, t: Date.now() })); } catch (e2) {}
+    } catch (e) {
+      var ses = null; try { ses = JSON.parse(localStorage.getItem(SES) || 'null'); } catch (e3) {}
+      if (e.offline && ses && ses.user && ses.user.username === (arc.auth() || {}).user) { arc.user = ses.user; arc.own = ses.own; arc.status = 'offline'; arc.err = ''; }
+      else { arc.status = 'err'; arc.err = e.message; console.warn(e); }
+    }
     CP.app && CP.app.paintChrome();
     return arc.status === 'on';
   };
@@ -280,7 +291,48 @@
     var f = await arc.query(own(0), 'incident_key=' + sq(key), { fields: 'OBJECTID,doc,doc_version', n: 1 });
     if (!f.length) return null;
     var a = f[0].attributes; seen[key] = { oid: a.OBJECTID, ver: a.doc_version };
-    return dec(a.doc);
+    var doc = await dec(a.doc);
+    var ch = await changes.list(key).catch(function () { return []; });
+    for (var c of ch) { try { doc = CP.merge(doc, await dec(c.patch)); } catch (e) { console.warn('change', e); } }
+    seen[key].base = CP.clone(doc);
+    return doc;
+  };
+  // ---------- change records (CP_Changes): makes two people saving at the same moment safe ----------
+  // A save writes only what it changed as a new row first, then the merged incident record. Adding rows never overwrites,
+  // so even if two record writes cross, every reader merges the record with the recent change rows and nothing is lost.
+  var changes = arc.changes = {
+    _id: undefined, KEEP: 30 * 60000,
+    table: async function () {
+      if (changes._id !== undefined) return changes._id == null ? null : own(changes._id);
+      var svc = await arc.req(arc.own.url, {}); var t = (svc.tables || []).find(function (x) { return x.name === 'CP_Changes'; });
+      changes._id = t ? t.id : null; return t ? own(t.id) : null;
+    },
+    list: async function (key) { var u = await changes.table(); if (!u) return []; var f = await arc.query(u, 'incident_key=' + sq(key), { fields: 'OBJECTID,change_time,patch', order: 'change_time ASC', n: 500 }); return f.map(function (x) { return x.attributes; }); },
+    diff: function (inc, base) {
+      if (!base) return null;
+      var out = { id: inc.id, _ts: {} }, ta = inc._ts || {}, tb = base._ts || {}, any = false;
+      Object.keys(inc).forEach(function (k) {
+        if (k === '_ts' || k === 'arc' || k === 'id') return;
+        var va = inc[k], vb = base[k];
+        if (Array.isArray(va) && va.length && va[0] && typeof va[0] === 'object' && 'id' in va[0]) {
+          var m = {}; (Array.isArray(vb) ? vb : []).forEach(function (x) { if (x) m[x.id] = x.u || ''; });
+          var ch = va.filter(function (x) { return x && (m[x.id] === undefined || (x.u || '') !== m[x.id]); });
+          if (ch.length) { out[k] = ch; if (ta[k]) out._ts[k] = ta[k]; any = true; }
+        } else if ((ta[k] || '') > (tb[k] || '') || (vb === undefined && va !== undefined)) { out[k] = va; if (ta[k]) out._ts[k] = ta[k]; any = true; }
+      });
+      out.updated = inc.updated; return any ? out : null;
+    },
+    write: async function (inc) {
+      var u = await changes.table(); if (!u) return;
+      var s = seen[inc.id] || {}, p = changes.diff(inc, s.base); if (!p) return;
+      var z = await enc(p); if (z.length > 900000) return; // too big for one row: the merged record save still carries it
+      await arc.add(u, [{ attributes: { incident_key: inc.id, change_time: Date.now(), author: cut((arc.user && arc.user.username) || '', 128), patch: z } }]);
+    },
+    prune: async function (key) {
+      var u = await changes.table(); if (!u) return;
+      var f = await arc.query(u, 'incident_key=' + sq(key) + ' AND change_time < ' + (Date.now() - changes.KEEP), { fields: 'OBJECTID', n: 200 }).catch(function () { return []; });
+      if (f.length) await arc.del(u, f.map(function (x) { return x.attributes.OBJECTID; })).catch(function () {});
+    }
   };
   arc.remoteVersion = async function (key) {
     var f = await arc.query(own(0), 'incident_key=' + sq(key), { fields: 'OBJECTID,doc_version', n: 1 });
@@ -289,6 +341,7 @@
   arc.save = async function (inc) {
     if (arc.status !== 'on') return inc;
     var key = inc.id, s = seen[key] || {};
+    await changes.write(inc).catch(function (e) { if (e.offline) throw e; console.warn('change row', e); });
     var rv = await arc.remoteVersion(key);
     if (rv && rv.doc_version && rv.doc_version !== s.ver) { // someone else saved since we last looked: merge first
       var remote = await arc.loadRemote(key); if (remote) inc = CP.merge(inc, remote);
@@ -298,12 +351,14 @@
     var attrs = { incident_key: key, incident_number: inc.number, incident_name: cut(inc.name, 255), incident_type: inc.type, complexity: inc.complexity, status: inc.status, start_time: ms(inc.start), closed_time: ms(inc.closed),
       op_period: ops ? ops.n : 1, ic_name: cut(CP.personName(inc, 'IC'), 150), location_desc: cut(inc.location.desc, 500), eoc_status: inc.eoc.eoc_status,
       resources_count: CP.alive(inc.resources).filter(function (r) { return ['Released', 'Demobilized'].indexOf(r.status) < 0; }).length, personnel_count: CP.app ? CP.app.personnel(inc) : 0,
-      public_view: inc.publicView ? 'Yes' : 'No', doc_version: ver, doc: await enc(inc) };
+      public_view: inc.publicView && !inc.exercise ? 'Yes' : 'No', doc_version: ver, doc: await enc(inc) };
+    if (arc.own.fields && arc.own.fields.exercise) attrs.exercise = inc.exercise ? 'Yes' : null;
     var feat = { attributes: attrs, geometry: pt(inc.location.lat, inc.location.lng) || undefined };
     if (rv) { attrs.OBJECTID = rv.OBJECTID; await arc.update(own(0), [feat]); }
     else { var r = await arc.add(own(0), [feat]); rv = { OBJECTID: r[0].objectId }; }
-    seen[key] = { oid: rv.OBJECTID, ver: ver };
+    seen[key] = { oid: rv.OBJECTID, ver: ver, base: CP.clone(inc) };
     inc.arc = inc.arc || {}; inc.arc.linked = true;
+    if (Math.random() < 0.25) changes.prune(key);
     await mirror(inc).catch(function (e) { console.warn('mirror', e); });
     return inc;
   };
@@ -345,6 +400,7 @@
   var TYPE_OK = CP.INCIDENT_TYPES;
   arc.push = {};
   arc.push.incident = async function (inc) {
+    if (inc.exercise) return 'practice incident: not posted to the public map';
     var st = inc.status === 'Closed' ? 'Closed' : 'Open', act = inc.status === 'Closed' ? 'No' : 'Yes';
     var at = { incidentid: inc.number.slice(0, 30), incidentnm: cut(inc.name, 255), incidenttp: TYPE_OK.indexOf(inc.type) >= 0 ? inc.type : 'Other', reptime: ms(inc.start),
       description: cut(inc.situation, 500), locdesc: cut(inc.location.desc || inc.location.address, 500), status: st, activeincid: act, publicview: inc.publicView ? 'Yes' : 'No' };
@@ -356,6 +412,7 @@
   };
   var FAC_MAP = { 'Incident Command Post': 'Incident Command Post', 'Staging Area': 'Staging Area', 'Incident Base': 'Incident Base', 'Camp': 'Camp ' };
   arc.push.facilities = async function (inc) {
+    if (inc.exercise) return 'practice incident: not posted';
     var n = 0;
     for (var f of CP.alive(inc.facilities)) {
       if (!f.lat) continue;

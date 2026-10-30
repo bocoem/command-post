@@ -141,6 +141,7 @@
   };
 
   // ---------- forms ----------
+  OPS.ru.caseForm = function (r, def, more) { return caseForm(r, def, more); };
   function caseForm(r, def, more) {
     OPS.edit('reunify', r, { defaults: def || (r ? null : {}), addrField: 'home_address', noMap: false,
       top: r ? '<div class="hint" style="margin-bottom:10px">Case ' + E(r.case_no || '') + ' · opened ' + E(OPS.dt(r.CreationDate)) + (r.Creator ? ' by ' + E(r.Creator) : '') + '. The map point is the last known or found location. Attach a photo after saving if the family provides one.</div>' : '',
