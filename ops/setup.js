@@ -208,7 +208,12 @@
     if (!OPS.st.cache['sx:test']) OPS.load('sx:test', SX.scan, 30 * 60000); // scan once per visit so the checklist can tick
     var h = '<div class="phead"><div><h1 class="pg">Setup</h1><p class="pgsub" style="margin:0">Is BEACON healthy, current and ready? Fix anything red here first.</p></div></div>';
     if (!built) h += '<div class="card" style="border-left:4px solid var(--gold)"><h3>' + I('build') + 'Build everything</h3><p class="dim" style="margin-top:0">One click, with your publisher account: creates the three services, shares them, turns on the public family check-in, builds the web map and loads the EOP starter content.</p><div id="buildLog" class="mono" style="font-size:12.5px;white-space:pre-wrap;margin-bottom:10px">' + E(OPS._buildLog || '') + '</div><button class="btn pri" data-act="buildAll"' + (canPub ? '' : ' disabled') + '>' + I('play') + 'Build everything</button></div>';
-    if (OPS.harden) h += OPS.harden.panel();
+    if (OPS.harden) {
+      var hp = OPS.harden.panel(), at = hp.indexOf('<div class="hc">');
+      // all clear: fold the long list away so the page opens on what needs doing
+      if (at > 0 && hp.indexOf('hcrow bad') < 0) hp = hp.slice(0, at) + '<details><summary class="dim" style="cursor:pointer;font-size:13px">Show all checks</summary>' + hp.slice(at, hp.length - 6) + '</details></div>';
+      h += hp;
+    }
     h += SX.golive();
     h += '<div class="grid g2" style="align-items:start">' + SX.feeds() + SX.groups() + '</div>';
     h += SX.services(canPub, built);
