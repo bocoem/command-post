@@ -1,4 +1,4 @@
-/* COMMAND POST — EOC side: lifeline checklists (shared with the EOC app), the EOC Monitor,
+/* COMMAND POST — EOC side: lifeline checklists (shared with EM Watch), the EOC Monitor,
    damage assessment status and the stakeholder tool list. */
 (function (CP) {
   'use strict';
@@ -39,7 +39,7 @@
   var LL_ORDER = ['Safety and Security', 'Food, Hydration, Shelter', 'Health and Medical', 'Energy', 'Communications', 'Transportation', 'Hazardous Materials', 'Water Systems'];
   var TS = ['Open', 'In Progress', 'Done', 'Not Applicable'];
   V.checklist = function (inc) {
-    var head = V.phead('EOC Checklist', 'The lifeline task lists from the Emergency Operations Plan. This is the same list as the Checklists page in the EOC app, so a change here shows there too, and the other way around.', '<button class="btn sm" data-act="cacheRefresh">' + I('refresh') + 'Refresh</button><a class="btn sm ghost" href="https://experience.arcgis.com/experience/0ed836c463984dcc86ab3e1a6d36831a" target="_blank" rel="noopener">' + I('link') + 'EOC app</a>');
+    var head = V.phead('EOC Checklist', 'The lifeline task lists from the Emergency Operations Plan. This is the same list as the Checklists page in EM Watch, so a change here shows there too, and the other way around.', '<button class="btn sm" data-act="cacheRefresh">' + I('refresh') + 'Refresh</button><a class="btn sm ghost" href="https://experience.arcgis.com/experience/0ed836c463984dcc86ab3e1a6d36831a" target="_blank" rel="noopener">' + I('link') + 'EM Watch</a>');
     if (!arc().signedIn()) return '<div class="wrap">' + head + needSignIn('EOC checklists') + '</div>';
     var d = load('tasks', D.tasks);
     if (!d) return '<div class="wrap">' + head + '<div class="muted">Loading…</div></div>';
@@ -136,7 +136,7 @@
       ['CAD (automatic)', 'CAD feed', '', 'CAD calls panel, Monitor'],
       ['Shelter staff and kiosks', 'Shelter check-in / check-out and staff sign-in', 'https://survey123.arcgis.com/share/09f6597a0cb441d097419b7236b4fde7', 'Shelters & Distribution (live counts), SitRep'],
       ['Damage assessment teams', 'Field Maps + DA Operations', 'https://experience.arcgis.com/experience/4191928dcb0448ed85a379a69a1ef304', 'Damage assessment status, SitRep'],
-      ['EOC staff (lifeline leads)', 'Botetourt County EOC app', 'https://experience.arcgis.com/experience/0ed836c463984dcc86ab3e1a6d36831a', 'EOC Checklist page (same task list)'],
+      ['EOC staff (lifeline leads)', 'EM Watch (EOC app)', 'https://experience.arcgis.com/experience/0ed836c463984dcc86ab3e1a6d36831a', 'EOC Checklist page (same task list)'],
       ['Public', 'Stormwatch (public)', 'https://experience.arcgis.com/experience/c8f438b974da4e2b9d9fd01893687ec4', 'Field Reports page'],
       ['Public (read only)', 'Incident Status dashboard and EM website', 'https://bocoem-botetourt.hub.arcgis.com', 'Fed by Command Post: incident, closures, notices, shelters, public message']
     ];
