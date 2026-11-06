@@ -44,14 +44,14 @@
   };
 
   // ---------- access groups: who is in each BOCO group ----------
-  SX.KEY_GROUPS = [/^BOCO Access 1/, /^BOCO Access 2/, /^BOCO Access 3/, /^BOCO Access 4/, /EMS Patient Care/i, /Leadership/i];
+  SX.KEY_GROUPS = [/^BOCO Access 2/, /^BOCO Access 3/, /^BOCO Access 4/, /EMS Patient Care/i, /Leadership/i];
   SX.groupCheck = async function () {
     var q = 'title:"BOCO"' + (A.user && A.user.orgId ? ' AND orgid:' + A.user.orgId : '');
     var r = await A.req(P('/community/groups'), { q: q, num: 100, sortField: 'title', sortOrder: 'asc' });
     var gs = (r.results || []).filter(function (g) { return /^BOCO /.test(g.title) && !/SYSTEM|LEGACY/i.test(g.title); });
     return Promise.all(gs.map(async function (g) {
       var n = null, onlyOwner = false;
-      try { var l = await A.req(P('/community/groups/' + g.id + '/userList'), {}); var m = (l.admins || []).concat(l.users || []); n = m.length; onlyOwner = n <= 1 && (!m.length || m[0] === l.owner); } catch (e) {}
+      try { var l = await A.req(P('/community/groups/' + g.id + '/userList'), {}); var un = function (x) { return x && typeof x === 'object' ? x.username : x; }; var own = un(l.owner); var m = (l.admins || []).concat(l.users || []).map(un).filter(function (v, i, a) { return v && a.indexOf(v) === i; }); n = m.length; onlyOwner = n <= 1 && (!n || m[0] === own); } catch (e) {}
       return { id: g.id, title: g.title, n: n, onlyOwner: onlyOwner, key: SX.KEY_GROUPS.some(function (rx) { return rx.test(g.title); }) };
     }));
   };
@@ -62,8 +62,8 @@
     var empty = r.filter(function (g) { return g.key && (g.n === 0 || g.onlyOwner); });
     var rows = r.map(function (g) {
       var bad = g.key && (g.n === 0 || g.onlyOwner);
-      return hrow(!bad, '<a href="' + A.portal + '/home/group.html?id=' + g.id + '#members" target="_blank" rel="noopener"><b>' + E(g.title) + '</b></a>: ' + (g.n == null ? 'members hidden' : g.n + ' member' + (g.n === 1 ? '' : 's')),
-        bad ? (/EMS Patient Care/i.test(g.title) ? 'Add EMS crews, or they will not see patients in MCI.' : 'Nobody to give access to yet. Add members in ArcGIS.') : '', g.n == null ? 'mid' : null);
+      return hrow(!bad, '<a href="' + A.portal + '/home/group.html?id=' + g.id + '#members" target="_blank" rel="noopener"><b>' + E(g.title) + '</b></a>: ' + (g.n == null ? 'members hidden' : g.onlyOwner ? 'only the group owner' : g.n + ' member' + (g.n === 1 ? '' : 's')),
+        bad ? (/EMS Patient Care/i.test(g.title) ? 'Add EMS crews, or they will not see patients in MCI.' : 'Add the people who need this access in ArcGIS.') : '', g.n == null ? 'mid' : null);
     }).join('');
     return card('users', 'Access groups', btn, '<p style="margin:0 0 8px" class="' + (empty.length ? 'warn-t' : 'ok-t') + '"><b>' + (empty.length ? empty.length + ' key group' + (empty.length > 1 ? 's are' : ' is') + ' empty' : 'Every key group has members') + '</b> <span class="dim">· click a group to manage it in ArcGIS</span></p><div class="hc">' + rows + '</div>', empty.length ? 'gold' : null);
   };
@@ -142,7 +142,7 @@
     for (var l of SX.scanLayers()) {
       try {
         var info = await A.req(l.u, {});
-        var sf = (info.fields || []).filter(function (f) { return f.type === 'esriFieldTypeString' && SX.NAMEY.test(f.name) && (f.length || 0) <= 500; }).map(function (f) { return f.name; }).slice(0, 6);
+        var sf = (info.fields || []).filter(function (f) { return f.type === 'esriFieldTypeString' && SX.NAMEY.test(f.name) && (f.length || 0) <= 500; }).map(function (f) { return f.name; }).sort(function (a, b) { var r = function (x) { return /^(incident_)?name$|^title$/i.test(x) ? 0 : /name|title/i.test(x) ? 1 : 2; }; return r(a) - r(b); }).slice(0, 6);
         var oid = info.objectIdField || 'OBJECTID';
         if (sf.length) {
           var where = sf.map(function (f) { return "UPPER(" + f + ") LIKE '%TEST%'"; }).join(' OR ');
@@ -204,6 +204,7 @@
   // ---------- page ----------
   OPS.tools.setup.render = function () {
     var u = A.user || {}, canPub = u.canPublish, built = OPS.SVC_KEYS.every(function (k) { return OPS.svc[k]; });
+    if (!A.user) return '<div class="phead"><div><h1 class="pg">Setup</h1></div></div>' + wait('Signing in to ArcGIS…');
     if (!OPS.st.cache['sx:test']) OPS.load('sx:test', SX.scan, 30 * 60000); // scan once per visit so the checklist can tick
     var h = '<div class="phead"><div><h1 class="pg">Setup</h1><p class="pgsub" style="margin:0">Is BEACON healthy, current and ready? Fix anything red here first.</p></div></div>';
     if (!built) h += '<div class="card" style="border-left:4px solid var(--gold)"><h3>' + I('build') + 'Build everything</h3><p class="dim" style="margin-top:0">One click, with your publisher account: creates the three services, shares them, turns on the public family check-in, builds the web map and loads the EOP starter content.</p><div id="buildLog" class="mono" style="font-size:12.5px;white-space:pre-wrap;margin-bottom:10px">' + E(OPS._buildLog || '') + '</div><button class="btn pri" data-act="buildAll"' + (canPub ? '' : ' disabled') + '>' + I('play') + 'Build everything</button></div>';
