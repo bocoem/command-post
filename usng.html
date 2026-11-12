@@ -23,8 +23,14 @@ button,a.btn{font-family:var(--cond);font-size:14px;font-weight:700;letter-spaci
 button.ghost,a.ghost{background:transparent;color:var(--gold);box-shadow:inset 0 0 0 1.5px var(--gold)}
 .lbl{font-size:13px;letter-spacing:2.5px;font-weight:700;color:var(--gold);text-transform:uppercase}
 .big{font-family:var(--mono);font-weight:700;line-height:1.08;white-space:nowrap;text-align:center}
+#pos{display:inline-block}
 .big .sq{display:block;color:var(--gold)}
 .big .lo{color:var(--dimd)}
+.lbl button.fmt{all:unset;cursor:pointer;color:var(--gold);border-bottom:1.5px dashed rgba(253,184,51,.55)}
+.chips{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}
+.chips button{font-size:13px;padding:5px 9px;border-radius:20px;background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1.5px var(--line)}
+.chips button.on{background:var(--gold);color:#0B1A2B;box-shadow:none}
+body.embed .chips{display:none}
 .msg{font-family:var(--cond);font-size:17px;font-weight:600;text-align:center;color:var(--muted);line-height:1.25;white-space:normal}
 .dot{width:8px;height:8px;border-radius:50%;background:#6A83A2;display:inline-block;margin-right:5px;vertical-align:1px}
 .dot.live{background:var(--ok);box-shadow:0 0 0 3px rgba(47,191,113,.25)}
@@ -65,12 +71,13 @@ body.solo .embedOnly{display:none}
 <div class="hdr full"><img src="seal.png" alt="Botetourt County Emergency Management seal"><div><div class="t1">BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t2">MY USNG</div></div><span class="pill no" id="off">ONLINE ONLY</span></div>
 <div class="back full"><a class="btn ghost" id="back" href="https://experience.arcgis.com/experience/36d30d3482fa4536820ac6de09ddc247">&lsaquo; MAPPING TOOLS</a><small id="backNote" hidden>Needs a signal</small></div>
 <div class="wrap">
-  <div class="lbl">My position &middot; USNG</div>
+  <div class="lbl">My position &middot; <button class="fmt" id="fmt" type="button" title="Tap to change the coordinate format">USNG</button></div>
+  <div class="chips full" id="chips"></div>
   <div class="big" id="pos"><div class="msg">Finding your location&hellip;</div></div>
   <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><span class="embedOnly"><button id="cp" type="button">COPY</button> <a class="btn ghost" href="usng.html" target="_blank" rel="noopener" title="Open the offline USNG app">OFFLINE APP</a></span></div>
   <div class="acts full" id="acts" hidden><button id="cp2" type="button">COPY</button><button id="sh" type="button" class="ghost">SHARE</button></div>
   <div class="grid full" id="grid" hidden>
-    <div class="cell"><b>Latitude, longitude</b><span id="ll"></span></div>
+    <div class="cell"><b id="altLbl">Latitude, longitude</b><span id="ll"></span></div>
     <div class="cell"><b>Elevation</b><span id="el"></span></div>
     <div class="cell"><b>Precision</b><span id="pr"></span></div>
     <div class="cell"><b>Heading / speed</b><span id="hd"></span></div>
@@ -97,7 +104,7 @@ function usng(lat,lon){
   let r=Math.floor(Nn/100000)%20; if(set%2===0) r=(r+5)%20;
   const row=rowL[r];
   const e5=String(Math.floor(E%100000)).padStart(5,'0'),n5=String(Math.floor(Nn%100000)).padStart(5,'0');
-  return {gzd:zone+band,sq:col+row,e:e5,n:n5};
+  return {gzd:zone+band,sq:col+row,e:e5,n:n5,zone:zone,band:band,E:E,N:Nn};
 }
 
 var embedded = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
@@ -109,16 +116,63 @@ var last = null, lastT = 0, fix = null;
 function goodDigits(acc) { return Math.max(1, Math.min(5, 5 - Math.ceil(Math.log10(Math.max(acc, 1.0001))))); }
 function precLabel(d) { return ['10 km', '1 km', '100 m', '10 m', '1 m'][d - 1]; }
 
-function show(p) {
-  var c = p.coords, u = usng(c.latitude, c.longitude), acc = Math.round(c.accuracy), d = goodDigits(c.accuracy);
-  var e = u.e.slice(0, d), n = u.n.slice(0, d);
-  last = u.gzd + ' ' + u.sq + ' ' + e + ' ' + n; lastT = Date.now(); fix = { c: c, acc: acc, d: d };
+// Readout formats. The choice is remembered on this phone.
+var FORMATS = ['USNG', 'MGRS', 'UTM', 'DD', 'DDM', 'DMS'];
+var fmt = 'USNG';
+try { var saved = localStorage.getItem('myusng-format'); if (FORMATS.indexOf(saved) >= 0) fmt = saved; } catch (e) {}
+function hemi(v, pos, neg) { return v >= 0 ? pos : neg; }
+function dd(v) { return Math.abs(v).toFixed(5) + '\u00B0'; }
+function ddm(v) { var a = Math.abs(v), d = Math.floor(a), m = (a - d) * 60; if (m >= 59.9995) { d++; m = 0; } return d + '\u00B0 ' + m.toFixed(3).padStart(6, '0') + "'"; }
+function dms(v) { var a = Math.abs(v), d = Math.floor(a), mf = (a - d) * 60, m = Math.floor(mf), sec = (mf - m) * 60; if (sec >= 59.95) { sec = 0; m++; } if (m >= 60) { m = 0; d++; } return d + '\u00B0 ' + String(m).padStart(2, '0') + "' " + sec.toFixed(1).padStart(4, '0') + '"'; }
+// Returns {top, bottom (html), text (for Copy/Share)}. Grid formats grey out digits finer than the GPS accuracy.
+function render(c, u, d) {
+  var lat = c.latitude, lon = c.longitude;
   var part = function (s) { return s.slice(0, d) + (d < 5 ? '<span class="lo">' + s.slice(d) + '</span>' : ''); };
-  $('pos').innerHTML = '<span class="sq">' + u.gzd + ' ' + u.sq + '</span>' + part(u.e) + ' ' + part(u.n);
+  if (fmt === 'USNG' || fmt === 'MGRS') {
+    var e = u.e.slice(0, d), n = u.n.slice(0, d);
+    return { top: u.gzd + ' ' + u.sq, bottom: part(u.e) + ' ' + part(u.n),
+      text: fmt === 'MGRS' ? u.gzd + u.sq + e + n : u.gzd + ' ' + u.sq + ' ' + e + ' ' + n };
+  }
+  if (fmt === 'UTM') {
+    var round = Math.pow(10, 5 - d), E = Math.floor(u.E / round) * round, N = Math.floor(u.N / round) * round;
+    return { top: 'Zone ' + u.zone + u.band, bottom: E + 'E ' + N + 'N', text: u.zone + u.band + ' ' + E + 'E ' + N + 'N' };
+  }
+  var f = fmt === 'DD' ? dd : fmt === 'DDM' ? ddm : dms;
+  var a = f(lat) + ' ' + hemi(lat, 'N', 'S'), b = f(lon) + ' ' + hemi(lon, 'E', 'W');
+  return { top: a, bottom: b, text: a + ', ' + b };
+}
+function setFmt(f) {
+  fmt = f; try { localStorage.setItem('myusng-format', f); } catch (e) {}
+  $('fmt').textContent = f;
+  [].forEach.call($('chips').children, function (b) { b.className = b.dataset.f === f ? 'on' : ''; });
+  if (lastPos) show(lastPos);
+}
+$('chips').innerHTML = FORMATS.map(function (f) { return '<button type="button" data-f="' + f + '">' + f + '</button>'; }).join('');
+$('chips').onclick = function (ev) { var b = ev.target.closest('button'); if (b) setFmt(b.dataset.f); };
+$('fmt').onclick = function () { setFmt(FORMATS[(FORMATS.indexOf(fmt) + 1) % FORMATS.length]); };
+
+// Shrink the big readout if a long format doesn't fit the width.
+function fit() {
+  var el = $('pos'); el.style.fontSize = '';
+  var max = el.parentNode.clientWidth - 16, w = el.scrollWidth;
+  if (w > max) el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) * max / w) + 'px';
+}
+window.addEventListener('resize', fit);
+
+var lastPos = null;
+function show(p) {
+  lastPos = p;
+  var c = p.coords, u = usng(c.latitude, c.longitude), acc = Math.round(c.accuracy), d = goodDigits(c.accuracy);
+  var r = render(c, u, d);
+  last = r.text; lastT = Date.now(); fix = { c: c, acc: acc, d: d, u: u };
+  $('pos').innerHTML = '<span class="sq">' + r.top + '</span>' + r.bottom;
+  fit();
   $('sub').hidden = false;
   if (!embedded) {
     $('acts').hidden = $('grid').hidden = false;
-    $('ll').textContent = c.latitude.toFixed(5) + ', ' + c.longitude.toFixed(5);
+    var latlong = fmt === 'DD' || fmt === 'DDM' || fmt === 'DMS';
+    $('altLbl').textContent = latlong ? 'USNG' : 'Latitude, longitude';
+    $('ll').textContent = latlong ? u.gzd + ' ' + u.sq + ' ' + u.e.slice(0, d) + ' ' + u.n.slice(0, d) : c.latitude.toFixed(5) + ', ' + c.longitude.toFixed(5);
     $('el').textContent = c.altitude != null ? Math.round(c.altitude * 3.28084).toLocaleString() + ' ft' : '—';
     $('pr').textContent = precLabel(d);
     $('hd').textContent = (c.heading != null && !isNaN(c.heading) && c.speed > 0.5) ? Math.round(c.heading) + '° · ' + Math.round(c.speed * 2.23694) + ' mph' : '—';
@@ -147,13 +201,15 @@ $('cp').onclick = function () { copy(this); };
 $('cp2').onclick = function () { copy(this); };
 $('sh').onclick = function () {
   if (!last) return;
-  var txt = 'My location (USNG): ' + last + ' (±' + fix.acc + ' m)\nLat/long: ' + fix.c.latitude.toFixed(5) + ', ' + fix.c.longitude.toFixed(5);
+  var usngTxt = fix.u.gzd + ' ' + fix.u.sq + ' ' + fix.u.e.slice(0, fix.d) + ' ' + fix.u.n.slice(0, fix.d);
+  var txt = 'My location (' + fmt + '): ' + last + ' (\u00B1' + fix.acc + ' m)' + (fmt !== 'USNG' ? '\nUSNG: ' + usngTxt : '') + '\nLat/long: ' + fix.c.latitude.toFixed(5) + ', ' + fix.c.longitude.toFixed(5);
   if (navigator.share) navigator.share({ title: 'My USNG location', text: txt }).catch(function () {});
   else location.href = 'sms:?&body=' + encodeURIComponent(txt);
 };
 if (!navigator.geolocation) fail({ code: 2 });
 else navigator.geolocation.watchPosition(show, fail, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
 setInterval(tick, 1000);
+setFmt(fmt);
 
 // Back to the Mapping Tools app. If this tab was opened from it, return to that tab; it needs a signal either way.
 $('back').onclick = function (ev) {
