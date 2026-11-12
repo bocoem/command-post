@@ -42,13 +42,17 @@ body.embed .chips{display:none}
 .msg{font-family:var(--cond);font-size:17px;font-weight:600;text-align:center;color:var(--muted);line-height:1.25;white-space:normal}
 .dot{width:8px;height:8px;border-radius:50%;background:#6A83A2;display:inline-block;margin-right:5px;vertical-align:1px}
 .dot.live{background:var(--ok);box-shadow:0 0 0 3px rgba(47,191,113,.25)}
+.dot.weak{background:#F28C28;box-shadow:0 0 0 3px rgba(242,140,40,.25)}
+.dot.bad{background:#F0444C;box-shadow:0 0 0 3px rgba(240,68,76,.3)}
+.warn{color:#F0444C;font-weight:700}
+#pos.stale{opacity:.4}
 
 /* Embedded (inside Mapping Tools) */
 body.embed{overflow:hidden}
 body.embed .wrap{position:relative;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:6px 10px 10px;box-sizing:border-box}
 body.embed .wrap:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--line)}
 body.embed .big{font-size:min(8.6vw,40px)}
-body.embed .sub{font-size:14px;font-weight:600;color:var(--muted);display:flex;gap:8px;align-items:center;letter-spacing:.5px}
+body.embed .sub{font-size:14px;font-weight:600;color:var(--muted);display:flex;gap:8px;align-items:center;letter-spacing:.5px;white-space:nowrap}
 body.embed .full{display:none}
 
 /* Standalone (home-screen app) */
@@ -83,7 +87,7 @@ body.solo .embedOnly{display:none}
   <div class="chipcap full">Coordinate format &middot; tap to change</div>
   <div class="chips full" id="chips"></div>
   <div class="big" id="pos"><div class="msg">Finding your location&hellip;</div></div>
-  <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><span class="embedOnly"><button id="cp" type="button">COPY</button> <a class="btn ghost" href="usng.html" target="_blank" rel="noopener" title="Open the offline version of Mapping Tools">OFFLINE APP</a></span></div>
+  <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><span class="embedOnly"><button id="cp" type="button">COPY</button> <a class="btn ghost" href="usng.html" target="_blank" rel="noopener" title="Open the offline version of Mapping Tools">OFFLINE</a></span></div>
   <div class="acts full" id="acts" hidden><button id="cp2" type="button">COPY</button><button id="sh" type="button" class="ghost">SHARE</button></div>
   <div class="grid full" id="grid" hidden>
     <div class="cell"><b id="altLbl">Latitude, longitude</b><span id="ll"></span></div>
@@ -188,11 +192,21 @@ function show(p) {
   }
   tick();
 }
+// Warnings: weak GPS (accuracy worse than 50 m) and an old fix (no update for 30 s) are shown in red,
+// and an old fix dims the coordinates so nobody reads out a stale grid.
+var WEAK_M = 50, OLD_S = 30, poked = 0;
 function tick() {
   if (!lastT) return;
-  var s = Math.round((Date.now() - lastT) / 1000), live = s < 15;
-  $('dot').className = 'dot' + (live ? ' live' : '');
-  $('acc').textContent = '±' + fix.acc + ' m · ' + (live ? 'live' : 'last fix ' + (s < 120 ? s + ' s' : Math.round(s / 60) + ' min') + ' ago');
+  var s = Math.round((Date.now() - lastT) / 1000), live = s < 15, old = s >= OLD_S, weak = fix.acc > WEAK_M;
+  // Some phones only report when you move; ask for a fresh fix before calling it old.
+  if (s >= 20 && Date.now() - poked > 15000 && navigator.geolocation) { poked = Date.now(); navigator.geolocation.getCurrentPosition(show, function () {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }); }
+  $('dot').className = 'dot' + (old ? ' bad' : weak ? ' weak' : live ? ' live' : '');
+  $('pos').classList.toggle('stale', old);
+  var age = s < 120 ? s + ' s' : Math.round(s / 60) + ' min';
+  var a = $('acc');
+  a.className = (old || weak) ? 'warn' : '';
+  a.textContent = old ? 'OLD FIX \u00B7 ' + age + (embedded ? '' : ' ago')
+    : '\u00B1' + fix.acc + ' m \u00B7 ' + (weak ? 'WEAK GPS' : live ? 'live' : age + ' ago');
 }
 function fail(e) {
   if (last) return;
