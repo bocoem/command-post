@@ -1,1 +1,1 @@
-{"name":"My USNG · BEACON","short_name":"My USNG","start_url":"usng.html","scope":"./","display":"standalone","background_color":"#0B1A2B","theme_color":"#0B1A2B","icons":[{"src":"usng_icon.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}
+{"name":"Mapping Tools · BEACON","short_name":"Mapping Tools","start_url":"usng.html","scope":"./","display":"standalone","background_color":"#0B1A2B","theme_color":"#0B1A2B","icons":[{"src":"usng_icon.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}

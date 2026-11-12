@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>My USNG – BEACON</title>
-<!-- Live USNG readout from the device GPS.
+<title>Mapping Tools – BEACON</title>
+<!-- Mapping Tools – live USNG readout from the device GPS (offline version).
      Embedded at the top of the BC EM Mapping Tools app (phone layout), and usable on its own:
      open https://bocoem.github.io/command-post/usng.html and add it to the home screen. It then works with no signal
      (sw.js keeps a copy). Digits finer than the GPS accuracy are greyed out and left out of Copy/Share. -->
 <meta name="theme-color" content="#0B1A2B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="My USNG">
+<meta name="apple-mobile-web-app-title" content="Mapping Tools">
 <link rel="manifest" href="usng.webmanifest">
 <link rel="apple-touch-icon" href="usng_icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -45,12 +45,10 @@ body.embed .full{display:none}
 
 /* Standalone (home-screen app) */
 body.solo{min-height:100%;display:flex;flex-direction:column}
-.hdr{position:relative;display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 12px) 16px 14px;background:var(--bg2) linear-gradient(90deg,#0A1522,#10243D)}
-.hdr:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--red) 0 33.3%,var(--gold) 33.3% 66.6%,var(--indigo) 66.6%)}
-.hdr img{width:46px;height:46px}
-.hdr .t1{font:800 10.5px var(--disp);color:var(--gold);letter-spacing:1px}
-.hdr .t2{font:900 26px var(--disp);color:#fff;letter-spacing:.5px;line-height:1}
-.pill{margin-left:auto;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:20px;background:rgba(47,191,113,.15);color:var(--ok)}
+.hdr{display:flex;align-items:center;gap:8px;height:84px;padding:env(safe-area-inset-top) 10px 0;box-sizing:content-box;background:#0B1A2B url(mt_header_phone.png) center bottom/cover no-repeat}
+.hdr .seal{width:50px;height:50px;flex:none}
+.hdr .lock{height:42px;max-width:calc(100% - 70px);object-fit:contain;object-position:left center}
+.pill{white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:20px;background:rgba(47,191,113,.15);color:var(--ok)}
 .pill.no{background:rgba(147,169,195,.12);color:var(--muted)}
 body.solo .wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px 16px}
 body.solo .big{font-size:min(14vw,64px)}
@@ -68,13 +66,13 @@ body.solo .embedOnly{display:none}
 .note{font-size:14px;color:var(--muted);text-align:center;max-width:420px;line-height:1.35;padding:0 16px calc(env(safe-area-inset-bottom) + 16px)}
 .note b{color:var(--gold)}
 </style></head><body>
-<div class="hdr full"><img src="seal.png" alt="Botetourt County Emergency Management seal"><div><div class="t1">BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t2">MY USNG</div></div><span class="pill no" id="off">ONLINE ONLY</span></div>
-<div class="back full"><a class="btn ghost" id="back" href="https://experience.arcgis.com/experience/36d30d3482fa4536820ac6de09ddc247">&lsaquo; MAPPING TOOLS</a><small id="backNote" hidden>Needs a signal</small></div>
+<div class="hdr full"><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><img class="lock" src="mt_lockup.png" alt="Botetourt County Emergency Management, Mapping Tools"></div>
+<div class="back full"><a class="btn ghost" id="back" href="https://experience.arcgis.com/experience/36d30d3482fa4536820ac6de09ddc247">&lsaquo; BACK TO MAP</a><small id="backNote" hidden>Needs a signal</small><span class="pill no" id="off">ONLINE ONLY</span></div>
 <div class="wrap">
   <div class="lbl">My position &middot; <button class="fmt" id="fmt" type="button" title="Tap to change the coordinate format">USNG</button></div>
   <div class="chips full" id="chips"></div>
   <div class="big" id="pos"><div class="msg">Finding your location&hellip;</div></div>
-  <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><span class="embedOnly"><button id="cp" type="button">COPY</button> <a class="btn ghost" href="usng.html" target="_blank" rel="noopener" title="Open the offline USNG app">OFFLINE APP</a></span></div>
+  <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><span class="embedOnly"><button id="cp" type="button">COPY</button> <a class="btn ghost" href="usng.html" target="_blank" rel="noopener" title="Open the offline version of Mapping Tools">OFFLINE APP</a></span></div>
   <div class="acts full" id="acts" hidden><button id="cp2" type="button">COPY</button><button id="sh" type="button" class="ghost">SHARE</button></div>
   <div class="grid full" id="grid" hidden>
     <div class="cell"><b id="altLbl">Latitude, longitude</b><span id="ll"></span></div>
