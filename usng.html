@@ -26,7 +26,15 @@ button.ghost,a.ghost{background:transparent;color:var(--gold);box-shadow:inset 0
 #pos{display:inline-block}
 .big .sq{display:block;color:var(--gold)}
 .big .lo{color:var(--dimd)}
-.lbl button.fmt{all:unset;cursor:pointer;color:var(--gold);border-bottom:1.5px dashed rgba(253,184,51,.55)}
+.lbl.top{display:flex;align-items:center;gap:8px}
+.selwrap{position:relative;display:inline-flex;align-items:center;gap:5px;padding:2px 9px 2px 8px;border-radius:20px;background:rgba(253,184,51,.14);box-shadow:inset 0 0 0 1.5px var(--gold);cursor:pointer;letter-spacing:1px}
+.selcap{font-size:10px;color:var(--muted);letter-spacing:1.5px;line-height:1;padding-top:1px}
+.selval{color:var(--gold);font-size:14px}
+.caret{color:var(--gold);font-size:12px}
+.selwrap select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
+.chipcap{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:1px;margin-bottom:-4px}
+body.solo .selwrap{display:none}
+body.embed .chipcap{display:none}
 .chips{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}
 .chips button{font-size:13px;padding:5px 9px;border-radius:20px;background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1.5px var(--line)}
 .chips button.on{background:var(--gold);color:#0B1A2B;box-shadow:none}
@@ -69,7 +77,10 @@ body.solo .embedOnly{display:none}
 <div class="hdr full"><img class="seal" src="seal.png" alt="Botetourt County Emergency Management seal"><img class="lock" src="mt_lockup.png" alt="Botetourt County Emergency Management, Mapping Tools"></div>
 <div class="back full"><a class="btn ghost" id="back" href="https://experience.arcgis.com/experience/36d30d3482fa4536820ac6de09ddc247">&lsaquo; BACK TO MAP</a><small id="backNote" hidden>Needs a signal</small><span class="pill no" id="off">ONLINE ONLY</span></div>
 <div class="wrap">
-  <div class="lbl">My position &middot; <button class="fmt" id="fmt" type="button" title="Tap to change the coordinate format">USNG</button></div>
+  <div class="lbl top"><span>My position</span><label class="selwrap" title="Change the coordinate format"><span class="selcap">FORMAT</span><span class="selval" id="fmt">USNG</span><span class="caret">&#9662;</span><select id="fmtSel" aria-label="Coordinate format">
+    <option value="USNG">USNG</option><option value="MGRS">MGRS</option><option value="UTM">UTM</option>
+    <option value="DD">Lat/long &ndash; decimal degrees</option><option value="DDM">Lat/long &ndash; degrees, decimal minutes</option><option value="DMS">Lat/long &ndash; degrees, minutes, seconds</option></select></label></div>
+  <div class="chipcap full">Coordinate format &middot; tap to change</div>
   <div class="chips full" id="chips"></div>
   <div class="big" id="pos"><div class="msg">Finding your location&hellip;</div></div>
   <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><span class="embedOnly"><button id="cp" type="button">COPY</button> <a class="btn ghost" href="usng.html" target="_blank" rel="noopener" title="Open the offline version of Mapping Tools">OFFLINE APP</a></span></div>
@@ -141,13 +152,13 @@ function render(c, u, d) {
 }
 function setFmt(f) {
   fmt = f; try { localStorage.setItem('myusng-format', f); } catch (e) {}
-  $('fmt').textContent = f;
+  $('fmt').textContent = f; $('fmtSel').value = f;
   [].forEach.call($('chips').children, function (b) { b.className = b.dataset.f === f ? 'on' : ''; });
   if (lastPos) show(lastPos);
 }
 $('chips').innerHTML = FORMATS.map(function (f) { return '<button type="button" data-f="' + f + '">' + f + '</button>'; }).join('');
 $('chips').onclick = function (ev) { var b = ev.target.closest('button'); if (b) setFmt(b.dataset.f); };
-$('fmt').onclick = function () { setFmt(FORMATS[(FORMATS.indexOf(fmt) + 1) % FORMATS.length]); };
+$('fmtSel').onchange = function () { setFmt(this.value); };
 
 // Shrink the big readout if a long format doesn't fit the width.
 function fit() {
