@@ -1,31 +1,78 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>My USNG – BEACON</title>
-<!-- Live USNG readout from the device GPS. Embedded at the top of the BC EM Mapping Tools app (phone layout). -->
+<!-- Live USNG readout from the device GPS.
+     Embedded at the top of the BC EM Mapping Tools app (phone layout), and usable on its own:
+     open https://bocoem.github.io/command-post/usng.html and add it to the home screen. It then works with no signal
+     (sw.js keeps a copy). Digits finer than the GPS accuracy are greyed out and left out of Copy/Share. -->
+<meta name="theme-color" content="#0B1A2B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="My USNG">
+<link rel="manifest" href="usng.webmanifest">
+<link rel="apple-touch-icon" href="usng_icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@700&family=Montserrat:wght@800;900&display=swap">
 <style>
-:root{--bg:#0B1A2B;--text:#E6EDF5;--muted:#93A9C3;--gold:#FDB833;--red:#D02129;--indigo:#2E3192;
-  --cond:'Barlow Condensed',Barlow,'Arial Narrow',sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--cond);overflow:hidden}
-.wrap{position:relative;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:6px 10px 10px;box-sizing:border-box}
-.wrap:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#1E3A5C}
+:root{--bg:#0B1A2B;--bg2:#0A1724;--card:#10243B;--line:#1E3A5C;--text:#E6EDF5;--muted:#93A9C3;--dimd:#4B6584;--gold:#FDB833;--red:#D02129;--indigo:#2E3192;--ok:#2FBF71;
+  --cond:'Barlow Condensed',Barlow,'Arial Narrow',sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;--disp:Montserrat,Barlow,Arial,sans-serif}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--cond);-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
+button,a.btn{font-family:var(--cond);font-size:14px;font-weight:700;letter-spacing:1px;background:var(--gold);color:#0B1A2B;border:0;border-radius:6px;padding:3px 12px;cursor:pointer;text-decoration:none;display:inline-block}
+button.ghost,a.ghost{background:transparent;color:var(--gold);box-shadow:inset 0 0 0 1.5px var(--gold)}
 .lbl{font-size:13px;letter-spacing:2.5px;font-weight:700;color:var(--gold);text-transform:uppercase}
-.big{font-family:var(--mono);font-size:min(8.6vw,40px);font-weight:700;line-height:1.08;white-space:nowrap;text-align:center}
+.big{font-family:var(--mono);font-weight:700;line-height:1.08;white-space:nowrap;text-align:center}
 .big .sq{display:block;color:var(--gold)}
-.sub{font-size:14px;font-weight:600;color:var(--muted);display:flex;gap:10px;align-items:center;letter-spacing:.5px}
-.dot{width:8px;height:8px;border-radius:50%;background:#6A83A2;display:inline-block;margin-right:5px}
-.dot.live{background:#2FBF71;box-shadow:0 0 0 3px rgba(47,191,113,.25)}
-button{font-family:var(--cond);font-size:14px;font-weight:700;letter-spacing:1px;background:var(--gold);color:#0B1A2B;border:0;border-radius:6px;padding:3px 12px;cursor:pointer}
+.big .lo{color:var(--dimd)}
 .msg{font-family:var(--cond);font-size:17px;font-weight:600;text-align:center;color:var(--muted);line-height:1.25;white-space:normal}
+.dot{width:8px;height:8px;border-radius:50%;background:#6A83A2;display:inline-block;margin-right:5px;vertical-align:1px}
+.dot.live{background:var(--ok);box-shadow:0 0 0 3px rgba(47,191,113,.25)}
+
+/* Embedded (inside Mapping Tools) */
+body.embed{overflow:hidden}
+body.embed .wrap{position:relative;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:6px 10px 10px;box-sizing:border-box}
+body.embed .wrap:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--line)}
+body.embed .big{font-size:min(8.6vw,40px)}
+body.embed .sub{font-size:14px;font-weight:600;color:var(--muted);display:flex;gap:8px;align-items:center;letter-spacing:.5px}
+body.embed .full{display:none}
+
+/* Standalone (home-screen app) */
+body.solo{min-height:100%;display:flex;flex-direction:column}
+.hdr{position:relative;display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 12px) 16px 14px;background:var(--bg2) linear-gradient(90deg,#0A1522,#10243D)}
+.hdr:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--red) 0 33.3%,var(--gold) 33.3% 66.6%,var(--indigo) 66.6%)}
+.hdr img{width:46px;height:46px}
+.hdr .t1{font:800 10.5px var(--disp);color:var(--gold);letter-spacing:1px}
+.hdr .t2{font:900 26px var(--disp);color:#fff;letter-spacing:.5px;line-height:1}
+.pill{margin-left:auto;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:20px;background:rgba(47,191,113,.15);color:var(--ok)}
+.pill.no{background:rgba(147,169,195,.12);color:var(--muted)}
+body.solo .wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px 16px}
+body.solo .big{font-size:min(14vw,64px)}
+body.solo .sub{font-size:17px;font-weight:600;color:var(--muted);text-align:center}
+body.solo .acts{display:flex;gap:10px;margin-top:6px}
+body.solo .acts button,body.solo .acts a.btn{font-size:18px;padding:10px 20px;border-radius:8px}
+body.solo .embedOnly{display:none}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:420px;margin-top:10px}
+.cell{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.cell b{display:block;font-size:12px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+.cell span{font-family:var(--mono);font-size:15px}
+.note{font-size:14px;color:var(--muted);text-align:center;max-width:420px;line-height:1.35;padding:0 16px calc(env(safe-area-inset-bottom) + 16px)}
+.note b{color:var(--gold)}
 </style></head><body>
+<div class="hdr full"><img src="seal.png" alt="Botetourt County Emergency Management seal"><div><div class="t1">BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t2">MY USNG</div></div><span class="pill no" id="off">ONLINE ONLY</span></div>
 <div class="wrap">
   <div class="lbl">My position &middot; USNG</div>
   <div class="big" id="pos"><div class="msg">Finding your location&hellip;</div></div>
-  <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><button id="cp" type="button">COPY</button></div>
+  <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><span class="embedOnly"><button id="cp" type="button">COPY</button> <a class="btn ghost" href="usng.html" target="_blank" rel="noopener" title="Open the offline USNG app">OFFLINE APP</a></span></div>
+  <div class="acts full" id="acts" hidden><button id="cp2" type="button">COPY</button><button id="sh" type="button" class="ghost">SHARE</button></div>
+  <div class="grid full" id="grid" hidden>
+    <div class="cell"><b>Latitude, longitude</b><span id="ll"></span></div>
+    <div class="cell"><b>Elevation</b><span id="el"></span></div>
+    <div class="cell"><b>Precision</b><span id="pr"></span></div>
+    <div class="cell"><b>Heading / speed</b><span id="hd"></span></div>
+  </div>
 </div>
+<div class="note full" id="note">Works with no cell signal once installed: open this page while online, then <b>Share &rarr; Add to Home Screen</b> (iPhone) or <b>&#8942; &rarr; Install app</b> (Android). GPS does not need a signal. Your location stays on this phone.</div>
 <script>
 function usng(lat,lon){
   const a=6378137,f=1/298.257223563,k0=0.9996,e2=f*(2-f),ep2=e2/(1-e2);
@@ -49,36 +96,65 @@ function usng(lat,lon){
   return {gzd:zone+band,sq:col+row,e:e5,n:n5};
 }
 
-var last = null, lastT = 0, acc = 0;
-var posEl = document.getElementById('pos'), subEl = document.getElementById('sub'),
-    accEl = document.getElementById('acc'), dot = document.getElementById('dot'), cp = document.getElementById('cp');
+var embedded = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
+document.body.className = embedded ? 'embed' : 'solo';
+var $ = function (id) { return document.getElementById(id); };
+var last = null, lastT = 0, fix = null;
+
+// Digits finer than the GPS accuracy can't be trusted: grey them out and leave them out of Copy/Share.
+function goodDigits(acc) { return Math.max(1, Math.min(5, 5 - Math.ceil(Math.log10(Math.max(acc, 1.0001))))); }
+function precLabel(d) { return ['10 km', '1 km', '100 m', '10 m', '1 m'][d - 1]; }
 
 function show(p) {
-  var u = usng(p.coords.latitude, p.coords.longitude);
-  last = u.gzd + ' ' + u.sq + ' ' + u.e + ' ' + u.n; lastT = Date.now(); acc = Math.round(p.coords.accuracy);
-  posEl.innerHTML = '<span class="sq">' + u.gzd + ' ' + u.sq + '</span>' + u.e + ' ' + u.n;
-  subEl.hidden = false; tick();
+  var c = p.coords, u = usng(c.latitude, c.longitude), acc = Math.round(c.accuracy), d = goodDigits(c.accuracy);
+  var e = u.e.slice(0, d), n = u.n.slice(0, d);
+  last = u.gzd + ' ' + u.sq + ' ' + e + ' ' + n; lastT = Date.now(); fix = { c: c, acc: acc, d: d };
+  var part = function (s) { return s.slice(0, d) + (d < 5 ? '<span class="lo">' + s.slice(d) + '</span>' : ''); };
+  $('pos').innerHTML = '<span class="sq">' + u.gzd + ' ' + u.sq + '</span>' + part(u.e) + ' ' + part(u.n);
+  $('sub').hidden = false;
+  if (!embedded) {
+    $('acts').hidden = $('grid').hidden = false;
+    $('ll').textContent = c.latitude.toFixed(5) + ', ' + c.longitude.toFixed(5);
+    $('el').textContent = c.altitude != null ? Math.round(c.altitude * 3.28084).toLocaleString() + ' ft' : '—';
+    $('pr').textContent = precLabel(d);
+    $('hd').textContent = (c.heading != null && !isNaN(c.heading) && c.speed > 0.5) ? Math.round(c.heading) + '° · ' + Math.round(c.speed * 2.23694) + ' mph' : '—';
+  }
+  tick();
 }
 function tick() {
   if (!lastT) return;
   var s = Math.round((Date.now() - lastT) / 1000), live = s < 15;
-  dot.className = 'dot' + (live ? ' live' : '');
-  accEl.textContent = '±' + acc + ' m · ' + (live ? 'live' : 'last fix ' + (s < 120 ? s + ' s' : Math.round(s / 60) + ' min') + ' ago');
+  $('dot').className = 'dot' + (live ? ' live' : '');
+  $('acc').textContent = '±' + fix.acc + ' m · ' + (live ? 'live' : 'last fix ' + (s < 120 ? s + ' s' : Math.round(s / 60) + ' min') + ' ago');
 }
 function fail(e) {
   if (last) return;
-  posEl.innerHTML = '<div class="msg">' + (e && e.code === 1
+  $('pos').innerHTML = '<div class="msg">' + (e && e.code === 1
     ? 'Location is turned off for this app.<br>Allow location in your phone’s browser settings, then reload.'
     : 'Waiting for a GPS fix…<br>Step outside or near a window; it keeps trying.') + '</div>';
 }
-cp.onclick = function () {
+function copy(btn) {
   if (!last) return;
-  var done = function () { cp.textContent = 'COPIED'; setTimeout(function () { cp.textContent = 'COPY'; }, 1500); };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(last).then(done, function () { cp.textContent = last; });
-  else cp.textContent = last;
+  var done = function () { var t = btn.textContent; btn.textContent = 'COPIED'; setTimeout(function () { btn.textContent = t; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(last).then(done, function () { btn.textContent = last; });
+  else btn.textContent = last;
+}
+$('cp').onclick = function () { copy(this); };
+$('cp2').onclick = function () { copy(this); };
+$('sh').onclick = function () {
+  if (!last) return;
+  var txt = 'My location (USNG): ' + last + ' (±' + fix.acc + ' m)\nLat/long: ' + fix.c.latitude.toFixed(5) + ', ' + fix.c.longitude.toFixed(5);
+  if (navigator.share) navigator.share({ title: 'My USNG location', text: txt }).catch(function () {});
+  else location.href = 'sms:?&body=' + encodeURIComponent(txt);
 };
 if (!navigator.geolocation) fail({ code: 2 });
 else navigator.geolocation.watchPosition(show, fail, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
 setInterval(tick, 1000);
+
+// Offline: the shared BEACON service worker keeps a copy of this page, its icon and fonts.
+if (!embedded && 'serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(function () {});
+  navigator.serviceWorker.ready.then(function () { var o = $('off'); o.textContent = 'WORKS OFFLINE'; o.className = 'pill'; });
+}
 </script>
 </body></html>
