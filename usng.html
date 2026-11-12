@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My USNG – BEACON</title>
+<!-- Live USNG readout from the device GPS. Embedded at the top of the BC EM Mapping Tools app (phone layout). -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@700&display=swap">
+<style>
+:root{--bg:#0B1A2B;--text:#E6EDF5;--muted:#93A9C3;--gold:#FDB833;--red:#D02129;--indigo:#2E3192;
+  --cond:'Barlow Condensed',Barlow,'Arial Narrow',sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--cond);overflow:hidden}
+.wrap{position:relative;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:6px 10px 10px;box-sizing:border-box}
+.wrap:after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--red) 0 33.3%,var(--gold) 33.3% 66.6%,var(--indigo) 66.6%)}
+.lbl{font-size:13px;letter-spacing:2.5px;font-weight:700;color:var(--gold);text-transform:uppercase}
+.big{font-family:var(--mono);font-size:min(8.6vw,40px);font-weight:700;line-height:1.08;white-space:nowrap;text-align:center}
+.big .sq{display:block;color:var(--gold)}
+.sub{font-size:14px;font-weight:600;color:var(--muted);display:flex;gap:10px;align-items:center;letter-spacing:.5px}
+.dot{width:8px;height:8px;border-radius:50%;background:#6A83A2;display:inline-block;margin-right:5px}
+.dot.live{background:#2FBF71;box-shadow:0 0 0 3px rgba(47,191,113,.25)}
+button{font-family:var(--cond);font-size:14px;font-weight:700;letter-spacing:1px;background:var(--gold);color:#0B1A2B;border:0;border-radius:6px;padding:3px 12px;cursor:pointer}
+.msg{font-family:var(--cond);font-size:17px;font-weight:600;text-align:center;color:var(--muted);line-height:1.25;white-space:normal}
+</style></head><body>
+<div class="wrap">
+  <div class="lbl">My position &middot; USNG</div>
+  <div class="big" id="pos"><div class="msg">Finding your location&hellip;</div></div>
+  <div class="sub" id="sub" hidden><span><span class="dot" id="dot"></span><span id="acc"></span></span><button id="cp" type="button">COPY</button></div>
+</div>
+<script>
+function usng(lat,lon){
+  const a=6378137,f=1/298.257223563,k0=0.9996,e2=f*(2-f),ep2=e2/(1-e2);
+  let zone=Math.floor((lon+180)/6)+1;
+  if(lat>=56&&lat<64&&lon>=3&&lon<12)zone=32;
+  if(lat>=72&&lat<84){if(lon>=0&&lon<9)zone=31;else if(lon<21)zone=33;else if(lon<33)zone=35;else if(lon<42)zone=37;}
+  const lon0=((zone-1)*6-180+3)*Math.PI/180,phi=lat*Math.PI/180,lam=lon*Math.PI/180;
+  const N=a/Math.sqrt(1-e2*Math.sin(phi)**2),T=Math.tan(phi)**2,C=ep2*Math.cos(phi)**2,A=Math.cos(phi)*(lam-lon0);
+  const M=a*((1-e2/4-3*e2**2/64-5*e2**3/256)*phi-(3*e2/8+3*e2**2/32+45*e2**3/1024)*Math.sin(2*phi)+(15*e2**2/256+45*e2**3/1024)*Math.sin(4*phi)-(35*e2**3/3072)*Math.sin(6*phi));
+  const E=k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*ep2)*A**5/120)+500000;
+  let Nn=k0*(M+N*Math.tan(phi)*(A*A/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*ep2)*A**6/720));
+  if(lat<0)Nn+=10000000;
+  const bands='CDEFGHJKLMNPQRSTUVWXX',band=bands[Math.floor((lat+80)/8)];
+  const set=((zone-1)%6)+1;
+  const colL=['ABCDEFGH','JKLMNPQR','STUVWXYZ'][(set-1)%3];
+  const col=colL[Math.floor(E/100000)-1];
+  const rowL='ABCDEFGHJKLMNPQRSTUV';
+  let r=Math.floor(Nn/100000)%20; if(set%2===0) r=(r+5)%20;
+  const row=rowL[r];
+  const e5=String(Math.floor(E%100000)).padStart(5,'0'),n5=String(Math.floor(Nn%100000)).padStart(5,'0');
+  return {gzd:zone+band,sq:col+row,e:e5,n:n5};
+}
+
+var last = null, lastT = 0, acc = 0;
+var posEl = document.getElementById('pos'), subEl = document.getElementById('sub'),
+    accEl = document.getElementById('acc'), dot = document.getElementById('dot'), cp = document.getElementById('cp');
+
+function show(p) {
+  var u = usng(p.coords.latitude, p.coords.longitude);
+  last = u.gzd + ' ' + u.sq + ' ' + u.e + ' ' + u.n; lastT = Date.now(); acc = Math.round(p.coords.accuracy);
+  posEl.innerHTML = '<span class="sq">' + u.gzd + ' ' + u.sq + '</span>' + u.e + ' ' + u.n;
+  subEl.hidden = false; tick();
+}
+function tick() {
+  if (!lastT) return;
+  var s = Math.round((Date.now() - lastT) / 1000), live = s < 15;
+  dot.className = 'dot' + (live ? ' live' : '');
+  accEl.textContent = '±' + acc + ' m · ' + (live ? 'live' : 'last fix ' + (s < 120 ? s + ' s' : Math.round(s / 60) + ' min') + ' ago');
+}
+function fail(e) {
+  if (last) return;
+  posEl.innerHTML = '<div class="msg">' + (e && e.code === 1
+    ? 'Location is turned off for this app.<br>Allow location in your phone’s browser settings, then reload.'
+    : 'Waiting for a GPS fix…<br>Step outside or near a window; it keeps trying.') + '</div>';
+}
+cp.onclick = function () {
+  if (!last) return;
+  var done = function () { cp.textContent = 'COPIED'; setTimeout(function () { cp.textContent = 'COPY'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(last).then(done, function () { cp.textContent = last; });
+  else cp.textContent = last;
+};
+if (!navigator.geolocation) fail({ code: 2 });
+else navigator.geolocation.watchPosition(show, fail, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+setInterval(tick, 1000);
+</script>
+</body></html>
