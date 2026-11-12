@@ -56,10 +56,14 @@ body.solo .embedOnly{display:none}
 .cell{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 .cell b{display:block;font-size:12px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
 .cell span{font-family:var(--mono);font-size:15px}
+.back{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px 0}
+.back a{font-size:16px;padding:7px 14px;border-radius:8px}
+.back small{font-size:13px;color:var(--muted);font-weight:600}
 .note{font-size:14px;color:var(--muted);text-align:center;max-width:420px;line-height:1.35;padding:0 16px calc(env(safe-area-inset-bottom) + 16px)}
 .note b{color:var(--gold)}
 </style></head><body>
 <div class="hdr full"><img src="seal.png" alt="Botetourt County Emergency Management seal"><div><div class="t1">BOTETOURT COUNTY EMERGENCY MANAGEMENT</div><div class="t2">MY USNG</div></div><span class="pill no" id="off">ONLINE ONLY</span></div>
+<div class="back full"><a class="btn ghost" id="back" href="https://experience.arcgis.com/experience/36d30d3482fa4536820ac6de09ddc247">&lsaquo; MAPPING TOOLS</a><small id="backNote" hidden>Needs a signal</small></div>
 <div class="wrap">
   <div class="lbl">My position &middot; USNG</div>
   <div class="big" id="pos"><div class="msg">Finding your location&hellip;</div></div>
@@ -150,6 +154,14 @@ $('sh').onclick = function () {
 if (!navigator.geolocation) fail({ code: 2 });
 else navigator.geolocation.watchPosition(show, fail, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
 setInterval(tick, 1000);
+
+// Back to the Mapping Tools app. If this tab was opened from it, return to that tab; it needs a signal either way.
+$('back').onclick = function (ev) {
+  if (!navigator.onLine) { ev.preventDefault(); $('backNote').hidden = false; return; }
+  try { if (window.opener && !window.opener.closed) { ev.preventDefault(); window.opener.focus(); window.close(); } } catch (e) {}
+};
+function net() { $('backNote').hidden = navigator.onLine; }
+window.addEventListener('online', net); window.addEventListener('offline', net); net();
 
 // Offline: the shared BEACON service worker keeps a copy of this page, its icon and fonts.
 if (!embedded && 'serviceWorker' in navigator && location.protocol === 'https:') {
