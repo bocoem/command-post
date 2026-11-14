@@ -567,3 +567,84 @@ body.cbdragging .cbasg[data-a]{border-color:var(--gold)}
 .cbstrip .hs span{font:700 10.5px var(--cond);letter-spacing:1.3px;text-transform:uppercase;color:#8fa6c2}
 .cbhero2.solo{padding:16px 20px}.cbhero2.solo p{font-size:15px;color:#c9d6e6}
 @media (max-width:560px){.cbstrip .hs{width:100%}.cbstrip .hs>*{flex:1;justify-content:center;flex-direction:column;align-items:center;gap:2px;border-radius:12px}}
+
+/* ---------- Nov 2026: iPad install, CAD on/off, whiteboard pages, ImageTrend export ---------- */
+/* installed on an iPad: keep clear of the status bar, rounded corners and home indicator */
+.cbbody .cbfire{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left)}
+.cbbody .cbwrap{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));padding-bottom:calc(70px + env(safe-area-inset-bottom))}
+@media (min-width:1000px) and (min-height:600px){body.cbbody.cbfit .cbwrap{padding-bottom:calc(8px + env(safe-area-inset-bottom));height:calc(100dvh - 64px - env(safe-area-inset-top))}}
+@media (max-width:999px){.cbhtabs{bottom:calc(10px + env(safe-area-inset-bottom))}}
+html,body.cbbody{overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+.cbbody button,.cbbody .btn{-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.cbwbhost,.cbwbc{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+/* whiteboard: page strip above the drawing tools */
+.cbbody .cbwbbar{flex-direction:column;align-items:stretch;gap:6px}
+.cbwbpages,.cbwbtools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.cbwbtools .sp{flex:1}
+.cbwbpages{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;padding-bottom:2px;border-bottom:1px solid var(--t-edge,rgba(255,255,255,.08))}
+.cbwbpages::-webkit-scrollbar{display:none}
+.cbwbbar .cbwbpages button.pg{flex:none;justify-content:flex-start;gap:8px;padding:0 14px;min-width:0;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none;letter-spacing:.2px;font-size:15px}
+.cbwbpages .pg b{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.08);font-size:13px}
+.cbwbpages .pg i{font-style:normal;font-size:11px;color:#9fb2c9;background:rgba(255,255,255,.06);border-radius:8px;padding:1px 6px}
+.cbwbpages .pg em{font-style:normal;color:#FDB833;font-size:18px;line-height:1}
+.cbwbbar .cbwbpages .pg.on{border-color:#FDB833;box-shadow:0 0 0 2px #FDB833;background:rgba(253,184,51,.12)}
+.cbwbpages .pg.on b{background:#FDB833;color:#111}
+.cbwbbar .cbwbpages .ar{flex:none;font-size:26px;padding:0 10px}
+.cbwbbar .cbwbpages .add{flex:none;color:#FDB833}
+
+/* CAD status on the start screen */
+.cbcadst{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;margin:0 0 10px;font-size:14px;border:1px solid var(--line2,rgba(255,255,255,.12));background:rgba(255,255,255,.03)}
+.cbcadst span{flex:1}.cbcadst .ic{flex:none;width:20px;height:20px}
+.cbcadst.ok{border-color:rgba(47,191,113,.45);background:rgba(47,191,113,.08)}.cbcadst.ok .ic{color:#2FBF71}
+.cbcadst.bad{border-color:rgba(255,59,71,.55);background:rgba(255,59,71,.10)}.cbcadst.bad .ic{color:#ff5a64}
+.cbcadst.off .ic{color:#9fb2c9}
+.cbstale{color:#ff8a92}
+
+/* start screen extras, crash panel */
+.cbfilebtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line2,rgba(255,255,255,.1))}
+.cbcrash{max-width:640px;margin:30px auto}.cbcrash h3 .ic{color:#ff5a64}
+.cbsteps{padding-left:22px;line-height:1.55}.cbsteps li{margin-bottom:8px}.cbsteps .ic{width:16px;height:16px;vertical-align:-3px}
+
+/* ImageTrend export */
+.cbitwarn{display:flex;flex-direction:column;gap:6px;margin:6px 0 12px}
+.cbitwarn div{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:rgba(253,184,51,.10);border:1px solid rgba(253,184,51,.35);font-size:13.5px}
+.cbitwarn .ic{flex:none;width:18px;height:18px;color:#FDB833}
+.cbittbl{width:100%;border-collapse:collapse;margin:4px 0 10px;font-size:14px}
+.cbittbl td{padding:5px 8px;border-bottom:1px solid var(--line2,rgba(255,255,255,.08));text-transform:capitalize}
+.cbittbl td.mono{text-align:right;width:90px}
+
+/* map: IC-placed sides and incident symbols */
+.cbsymh{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cbsidebtns button{display:flex;align-items:center;justify-content:center;gap:6px;color:#2FBF71;font-weight:800}
+.cbsidebtns button .cbsideA{width:26px;height:26px;font-size:14px}
+.cbsidebtns button.set{border-color:rgba(47,191,113,.5)}
+.cbsideA.sB{background:#f2f2f2}.cbsideA.sC{background:#3fa9ff;color:#fff}.cbsideA.sD{background:#2FBF71}
+.cbsideA.big{width:34px;height:34px;font-size:18px;box-shadow:0 0 0 3px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.7)}
+.cbsyms{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:6px}
+.cbsymg{font:700 11px var(--cond);letter-spacing:1.4px;text-transform:uppercase;color:#9fb2c9;margin:8px 0 4px}
+.cbsymb{display:flex;align-items:center;gap:8px;min-height:44px;padding:4px 8px;border-radius:10px;border:1px solid var(--line2,rgba(255,255,255,.12));background:rgba(255,255,255,.04);color:var(--text,#e8eef6);font:600 13px var(--sans,inherit);text-align:left;cursor:pointer;touch-action:manipulation}
+.cbsymb span{flex:1;line-height:1.15}
+.cbsymb.on{border-color:#FDB833;box-shadow:0 0 0 2px #FDB833;background:rgba(253,184,51,.12)}
+.cbsymb i,.cbsym i{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 4px;border-radius:7px;background:var(--c);color:#111;font:800 12px var(--cond);font-style:normal;border:2px solid rgba(0,0,0,.55);box-sizing:border-box}
+.cbsymb i.z{border-radius:50%;background:transparent;border:3px dashed var(--c)}
+.cbsym{position:absolute;transform:translate(-14px,-14px);display:flex;align-items:center;gap:4px;white-space:nowrap;cursor:grab}
+.cbsym i{box-shadow:0 2px 8px rgba(0,0,0,.6)}
+.cbsym.z i{background:rgba(0,0,0,.6);color:var(--c);border:2px solid var(--c);border-radius:50%}
+.cbsym b{font:700 12px var(--sans,Arial);color:#fff;background:rgba(8,12,18,.82);padding:2px 6px;border-radius:6px;border-left:3px solid var(--c)}
+.cbsymb{min-width:0}.cbsymb span{min-width:0;overflow-wrap:anywhere;font-size:12.5px}
+
+/* phone view: tabs, map and whiteboard (view only) */
+.cbphtabs{position:sticky;top:0;z-index:20;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;margin:0 0 10px;border-radius:14px;background:rgba(10,18,32,.94);border:1px solid var(--t-edge2,rgba(255,255,255,.12));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.cbphtabs button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;border:0;border-radius:10px;background:transparent;color:#9fb2c9;font:800 14px var(--cond);letter-spacing:1px;text-transform:uppercase;touch-action:manipulation}
+.cbphtabs button .ic,.cbphtabs button .cbi{width:18px;height:18px}
+.cbphtabs button.on{background:#FDB833;color:#111}
+.cbphmap .cbmaphost{height:62vh;min-height:320px;border-radius:14px;overflow:hidden;position:relative}
+.cbphmap .cbmapel{position:absolute;inset:0}
+.cblegs{display:flex;flex-wrap:wrap;gap:6px 12px;margin:10px 2px;font-size:12.5px;color:#c9d6e6}
+.cbleg{display:inline-flex;align-items:center;gap:6px}
+.cbleg i{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 3px;border-radius:6px;background:var(--c);color:#111;font:800 10px var(--cond);font-style:normal;border:2px solid rgba(0,0,0,.5)}
+.cbleg i.z{border-radius:50%;background:transparent;border:2px dashed var(--c);color:var(--c)}
+.cbwbro .cbwbhost{height:62vh;min-height:300px}
+.cbwbro .cbwbc{cursor:default}
+@media (max-width:560px){.cbbody .cbwrap{padding-bottom:calc(16px + env(safe-area-inset-bottom))}}

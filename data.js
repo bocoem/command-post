@@ -288,7 +288,22 @@ window.CP = window.CP || {};
     all: function () { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } },
     list: function () { var a = CP.store.all(); return Object.keys(a).map(function (k) { return a[k]; }).sort(function (x, y) { return (y.updated || '').localeCompare(x.updated || ''); }); },
     get: function (id) { return CP.store.all()[id] || null; },
-    put: function (inc) { var a = CP.store.all(); a[inc.id] = inc; try { localStorage.setItem(KEY, JSON.stringify(a)); } catch (e) { console.warn('local save failed', e); } },
+    put: function (inc) {
+      var a = CP.store.all(); a[inc.id] = inc;
+      try { localStorage.setItem(KEY, JSON.stringify(a)); return true; } catch (e) {
+        // storage full: drop old closed incidents that are already safe in ArcGIS, then try again; if it still fails, tell the page
+        if (CP.store.prune(inc.id, 14, a)) { try { localStorage.setItem(KEY, JSON.stringify(a)); return true; } catch (e2) {} }
+        console.warn('local save failed', e); try { window.dispatchEvent(new CustomEvent('cp-store-full', { detail: inc.id })); } catch (e3) {} return false;
+      }
+    },
+    // Remove closed incidents older than `days` that were shared to ArcGIS (_synced) and have nothing waiting to send.
+    prune: function (keep, days, a) {
+      var save = !a; a = a || CP.store.all(); var cut = Date.now() - (days || 14) * 864e5, n = 0, pend = {};
+      try { pend = JSON.parse(localStorage.getItem('bcem.cp.pendinc.v1') || '{}') || {}; } catch (e) {}
+      Object.keys(a).forEach(function (k) { var x = a[k]; if (k === keep || !x || x.status !== 'Closed' || !x._synced || pend[k]) return; if ((Date.parse(x.closed || x.updated || '') || Date.now()) < cut) { delete a[k]; n++; } });
+      if (n && save) { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch (e) {} }
+      return n;
+    },
     remove: function (id) { var a = CP.store.all(); delete a[id]; localStorage.setItem(KEY, JSON.stringify(a)); },
     prefs: function () { try { return JSON.parse(localStorage.getItem(PREF) || '{}'); } catch (e) { return {}; } },
     setPref: function (k, v) { var p = CP.store.prefs(); p[k] = v; try { localStorage.setItem(PREF, JSON.stringify(p)); } catch (e) {} }

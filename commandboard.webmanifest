@@ -1,0 +1,17 @@
+{
+  "id": "./commandboard.html",
+  "name": "Command Board · BEACON",
+  "short_name": "Command Board",
+  "description": "Botetourt County Fire & EMS tactical command board.",
+  "start_url": "./commandboard.html?source=homescreen",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0A1724",
+  "theme_color": "#0B1A2B",
+  "icons": [
+    { "src": "cb_icon_192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "cb_icon_512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "cb_icon_mask_512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -12,8 +12,8 @@
     alarm: { n: 'Fire alarm', type: 'Fire', icon: 'bell', assign: [['group', 'Investigation'], ['staging', 'Staging']],
       marks: ['On-scene report · command established', 'Investigation started', 'Panel checked / zone found', 'Cause found', 'Area clear · no fire', 'System reset or turned over to owner'] },
     structure: { n: 'Structure fire', type: 'Fire', icon: 'flame', assign: [['group', 'Fire Attack'], ['group', 'Search'], ['group', 'Water Supply'], ['group', 'RIT'], ['group', 'On-Deck'], ['group', 'Ventilation'], ['staging', 'Staging'], ['group', 'Rehab']],
-      marks: ['On-scene report · command established', '360 complete', 'Water supply established', 'RIT / On-Deck (2-Out) in place', 'Primary search complete', 'Knockdown', 'Fire control', 'Secondary search complete', 'Utilities secured', 'Loss stopped'] },
-    vehicle: { n: 'Vehicle fire', type: 'Vehicle', icon: 'flame', assign: [['group', 'Fire Attack'], ['group', 'Traffic Control'], ['staging', 'Staging']], marks: ['On-scene report · command established', 'Work area blocked (fend-off)', 'Knockdown', 'Fire control', 'Hazards mitigated', 'Roadway cleared'] },
+      marks: ['On-scene report · command established', '360 complete', 'Water supply established', 'RIT / On-Deck (2-Out) in place', 'Water on fire', 'Primary search complete', 'Knockdown', 'Fire control', 'Secondary search complete', 'Utilities secured', 'Loss stopped'] },
+    vehicle: { n: 'Vehicle fire', type: 'Vehicle', icon: 'flame', assign: [['group', 'Fire Attack'], ['group', 'Traffic Control'], ['staging', 'Staging']], marks: ['On-scene report · command established', 'Work area blocked (fend-off)', 'Water on fire', 'Knockdown', 'Fire control', 'Hazards mitigated', 'Roadway cleared'] },
     brush: { n: 'Brush / wildland', type: 'Wildfire', icon: 'leaf', assign: [['division', 'Division A'], ['division', 'Division Z'], ['group', 'Water Supply'], ['staging', 'Staging']], marks: ['On-scene report · command established', '360 / lookouts posted', 'LCES: lookouts, comms, escape routes, safety zones', 'Anchor point established', 'Water supply established', 'Forward spread stopped', 'Contained', 'Mop-up complete'] },
     mva: { n: 'Vehicle accident', type: 'Vehicle', icon: 'car', assign: [['group', 'Extrication'], ['group', 'Patient Care'], ['group', 'Traffic Control'], ['group', 'Fire Protection'], ['staging', 'Staging']],
       marks: ['On-scene report · command established', 'Work area blocked (fend-off)', 'Triage report', 'Rescue/Extrication started', 'Rescue/Extrication completed', 'All patients transported', 'Roadway cleared'] },
@@ -131,17 +131,39 @@
   var saveT = null;
   function commit(text, cat, quiet) {
     var i = inc(); if (text) log(text, cat);
-    i.updatedBy = CP.me.name || ''; i.updated = CP.now(); CP.store.put(i);
+    i.updatedBy = CP.me.name || ''; i.updated = CP.now(); CP.store.put(i); CP.store.setPref('cbCur', { key: i.id, t: Date.now() });
     if (A.status === 'on') { clearTimeout(saveT); saveT = setTimeout(push, 900); } else if (A.signedIn() && CP.sync) CP.sync.markIncident(i.id);
     if (!quiet) render();
   }
   async function push() {
     if (!inc() || A.status !== 'on') return; CB.saving = true; paintSync();
-    try { var before = inc().updated, merged = await A.save(CP.clone(inc())); CB.inc = inc().updated === before ? merged : CP.merge(inc(), merged); CP.store.put(CB.inc); }
+    try { var before = inc().updated, merged = await A.save(CP.clone(inc())), clean = inc().updated === before; CB.inc = clean ? merged : CP.merge(inc(), merged); CB.inc._synced = CP.now(); CP.store.put(CB.inc); CB.pushedU = clean ? CB.inc.updated : null; CB.savedT = Date.now(); }
     catch (e) { if (e.offline && CP.sync) CP.sync.markIncident(inc().id); else U.toast('Save to ArcGIS failed: ' + E(e.message) + '. Saved on this device; it will retry.', 'err'); }
     CB.saving = false; paintSync();
   }
-  function paintSync() { var el = document.getElementById('cbSync'); if (el) el.innerHTML = I('cloud') + (A.status === 'on' ? (CB.saving ? 'Saving…' : 'Shared live') : A.signedIn() ? 'Offline · saved here' : 'Not signed in'); }
+  function paintSync() { var el = document.getElementById('cbSync'); if (el) el.innerHTML = I('cloud') + (inc() ? saveState() : A.status === 'on' ? 'Shared live' : A.signedIn() ? 'Offline · saved here' : 'Not signed in') + (!cadPref() ? ' · CAD off' : cadOn() && CB.cadHealth && CB.cadHealth.stale ? ' · <b class="cbstale">CAD not updating</b>' : ''); }
+
+  // ---------- CAD: on or off, and is the feed alive ----------
+  // CAD is optional. Off (or not signed in, or no connection) = every unit, time and address is entered on the board by hand.
+  var CAD_STALE = 20; // minutes with no change on the CAD units layer before the board warns that the feed has stopped
+  function cadPref() { return CP.store.prefs().cbCad !== 'off'; }
+  function cadOn() { return cadPref() && A.signedIn() && A.status === 'on'; }
+  async function cadCheck() {
+    if (!cadOn()) return;
+    if (CB.cadHealth && Date.now() - CB.cadHealth.chk < 60000) return;
+    var last = 0, err = '';
+    await Promise.all([A.L.cad, A.L.cadUnits].map(function (u) { return A.req(u).then(function (j) { var e = (j && j.editingInfo) || {}; last = Math.max(last, e.dataLastEditDate || e.lastEditDate || 0); }).catch(function (e) { err = e.message; }); }));
+    CB.cadHealth = { t: last, stale: !last || Date.now() - last > CAD_STALE * 60000, err: err, chk: Date.now() };
+  }
+  function ago(t) { var m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago' : CP.fmtDT(new Date(t).toISOString()); }
+  function cadStatus() {
+    var h = CB.cadHealth;
+    if (!cadPref()) return '<div class="cbcadst off">' + I('radio') + '<span><b>CAD is off on this tablet.</b> Add units and times by hand. Everything else works the same.</span><button class="btn sm" data-cb="cadtoggle">Turn CAD on</button></div>';
+    if (!A.signedIn()) return '<div class="cbcadst off">' + I('radio') + '<span><b>Manual mode.</b> Sign in to see CAD calls and units.</span></div>';
+    if (A.status !== 'on') return '<div class="cbcadst off">' + I('radio') + '<span><b>No connection.</b> Running without CAD until the connection returns.</span></div>';
+    if (h && h.stale) return '<div class="cbcadst bad">' + I('warn') + '<span><b>CAD feed is not updating</b>' + (h.t ? ' (last change ' + E(ago(h.t)) + ')' : '') + '. Calls and units below may be old. Add units by hand.</span><button class="btn sm" data-cb="cadtoggle">Turn CAD off</button></div>';
+    return '<div class="cbcadst ok">' + I('radio') + '<span><b>CAD live</b>' + (h && h.t ? ' · updated ' + E(ago(h.t)) : '') + '</span><button class="btn sm ghost" data-cb="cadtoggle">Turn CAD off</button></div>';
+  }
 
   // ---------- start screen ----------
   function startScreen() {
@@ -154,17 +176,27 @@
       [['Fire', /^(F - |TARGET)/], ['Vehicle crashes', /^MVC/], ['Rescue (SOTT)', /^SOTT/], ['Other', /^BOMB/]].map(function (g) { return '<optgroup label="' + g[0] + '">' + CALLS.filter(function (c) { return g[1].test(c[0]); }).map(function (c) { return '<option' + (CB.call && CB.call[0] === c[0] ? ' selected' : '') + '>' + E(c[0]) + '</option>'; }).join('') + '</optgroup>'; }).join('') + '</select></label>' +
       (CB.call ? '<div class="cbresp start">' + I('truck') + ' <b>Recommended response:</b> ' + E(CB.call[1] || 'none') + (CB.call[3] ? ' <span class="dim">(' + E(CB.call[3]) + ')</span>' : '') + '</div>' : '') +
       '<label class="f"><span>Address / location</span><input class="in big" id="cbAddr" placeholder="e.g. 123 Main St, Daleville" value="' + E(CB.addr || '') + '"></label>' +
+      '<label class="f"><span>CAD incident number <i class="dim">(optional · matches the ImageTrend report)</i></span><input class="in" id="cbCadNo" inputmode="numeric" placeholder="From dispatch, if you have it" value="' + E(CB.cadPick ? CB.cadPick.callid : CB.cadNo || '') + '"></label>' +
       '<div class="grid g2"><label class="f"><span>Incident Commander</span><input class="in" id="cbIC" value="' + E(CP.me.name || '') + '" placeholder="Your name / unit"></label><label class="f"><span>Command name</span><input class="in" id="cbCmd" placeholder="' + E(streetCmd(CB.addr) || 'Main St Command') + '"></label></div>' +
       '<label class="chk" style="margin:6px 0 12px"><input type="checkbox" id="cbEx"> Practice / training</label>' +
       '<button class="btn big pri" style="width:100%" data-cb="start">' + I('play') + 'Start command board</button></section>';
-    h += '<section class="card"><h3>' + I('radio') + 'From an active CAD call</h3><p class="dim" style="margin-top:0">Tap a call to fill the address and bring its units onto the board.</p>' +
-      (cad === undefined ? '<div class="empty">Loading CAD…</div>' : !cad || !cad.length ? '<div class="dim">No active CAD calls' + (A.signedIn() ? '' : ' (sign in to see CAD)') + '.</div>' : cad.slice(0, 20).map(function (c) { return '<button class="cbcad' + (CB.cadPick && CB.cadPick.callid === c.callid ? ' on' : '') + '" data-cb="cad" data-a="' + E(c.callid) + '"><b>' + E(c.type || c.cat || 'Call') + '</b><span>' + E(c.addr || '') + '</span><i>' + E((c.units || []).map(function (u) { return u.id; }).join(' ') || 'no units yet') + '</i></button>'; }).join('')) + '</section>';
-    h += '<section class="card"><h3>' + I('list') + 'Open a running incident</h3>' + (l === undefined ? '<div class="empty">Loading incidents…</div>' : !l || !l.length ? '<div class="dim">No open incidents' + (A.signedIn() ? '' : ' (sign in to see shared incidents)') + '.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(CP.fmtDT(new Date(x.start_time).toISOString())) + '</i></button>'; }).join('')) + ((CB.closedList || []).length ? '<div class="cbsub" style="margin-top:14px">Closed in the last 3 days</div>' + CB.closedList.map(function (x) { return '<button class="cbcad closed" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>Closed ' + E(CP.fmtDT(new Date(x.closed_time).toISOString())) + '</span><i>open for the report</i></button>'; }).join('') : '') + '</section></div></div>';
+    h += '<section class="card"><h3>' + I('radio') + 'From an active CAD call</h3>' + cadStatus() + (cadOn() ? '<p class="dim" style="margin-top:0">Tap a call to fill the address and bring its units onto the board.</p>' : '') +
+      (!cadOn() ? '' : cad === undefined ? '<div class="empty">Loading CAD…</div>' : !cad || !cad.length ? '<div class="dim">No active CAD calls' + (A.signedIn() ? '' : ' (sign in to see CAD)') + '.</div>' : cad.slice(0, 20).map(function (c) { return '<button class="cbcad' + (CB.cadPick && CB.cadPick.callid === c.callid ? ' on' : '') + '" data-cb="cad" data-a="' + E(c.callid) + '"><b>' + E(c.type || c.cat || 'Call') + '</b><span>' + E(c.addr || '') + '</span><i>' + E((c.units || []).map(function (u) { return u.id; }).join(' ') || 'no units yet') + '</i></button>'; }).join('')) + '</section>';
+    h += '<section class="card"><h3>' + I('list') + 'Open a running incident</h3>' + (l === undefined ? '<div class="empty">Loading incidents…</div>' : !l || !l.length ? '<div class="dim">No open incidents' + (A.signedIn() ? '' : ' (sign in to see shared incidents)') + '.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.local ? 'ON THIS TABLET · ' : '') + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(CP.fmtDT(new Date(x.start_time).toISOString())) + '</i></button>'; }).join('')) + ((CB.closedList || []).length ? '<div class="cbsub" style="margin-top:14px">Closed in the last 3 days</div>' + CB.closedList.map(function (x) { return '<button class="cbcad closed" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>Closed ' + E(CP.fmtDT(new Date(x.closed_time).toISOString())) + '</span><i>open for the report</i></button>'; }).join('') : '') + '<div class="cbfilebtns">' + (CB.recN ? '<button class="btn pri" data-cb="recover">' + I('refresh') + 'Recover autosaved board' + (CB.recN > 1 ? 's (' + CB.recN + ')' : '') + '</button>' : '') + '<button class="btn" data-cb="restore">' + I('up') + 'Open a board from a file</button>' + (standalone() ? '' : '<button class="btn ghost" data-cb="install">' + I('plus') + 'Install on this iPad</button>') + '</div></section></div></div>';
     return h;
   }
+  // boards kept on this tablet (started offline, without signing in, or not yet shared)
+  function localBoards(skip) {
+    return CP.store.list().filter(function (x) { return x && x.status !== 'Closed' && (x.cbKV || x.cbMarks) && !(skip || {})[x.id]; })
+      .map(function (x) { return { incident_key: x.id, incident_name: x.name, incident_number: x.number, incident_type: x.type, start_time: Date.parse(x.start), exercise: x.exercise ? 'Yes' : 'No', local: true }; });
+  }
   async function loadLists() {
-    if (!A.signedIn()) { CB.list = []; CB.cad = []; return; }
-    try { var r = await A.listRemote(); CB.closedList = r.filter(function (x) { return x.status === 'Closed' && x.closed_time && Date.now() - x.closed_time < 3 * 864e5; }).slice(0, 8); CB.list = r.filter(function (x) { return x.status !== 'Closed'; }).sort(function (a, b) { return (b.start_time || 0) - (a.start_time || 0); }).slice(0, 25); } catch (e) { CB.list = CP.store.list().filter(function (x) { return x.status !== 'Closed'; }).map(function (x) { return { incident_key: x.id, incident_name: x.name, incident_number: x.number, incident_type: x.type, start_time: Date.parse(x.start) }; }); }
+    try { CP.store.prune(null, 14); } catch (e) {}
+    recoverable().then(function (l) { if (l.length !== (CB.recN || 0)) { CB.recN = l.length; if (!inc()) render(); } });
+    if (!A.signedIn()) { CB.list = localBoards(); CB.cad = []; return; }
+    try { var r = await A.listRemote(), seen = {}; r.forEach(function (x) { seen[x.incident_key] = 1; }); CB.closedList = r.filter(function (x) { return x.status === 'Closed' && x.closed_time && Date.now() - x.closed_time < 3 * 864e5; }).slice(0, 8); CB.list = r.filter(function (x) { return x.status !== 'Closed'; }).concat(localBoards(seen)).sort(function (a, b) { return (b.start_time || 0) - (a.start_time || 0); }).slice(0, 25); } catch (e) { CB.list = localBoards(); }
+    if (!cadOn()) { CB.cad = []; return; }
+    await cadCheck();
     try {
       var f = await A.query(A.L.cad, A.CAD_FIRE_EMS, { geom: true, order: 'calldate DESC', n: 60, fields: 'callid,callcat,calltype,fulladdr,city,calldate,agency' });
       var u = await A.query(A.L.cadUnits, "CFSNumber IS NOT NULL AND CFSNumber<>'' AND CFSNumber<>'0'", { fields: 'UnitID,StatusName,UnitTypeDesc,DeptName,CFSNumber', n: 1000 }).catch(function () { return []; });
@@ -189,6 +221,7 @@
     i.cbKV.push({ id: 'cmdName', v: ((document.getElementById('cbCmd') || {}).value || '').trim() || streetCmd(addr), u: CP.now() });
     if (tk === 'brush') { var ssn = ll ? sunset(ll[0], ll[1], new Date()) : null; i.cbKV.forEach(function (x) { if (x.id === 'parEvery') x.v = ssn && Date.now() > ssn.getTime() ? 60 : 120; }); }
     if (CB.call) i.cbKV.push({ id: 'call', v: { type: CB.call[0], resp: CB.call[1], note: CB.call[3] || '' }, u: CP.now() });
+    var cadNo = ((document.getElementById('cbCadNo') || {}).value || '').trim() || (CB.cadPick ? CB.cadPick.callid : ''); if (cadNo) i.cbKV.push({ id: 'cadNo', v: cadNo, u: CP.now() }); CB.cadNo = '';
     if (tk === 'mci') i.cbKV.push({ id: 'mci', v: { t: CP.now(), est: 0 }, u: CP.now() });
     i.cbMarks = T.marks.map(function (m, n) { return { id: 'm' + n, label: m, t: '', by: '', u: CP.now() }; });
     T.assign.forEach(function (a) { var o = { branch: '', division: '', group: '', staging: '', work: '', special: '', needs: [], reportTo: '' }; o[a[0]] = a[1]; CP.addItem(i, 'assignments', o); });
@@ -212,7 +245,7 @@
   function addUnit(name, kind, agency, status, quiet) {
     name = String(name || '').trim().toUpperCase(); if (!name) return null;
     var ex = units().find(function (r) { return (r.name || '').toUpperCase() === name; }); if (ex) return ex;
-    var r = CP.addItem(inc(), 'resources', { name: name, kind: kind || kindOf(name), type: '', agency: agency || '', leader: '', persons: crewDefault(kind || kindOf(name)), contact: '', orderNo: '', checkinLoc: 'Scene', status: status || 'Checked In', assign: '', checkin: CP.now() });
+    var r = CP.addItem(inc(), 'resources', { name: name, kind: kind || kindOf(name), type: '', agency: agency || '', leader: '', persons: crewDefault(kind || kindOf(name)), contact: '', orderNo: '', checkinLoc: 'Scene', status: status || 'Checked In', assign: '', checkin: CP.now(), enr: status === 'En Route' ? CP.now() : '', arrived: status && status !== 'Checked In' ? '' : CP.now() });
     if (!quiet) log(name + (status === 'En Route' ? ' responding' : ' on scene'), 'Resource');
     return r;
   }
@@ -310,9 +343,20 @@
   }
 
   // ---------- phone view (read-only, live) ----------
+  // phone: Board (list) · Map · Whiteboard, all view-only; the iPad runs the incident
+  function phoneTabs() { return '<div class="cbphtabs">' + [['list', 'truck', 'Board'], ['map', 'map', 'Map'], ['wb', 'pen', 'Whiteboard']].map(function (t) { return '<button class="' + ((CB.ptab || 'list') === t[0] ? 'on' : '') + '" data-cb="ptab" data-a="' + t[0] + '">' + (t[1] === 'pen' ? svg('pen') : I(t[1])) + '<span>' + t[2] + '</span></button>'; }).join('') + '</div>'; }
+  function phoneMapView() {
+    var used = {}; syms().forEach(function (o) { used[o.k] = 1; });
+    var leg = Object.keys(used).map(function (k) { var d = symDef(k); return '<span class="cbleg"><i style="--c:' + d.c + '"' + (d.zone ? ' class="z"' : '') + '>' + E(d.zone ? '◎' : d.code) + '</i>' + E(d.n) + '</span>'; }).join('');
+    return '<div class="cbph">' + phoneTabs() + '<div class="cbphmap"><div class="cbmaphost" id="cbMapHost"></div></div>' + (leg ? '<div class="cblegs">' + leg + '</div>' : '') + (CB.wx && CB.wx.ok ? '<div class="cbwxrow">' + wxChip() + '</div>' : '') + '<p class="dim" style="font-size:12px">View only. Updates every few seconds.</p></div>';
+  }
+  function phoneWbView() { return '<div class="cbph">' + phoneTabs() + '<div class="cbwb cbwbro"><div class="cbwbbar" id="cbWbBar">' + wbBarHtml() + '</div><div class="cbwbhost" id="cbWbHost"></div></div><p class="dim" style="font-size:12px">View only. Drawing is done on the command tablet.</p></div>'; }
   function phoneView() {
+    CB.ro = true;
+    if (CB.ptab === 'map') return phoneMapView();
+    if (CB.ptab === 'wb') return phoneWbView();
     var i = inc(), may = kv('mayday', null), parEvery = +kv('parEvery', 20), parDue = new Date(kv('parT', i.start)).getTime() + parEvery * 60000, left = Math.round((parDue - Date.now()) / 1000);
-    var h = '<div class="cbph">' + myUnitCard() + '<div class="cbaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + E(kv('mode', '')) + ' · ' + E(kv('cond', '')) + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
+    var h = '<div class="cbph">' + phoneTabs() + myUnitCard() + '<div class="cbaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + E(kv('mode', '')) + ' · ' + E(kv('cond', '')) + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
       '<div class="cbphrow"><div><span>Elapsed</span><b id="cbEl">' + since(i.start) + '</b></div><div class="' + (left <= 0 ? 'bad-t' : '') + '"><span>PAR</span><b id="cbPar">' + (left <= 0 ? 'DUE' : Math.floor(left / 60) + ':' + CP.pad(left % 60)) + '</b></div><div><span>Units</span><b>' + units().length + '</b></div></div>' +
       (may ? '<div class="cbmaybar">' + I('warn') + ' MAYDAY · ' + E(may.who || '') + ' · ' + E(may.where || '') + '</div>' : '') + mciPanel() +
       asgs().map(function (a) { var us = unitsIn(a.id); return '<div class="cbphasg"><b>' + E(aName(a)) + '</b>' + (a.reportTo ? ' <span class="dim">· ' + E(a.reportTo) + '</span>' : '') + '<div>' + (us.length ? us.map(function (r) { return '<span class="chip">' + E(r.name) + (r.note ? ' · ' + E(r.note) : '') + '</span>'; }).join(' ') : '<span class="dim">—</span>') + '</div></div>'; }).join('') +
@@ -330,11 +374,19 @@
       '<div class="k">INCIDENT CLOSED</div><h1>' + E(i.location.desc || i.name) + '</h1>' +
       '<p>' + E(i.number) + ' · command terminated ' + E(CP.fmtDT(i.closed || CP.now())) + ' · ' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') + (i.exercise ? ' · PRACTICE' : '') + '</p>' +
       '<p class="dim">All units released. The record is saved in Command Post' + (A.status === 'on' ? ' and county ArcGIS.' : ' and will send to ArcGIS when this device is back online.') + '</p>' +
-      '<div class="cbclosedbtns"><button class="btn big pri" data-cb="home">' + I('home') + 'Command Board home</button><button class="btn big" data-cb="report">' + I('print') + 'Incident report</button><a class="btn big" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener">' + I('link') + 'Open in Command Post</a><button class="btn big ghost" data-cb="reopen">Reopen incident</button></div></div></div>';
+      '<div class="cbclosedbtns"><button class="btn big pri" data-cb="home">' + I('home') + 'Command Board home</button><button class="btn big" data-cb="report">' + I('print') + 'Incident report</button><button class="btn big" data-cb="itexport">' + I('up') + 'Export for ImageTrend</button><button class="btn big" data-cb="backup">' + I('down') + 'Save board to a file</button><a class="btn big" href="index.html?incident=' + encodeURIComponent(i.id) + '" target="_blank" rel="noopener">' + I('link') + 'Open in Command Post</a><button class="btn big ghost" data-cb="reopen">Reopen incident</button></div></div></div>';
   }
 
   // ---------- render ----------
+  // A drawing bug must never blank the board mid-incident: show what happened and keep the data reachable.
   function render() {
+    try { renderIn(); } catch (e) {
+      console.error(e); var m = document.getElementById('cbmain'); if (!m) return;
+      m.innerHTML = '<div class="cbstart"><section class="card cbcrash"><h3>' + I('warn') + 'The board hit a display problem</h3><p>Nothing is lost: the incident is saved on this tablet' + (A.status === 'on' ? ' and in ArcGIS' : '') + '.</p><p class="mono dim" style="font-size:12px">' + E(e && e.message || e) + '</p><div class="cbclosedbtns"><button class="btn big pri" onclick="location.reload()">' + I('refresh') + 'Reload the board</button>' + (inc() ? '<button class="btn big" data-cb="backup">' + I('down') + 'Save board to a file</button><button class="btn big" data-cb="report">' + I('print') + 'Incident report</button>' : '') + '</div></section></div>';
+    }
+    wake();
+  }
+  function renderIn() {
     var m = document.getElementById('cbmain'); if (!m) return;
     document.body.classList.remove('cbfit');
     if (!A.signedIn() && !inc() && !CB.localOk) { m.innerHTML = '<div class="cbstart"><div class="cbhero2 solo"><div class="ht"><p>Sign in with your county ArcGIS account so the board is shared live with Command Post, the EOC and phones on scene. You can also start offline; it shares once you sign in.</p><button class="btn big pri" data-cb="signin">' + I('cloud') + 'Sign in with ArcGIS</button> <button class="btn big" data-cb="local">Start without signing in</button></div></div></div>'; return; }
@@ -342,6 +394,7 @@
     if (!inc()) { var hv = CB.htab === 'map' ? homeMapView() : CB.htab === 'wb' ? homeWbView() : startScreen(); m.innerHTML = hv; document.body.classList.toggle('cbfit', CB.htab !== 'home'); var ts0 = document.getElementById('cbTabSlot'); if (ts0) ts0.innerHTML = homeTabs(); if (CB.htab === 'map') homeMapMount(); if (CB.htab === 'wb') wbMount(); return; }
     var y = window.scrollY, qn = document.getElementById('cbQuick'), qv = qn ? qn.value : '', qf = qn && document.activeElement === qn;
     var force = new URLSearchParams(location.search).get('view');
+    CB.ro = false;
     m.innerHTML = inc().status === 'Closed' ? closedScreen() : (force === '0' ? false : phone()) ? phoneView() : board();
     document.body.classList.toggle('cbfit', !!m.querySelector('.cbx'));
     var ts = document.getElementById('cbTabSlot'); if (ts) ts.innerHTML = m.querySelector('.cbx') ? tabs() : '';
@@ -551,7 +604,7 @@
   function miles(a, b) { var R = 3958.8, t = Math.PI / 180, dl = (b[0] - a[0]) * t, dn = (b[1] - a[1]) * t, x = Math.sin(dl / 2) * Math.sin(dl / 2) + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dn / 2) * Math.sin(dn / 2); return 2 * R * Math.asin(Math.sqrt(x)); }
   function incLL() { var l = inc() && inc().status !== 'Closed' && inc().location; return l && l.lat != null && l.lat !== '' ? [+l.lat, +l.lng] : null; }
   async function loadAvl() {
-    if (A.status !== 'on') return false;
+    if (!cadOn()) { CB.avl = []; return false; }
     try {
       var f = await A.query(A.L.cadUnits, "(MainTypeDesc IN ('FIRE','EMS') OR UnitTypeDesc IN ('FIRE MUTUAL','EMS MUTUAL','MEDEVAC')) AND Latitude IS NOT NULL", { fields: 'UnitID,StatusName,UnitTypeDesc,MainTypeDesc,DeptName,CFSNumber,Latitude,Longitude,LastPositionCheck', n: 500 });
       var c = incLL(), now = Date.now();
@@ -573,14 +626,74 @@
   act.setloc = function () { CB.placing = CB.placing === 'inc' ? null : 'inc'; CB.sel = null; render(); if (CB.placing) U.toast('Tap the map where the incident is', 'ok'); };
   act.sidea = function (d) { setKV('sideA', +d); commit('Side A faces ' + ({ 0: 'north', 90: 'east', 180: 'south', 270: 'west' })[d], 'Event', true); render(); };
   act.lyr = function (k) { CB['hide_' + k] = !CB['hide_' + k]; render(); };
-  act.mapfit = function () { if (!CB.map) return; var c = incLL(); var pts = units().filter(function (r) { return r.lat != null; }).map(function (r) { return [r.lat, r.lng]; }); if (c) pts.push(c); if (pts.length > 1) CB.map.fitBounds(pts, { padding: [40, 40], maxZoom: 19 }); else if (c) CB.map.setView(c, 18); };
+  act.mapfit = function () { if (!CB.map) return; var c = incLL(); var pts = units().filter(function (r) { return r.lat != null; }).map(function (r) { return [r.lat, r.lng]; }).concat(syms().filter(function (o) { return o.lat != null; }).map(function (o) { return [o.lat, o.lng]; })).concat(SIDES.map(function (x) { return (sides()[x] || {}).ll; }).filter(Boolean)); if (c) pts.push(c); if (pts.length > 1) CB.map.fitBounds(pts, { padding: [40, 40], maxZoom: 19 }); else if (c) CB.map.setView(c, 18); };
+  // ---------- building sides: the IC places A, B, C and D (nothing is placed automatically) ----------
+  var SIDES = ['A', 'B', 'C', 'D'];
+  function sides() { return kv('sides', {}) || {}; }
+  act.side = function (s) { CB.sel = null; CB.placing = CB.placing === 'side:' + s ? null : 'side:' + s; render(); };
+  act.sidesclear = function () { if (!Object.keys(sides()).length) return; sure('Clear sides A–D?', 'Removes the side labels from the map for everyone.', 'Clear sides', function () { setKV('sides', {}); commit('Building sides cleared on the map', 'Event'); }); };
+  function setSide(s, ll, moved) { var o = Object.assign({}, sides()); o[s] = { ll: ll, t: CP.now(), by: CP.me.name || '' }; setKV('sides', o); commit(moved ? null : 'Side ' + s + ' set on the map', 'Event', !!moved); }
+
+  // ---------- incident symbols the IC places on the map ----------
+  // [key, short code, name, color, group]
+  var SYM = [
+    ['icp', 'CP', 'Command post', '#2f7bff', 'Command'], ['stg', 'S', 'Staging', '#FDB833', 'Command'], ['acp', 'AC', 'Accountability point', '#9b6bff', 'Command'], ['rehab', 'RH', 'Rehab', '#2FBF71', 'Command'], ['lz', 'H', 'Landing zone', '#f2f2f2', 'Command'], ['tcp', 'TC', 'Traffic control / roadblock', '#ff8d3a', 'Command'],
+    ['entry', '▲', 'Entry point', '#2FBF71', 'Building'], ['victim', 'V', 'Victim / last seen', '#ff3b47', 'Building'], ['origin', 'O', 'Fire origin / seat', '#ff3030', 'Building'], ['exp', 'X', 'Exposure', '#ffb020', 'Building'], ['fdc', 'FDC', 'FDC / standpipe', '#ff3030', 'Building'], ['knox', 'K', 'Knox box', '#ffb020', 'Building'],
+    ['ug', 'G', 'Gas shutoff / meter', '#ffd400', 'Utilities'], ['ue', 'E', 'Electric shutoff / meter', '#ff8d3a', 'Utilities'], ['uw', 'WS', 'Water shutoff', '#3fa9ff', 'Utilities'], ['wires', 'W!', 'Wires down', '#ff8d3a', 'Utilities'],
+    ['water', 'FS', 'Fill site / water source', '#3fa9ff', 'Water'], ['dump', 'DT', 'Dump tank / draft site', '#3fa9ff', 'Water'], ['eng', 'PE', 'Pump engine / supply engine', '#3fa9ff', 'Water'],
+    ['haz', '!', 'Hazard', '#ff3b47', 'Hazards & EMS'], ['triage', 'TRI', 'Triage', '#ffd400', 'Hazards & EMS'], ['treat', 'TX', 'Treatment area', '#ff3b47', 'Hazards & EMS'], ['trans', 'TR', 'Ambulance loading / transport', '#2FBF71', 'Hazards & EMS'], ['sz', 'SZ', 'Safety zone (wildland)', '#2FBF71', 'Hazards & EMS'], ['note', '✎', 'Map note', '#93A9C3', 'Hazards & EMS']
+  ];
+  // circles: [key, name, color, default radius in feet]
+  var ZONES = [['collapse', 'Collapse zone', '#ff3b47', 100], ['hot', 'Hot zone', '#ff3b47', 150], ['warm', 'Warm zone', '#ffb020', 300], ['cold', 'Cold zone', '#3fa9ff', 600]];
+  function symDef(k) { var s = SYM.find(function (x) { return x[0] === k; }); if (s) return { k: k, code: s[1], n: s[2], c: s[3] }; var z = ZONES.find(function (x) { return x[0] === k; }); return z ? { k: k, code: '', n: z[1], c: z[2], zone: true, r: z[3] } : { k: k, code: '?', n: 'Symbol', c: '#93A9C3' }; }
+  function syms() { return AL(inc().cbSym); }
+  act.sym = function (k) { CB.sel = null; CB.placing = CB.placing === 'sym:' + k ? null : 'sym:' + k; render(); };
+  act.symshow = function () { CB.symOpen = !CB.symOpen; render(); };
+  function placeSym(k, ll) {
+    var d = symDef(k), i = inc(); i.cbSym = i.cbSym || [];
+    var o = CP.addItem(i, 'cbSym', { k: k, lat: ll[0], lng: ll[1], lbl: '', r: d.zone ? d.r : 0, t: CP.now(), by: CP.me.name || '' });
+    commit('Map: ' + d.n + ' placed', 'Event'); return o;
+  }
+  act.symedit = function (id) {
+    var o = CP.byId(inc().cbSym, id); if (!o) return; var d = symDef(o.k); if (CB.map) CB.map.closePopup();
+    var bg = U.modal(d.n, '<label class="f"><span>Label (shows on the map)</span><input class="in big" id="cbSyL" maxlength="40" value="' + E(o.lbl || '') + '" placeholder="e.g. Engine 1 fill site, Bravo door"></label>' + (d.zone ? '<label class="f"><span>Radius (feet)</span><input class="in big" id="cbSyR" inputmode="numeric" value="' + (+o.r || d.r) + '"></label>' : '') + '<p class="dim" style="font-size:13px">Placed ' + E(CP.fmtTime(o.t)) + (o.by ? ' by ' + E(o.by) : '') + '. Drag it on the map to move it.</p>',
+      [{ label: I('trash') + 'Remove', cls: 'red', fn: function () { o.del = true; o.u = CP.now(); CP.touch(inc(), 'cbSym'); commit('Map: ' + d.n + (o.lbl ? ' (' + o.lbl + ')' : '') + ' removed', 'Event'); } }, { label: 'Cancel', cls: 'ghost' },
+       { label: 'Save', cls: 'pri', fn: function (b) { o.lbl = (b.querySelector('#cbSyL').value || '').trim(); if (d.zone) { var r = +(b.querySelector('#cbSyR').value || '').replace(/[^\d.]/g, ''); if (r > 0 && r < 20000) o.r = Math.round(r); } o.u = CP.now(); CP.touch(inc(), 'cbSym'); commit(null); } }], { nofocus: true });
+    return bg;
+  }
+  function symPanel() {
+    var cur = CB.placing && CB.placing.indexOf('sym:') === 0 ? CB.placing.slice(4) : '', n = syms().length, grp = {};
+    SYM.forEach(function (s) { (grp[s[4]] = grp[s[4]] || []).push(s); });
+    var h = '<div class="cbh sm cbsymh"><span>Map symbols' + (n ? ' · ' + n + ' placed' : '') + '</span><button class="btn xs ghost" data-cb="symshow">' + (CB.symOpen ? 'Hide' : 'Show all') + '</button></div>';
+    if (!CB.symOpen) { var quick = ['icp', 'stg', 'acp', 'rehab', 'water', 'haz']; return h + '<div class="cbsyms">' + quick.map(function (k) { var d = symDef(k); return symBtn(d, cur); }).join('') + '</div>'; }
+    Object.keys(grp).forEach(function (g) { h += '<div class="cbsymg">' + E(g) + '</div><div class="cbsyms">' + grp[g].map(function (s) { return symBtn(symDef(s[0]), cur); }).join('') + '</div>'; });
+    h += '<div class="cbsymg">Zones (circles)</div><div class="cbsyms">' + ZONES.map(function (z) { return symBtn(symDef(z[0]), cur); }).join('') + '</div>';
+    return h;
+  }
+  function symBtn(d, cur) { return '<button class="cbsymb' + (cur === d.k ? ' on' : '') + '" data-cb="sym" data-a="' + d.k + '" title="' + E(d.n) + '"><i style="--c:' + d.c + '"' + (d.zone ? ' class="z"' : '') + '>' + E(d.code) + '</i><span>' + E(d.n) + '</span></button>'; }
+  function drawSyms(Ly) {
+    syms().forEach(function (o) {
+      var d = symDef(o.k), ll = [o.lat, o.lng]; if (o.lat == null) return;
+      if (d.zone) Ly.scene.addLayer(L.circle(ll, { radius: (+o.r || d.r) * 0.3048, color: d.c, weight: 2, dashArray: o.k === 'collapse' ? '10 6' : null, fillColor: d.c, fillOpacity: o.k === 'cold' ? 0.04 : 0.1, interactive: false }));
+      var mk = L.marker(ll, { draggable: !CB.ro, zIndexOffset: 700, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbsym' + (d.zone ? ' z' : '') + '" style="--c:' + d.c + '"><i>' + E(d.zone ? '◎' : d.code) + '</i>' + (o.lbl || d.zone ? '<b>' + E(o.lbl || d.n + ' ' + (+o.r || d.r) + ' ft') + '</b>' : '') + '</div>' }) });
+      mk.on('dragend', function (ev) { var p = ev.target.getLatLng(); o.lat = +p.lat.toFixed(6); o.lng = +p.lng.toFixed(6); o.u = CP.now(); CP.touch(inc(), 'cbSym'); commit(null, null, true); mapDraw(); });
+      mk.on('click', function () { if (CB.ro) { if (o.lbl) U.toast(E(d.n + ': ' + o.lbl), 'ok'); return; } act.symedit(o.id); });
+      Ly.scene.addLayer(mk);
+    });
+    var sd = sides(); SIDES.forEach(function (s) {
+      var v = sd[s]; if (!v || !v.ll) return;
+      var mk = L.marker(v.ll, { draggable: !CB.ro, zIndexOffset: 850, icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '<div class="cbsideA s' + s + ' big">' + s + '</div>' }) });
+      mk.on('dragend', function (ev) { var p = ev.target.getLatLng(); setSide(s, [+p.lat.toFixed(6), +p.lng.toFixed(6)], true); mapDraw(); });
+      Ly.scene.addLayer(mk);
+    });
+  }
   function mapView() {
     var i = inc(), c = incLL(), su = CB.sel ? CP.byId(i.resources, CB.sel) : null, A0 = +kv('sideA', 180);
     var side = '<section class="cbcol cbmapside"><div class="cbscroll">' +
-      (CB.placing === 'inc' ? '<div class="cbpick"><div><b>Tap the map</b> where the incident is</div><button class="btn ghost" data-cb="setloc">Cancel</button></div>' : su ? '<div class="cbpick"><div>Tap the map to place <b>' + E(su.name) + '</b></div><button class="btn ghost" data-cb="desel">Cancel</button></div>' : '') +
+      (CB.placing === 'inc' ? '<div class="cbpick"><div><b>Tap the map</b> where the incident is</div><button class="btn ghost" data-cb="setloc">Cancel</button></div>' : CB.placing && CB.placing.indexOf('side:') === 0 ? '<div class="cbpick"><div><b>Tap the map</b> to place side ' + E(CB.placing.slice(5)) + '</div><button class="btn ghost" data-cb="side" data-a="' + E(CB.placing.slice(5)) + '">Cancel</button></div>' : CB.placing && CB.placing.indexOf('sym:') === 0 ? '<div class="cbpick"><div><b>Tap the map</b> to place: ' + E(symDef(CB.placing.slice(4)).n) + '</div><button class="btn ghost" data-cb="sym" data-a="' + E(CB.placing.slice(4)) + '">Done</button></div>' : su ? '<div class="cbpick"><div>Tap the map to place <b>' + E(su.name) + '</b></div><button class="btn ghost" data-cb="desel">Cancel</button></div>' : '') +
       (c ? '' : '<div class="warnbox" style="margin-bottom:8px">No incident location yet. Tap <b>Set incident location</b>, then tap the map.</div>') +
       '<div class="cbbtns"><button data-cb="setloc" class="' + (CB.placing === 'inc' ? 'on' : '') + '">' + I('pin') + (c ? 'Move incident pin' : 'Set incident location') + '</button><button data-cb="mapfit">' + I('target') + 'Fit scene</button></div>' +
-      '<div class="cbh sm">Side A (address side) faces</div><div class="cbbtns c4">' + [['N', 0], ['E', 90], ['S', 180], ['W', 270]].map(function (d) { return '<button class="' + (A0 === d[1] ? 'on' : '') + '" data-cb="sidea" data-a="' + d[1] + '">' + d[0] + '</button>'; }).join('') + '</div>' +
+      '<div class="cbh sm cbsymh"><span>Building sides (you place them)</span>' + (Object.keys(sides()).length ? '<button class="btn xs ghost" data-cb="sidesclear">Clear</button>' : '') + '</div><div class="cbbtns c4 cbsidebtns">' + SIDES.map(function (s) { var set = !!sides()[s]; return '<button class="' + (CB.placing === 'side:' + s ? 'on' : '') + (set ? ' set' : '') + '" data-cb="side" data-a="' + s + '"><b class="cbsideA s' + s + '">' + s + '</b>' + (set ? '✓' : '') + '</button>'; }).join('') + '</div>' + symPanel() +
       '<div class="cbh sm">Hazmat / isolation</div><div class="cbbtns"><button data-cb="iso" class="' + (kv('iso', null) ? 'on' : '') + '">' + svg('hazmat') + (kv('iso', null) ? 'Zone ' + E(kv('iso').rTxt) : 'Isolation zone') + '</button><button data-cb="peac">' + svg('hazmat') + 'PEAC-WMD</button></div>' + (CB.wx && CB.wx.ok ? '<div class="cbwxrow">' + wxChip() + '</div>' : '') + '<div class="cbh sm">Show</div><div class="cbbtns"><button class="' + (CB.hide_hyd ? '' : 'on') + '" data-cb="lyr" data-a="hyd">Hydrants</button><button class="' + (CB.hide_avl ? '' : 'on') + '" data-cb="lyr" data-a="avl">Live units (CAD)</button></div>' +
       '<div class="cbh sm">' + I('truck') + 'Units · tap, then the map</div><div class="cbuw">' + (units().length ? units().map(tile).join('') : '<div class="dim cbempty">No units on the board yet.</div>') + '</div>' +
       '<div class="cbh sm">Nearest hydrants</div>' + (!c ? '<div class="dim cbempty">Set the incident location first.</div>' : !CB.hyd ? '<div class="dim cbempty">' + (A.status === 'on' ? 'Loading…' : 'Sign in to see hydrants.') + '</div>' : !CB.hyd.length ? '<div class="dim cbempty">No hydrants within about 1,000 yards. Plan for tanker water supply.</div>' :
@@ -609,14 +722,17 @@
       CB.lyr = { hyd: L.layerGroup().addTo(m), avl: L.layerGroup().addTo(m), scene: L.layerGroup().addTo(m), units: L.layerGroup().addTo(m) };
       m.on('click', mapClick); CB.mapInc = i.id; CB.mapC = c ? c.join() : '';
     } else host.appendChild(CB.mapEl);
-    if (CB.mapInc !== i.id || (c && CB.mapC !== c.join())) { CB.mapInc = i.id; CB.mapC = c ? c.join() : ''; if (c) CB.map.setView(c, 18); }
+    if (CB.mapInc !== i.id || (c && CB.mapC !== c.join())) { CB.mapInc = i.id; CB.mapC = c ? c.join() : ''; if (c) CB.map.setView(c, 18); CB.roFit = false; }
+    if (CB.ro && !CB.roFit) { CB.roFit = true; setTimeout(act.mapfit, 120); } // phone: open showing everything that is placed
     CB.mapEl.classList.toggle('placing', !!(CB.placing || CB.sel));
     setTimeout(function () { CB.map.invalidateSize(); }, 40);
     mapDraw(); loadHyd(); if (!CB.avl || Date.now() - (CB.avlT || 0) > 15000) loadAvl().then(function (ok) { if (ok && CB.tab === 'map') render(); });
   }
   function mapClick(e) {
-    if (!inc()) return;
+    if (!inc() || CB.ro) return;
     var p = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)], i = inc();
+    if (CB.placing && CB.placing.indexOf('side:') === 0) { var sd = CB.placing.slice(5); CB.placing = null; setSide(sd, p); return; }
+    if (CB.placing && CB.placing.indexOf('sym:') === 0) { var sk = CB.placing.slice(4); placeSym(sk, p); if (symDef(sk).zone || /^(icp|stg|acp|rehab|lz)$/.test(sk)) { CB.placing = null; render(); } return; }
     if (CB.placing === 'inc') { i.location.lat = p[0]; i.location.lng = p[1]; CP.touch(i, 'location'); CB.placing = null; CB.hyd = null; CB.hydFor = null; commit('Incident location set on the map', 'Event'); return; }
     if (CB.sel) { var r = CP.byId(i.resources, CB.sel); CB.sel = null; if (r) { r.lat = p[0]; r.lng = p[1]; r.u = CP.now(); CP.touch(i, 'resources'); } commit(null); }
   }
@@ -627,8 +743,8 @@
       Ly.scene.addLayer(L.marker(c, { icon: CP.map.pinIcon('#FDB833', '★', 34), zIndexOffset: 900, interactive: false }));
       var iz = kv('iso', null); if (iz && iz.r) { Ly.scene.addLayer(L.circle(c, { radius: iz.r, color: '#ff3b47', weight: 2, dashArray: '8 6', fillColor: '#ff3b47', fillOpacity: 0.08, interactive: false })); if (iz.p && CB.wx && CB.wx.ok && CB.wx.dir != null) { var dw = CB.wx.dir + 180, pts = [offset(c, dw - 30, iz.r)]; for (var a = -30; a <= 30; a += 5) pts.push(offset(c, dw + a, iz.r + iz.p)); pts.push(offset(c, dw + 30, iz.r)); Ly.scene.addLayer(L.polygon(pts, { color: '#ffb020', weight: 2, dashArray: '4 6', fillColor: '#ffb020', fillOpacity: 0.12, interactive: false })); } }
       if (CB.wx && CB.wx.ok && CB.wx.dir != null) Ly.scene.addLayer(L.marker(offset(c, CB.wx.dir, 70), { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbwind" style="--r:' + (CB.wx.dir + 180) + 'deg"><i>➤</i><b>' + E(compass(CB.wx.dir)) + ' ' + Math.round(CB.wx.mph || 0) + '</b></div>' }) }));
-      var A0 = +kv('sideA', 180); ['A', 'B', 'C', 'D'].forEach(function (s, k) { Ly.scene.addLayer(L.marker(offset(c, A0 + k * 90, 28), { interactive: false, icon: L.divIcon({ className: '', iconSize: [28, 28], iconAnchor: [14, 14], html: '<div class="cbsideA s' + s + '">' + s + '</div>' }) })); });
     }
+    drawSyms(Ly);
     if (!CB.hide_hyd) (CB.hyd || []).forEach(function (h) { Ly.hyd.addLayer(L.marker(h.ll, { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div class="cbhyd' + (h.out ? ' out' : '') + '">H</div>' }) }).bindPopup('<b>' + E(h.name) + '</b><br>' + E(h.where) + '<br>' + Math.round(h.ft) + ' ft from the incident' + (h.psi ? '<br>Static ' + h.psi + ' psi' : '') + '<br>' + E(h.st) + (h.auth ? ' · ' + E(h.auth) : ''))); });
     var board = {}; units().forEach(function (r) { board[norm(r.name)] = r; });
     if (!CB.hide_avl) (CB.avl || []).forEach(function (v) {
@@ -638,29 +754,69 @@
     });
     units().forEach(function (r) {
       if (r.lat == null || r.lat === '') return; var lk = unitLook(r), a = r.assign && CP.byId(i.assignments, r.assign), wm = workMin(r);
-      var mk = L.marker([r.lat, r.lng], { draggable: true, zIndexOffset: 800, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbmu ' + lk[1] + (CB.sel === r.id ? ' sel' : '') + (wm >= wkMax() ? ' wkover' : wm >= wkWarn() ? ' wkwarn' : '') + '">' + svg(lk[0]) + '<b>' + E(r.name) + '</b>' + (a ? '<i>' + E(aName(a)) + '</i>' : '') + '</div>' }) });
+      var mk = L.marker([r.lat, r.lng], { draggable: !CB.ro, zIndexOffset: 800, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbmu ' + lk[1] + (CB.sel === r.id ? ' sel' : '') + (wm >= wkMax() ? ' wkover' : wm >= wkWarn() ? ' wkwarn' : '') + '">' + svg(lk[0]) + '<b>' + E(r.name) + '</b>' + (a ? '<i>' + E(aName(a)) + '</i>' : '') + '</div>' }) });
       mk.on('dragend', function (ev) { var p = ev.target.getLatLng(); r.lat = +p.lat.toFixed(6); r.lng = +p.lng.toFixed(6); r.u = CP.now(); CP.touch(inc(), 'resources'); commit(null, null, true); });
-      mk.on('click', function () { act.unit(r.id); });
+      mk.on('click', function () { if (!CB.ro) act.unit(r.id); });
       Ly.units.addLayer(mk);
     });
   }
 
-  // =================== whiteboard ===================
-  var WBW = 2000, WBC = [['#ff3030', 'Red'], ['#f2f2f2', 'White'], ['#FDB833', 'Yellow'], ['#5aa9ff', 'Blue']], WBS = [[4, 'Fine'], [8, 'Medium'], [16, 'Thick']];
+  // =================== whiteboard (several pages) ===================
+  // Each page is { id, n (name), bg: 'blank' | 'grid' | 'bldg' | 'road' }. Strokes carry pg (page id); strokes with no pg
+  // belong to the first page ('p1'), so boards drawn before pages existed still open on page 1.
+  var WBW = 2000, WBC = [['#ff3030', 'Red'], ['#f2f2f2', 'White'], ['#FDB833', 'Yellow'], ['#5aa9ff', 'Blue'], ['#3ddc84', 'Green']], WBS = [[4, 'Fine'], [8, 'Medium'], [16, 'Thick']];
+  var WBBG = [['blank', 'Blank'], ['grid', 'Grid'], ['bldg', 'Building (sides A–D)'], ['road', 'Roadway']];
   CB.wbColor = CB.wbColor || '#ff3030'; CB.wbSize = CB.wbSize || 8; CB.wbTool = CB.wbTool || 'pen';
   var SCR = 'bcem.cb.scratch.v1';
   function wbDoc() { if (inc()) return inc(); if (!CB.scratch) { try { CB.scratch = JSON.parse(localStorage.getItem(SCR) || 'null'); } catch (e) {} CB.scratch = CB.scratch || { cbDraw: [] }; } return CB.scratch; }
-  function wbSave(text) { if (inc()) { CP.touch(inc(), 'cbDraw'); commit(text || null, 'Event', true); } else { wbDoc().cbDraw = AL(wbDoc().cbDraw); try { localStorage.setItem(SCR, JSON.stringify(CB.scratch)); } catch (e) {} } }
-  function strokes() { return AL(wbDoc().cbDraw); }
+  function wbSave(text, key) {
+    if (inc()) { CP.touch(inc(), key || 'cbDraw'); commit(text || null, 'Event', true); }
+    else { var d = wbDoc(); d.cbDraw = AL(d.cbDraw); d.cbPages = AL(d.cbPages); try { localStorage.setItem(SCR, JSON.stringify(CB.scratch)); } catch (e) { storeFull(); } }
+  }
+  function pages() { var d = wbDoc(), p = AL(d.cbPages); return p.length ? p : [{ id: 'p1', n: 'Page 1', bg: 'blank' }]; }
+  function ensurePages() { var d = wbDoc(); d.cbPages = d.cbPages || []; if (!AL(d.cbPages).length) { var o = d.cbPages.find(function (x) { return x.id === 'p1'; }); if (o) { o.del = false; o.u = CP.now(); } else d.cbPages.push({ id: 'p1', n: 'Page 1', bg: 'blank', u: CP.now() }); } return d.cbPages; }
+  function curPage() { var p = pages(); return p.find(function (x) { return x.id === CB.wbPage; }) || p[0]; }
+  function pageOf(st) { return st.pg || 'p1'; }
+  function allStrokes() { return AL(wbDoc().cbDraw); }
+  function strokes(pid) { pid = pid || curPage().id; var first = pages()[0].id; return allStrokes().filter(function (s) { var g = pageOf(s); return g === pid || (pid === first && !pages().some(function (p) { return p.id === g; })); }); }
   act.wbc = function (c) { CB.wbColor = c; CB.wbTool = 'pen'; wbBar(); };
   act.wbs = function (s) { CB.wbSize = +s; CB.wbTool = 'pen'; wbBar(); };
   act.wbt = function (t) { CB.wbTool = t; wbBar(); };
   act.wbundo = function () { var me = CP.me.name || '', s = strokes(), last = null; for (var k = s.length - 1; k >= 0; k--) { if (!me || s[k].by === me) { last = s[k]; break; } } if (!last) return; last.del = true; last.u = CP.now(); wbSave(); wbDraw(); };
-  act.wbclear = function () { if (!strokes().length) return; sure('Clear the whiteboard?', inc() ? 'Erases everything on it for everyone.' : 'Erases this scratch board.', 'Clear', function () { strokes().forEach(function (s) { s.del = true; s.u = CP.now(); }); wbSave(inc() ? 'Whiteboard cleared' : null); wbDraw(); }); };
+  act.wbclear = function () { if (!strokes().length) return; var pg = curPage(); sure('Clear "' + pg.n + '"?', inc() ? 'Erases everything on this page for everyone. Other pages are not touched.' : 'Erases this scratch page.', 'Clear page', function () { strokes().forEach(function (s) { s.del = true; s.u = CP.now(); }); wbSave(inc() ? 'Whiteboard page cleared: ' + pg.n : null); wbDraw(); }); };
+  act.wbpg = function (id) { CB.wbPage = id; wbBar(); wbDraw(); };
+  act.wbstep = function (d) { var p = pages(), k = p.indexOf(curPage()); k = (k + (+d) + p.length) % p.length; act.wbpg(p[k].id); };
+  act.wbadd = function () {
+    var bg = U.modal('New whiteboard page', '<label class="f"><span>Page name</span><input class="in big" id="cbPgN" value="Page ' + (pages().length + 1) + '"></label><div class="cbh sm">Background</div>' + chips('bg', WBBG.map(function (b) { return b[1]; })) , [{ label: 'Cancel', cls: 'ghost' }, { label: 'Add page', cls: 'pri', fn: function (b) {
+      var n = (b.querySelector('#cbPgN').value || '').trim() || 'Page ' + (pages().length + 1), lab = chipVal(b, 'bg')[0], k = (WBBG.find(function (x) { return x[1] === lab; }) || WBBG[0])[0];
+      var d = wbDoc(); ensurePages(); var pg = { id: CP.uid(), n: n.slice(0, 30), bg: k, u: CP.now() }; d.cbPages.push(pg); CB.wbPage = pg.id; wbSave(inc() ? 'Whiteboard page added: ' + pg.n : null, 'cbPages'); wbBar(); wbDraw(); } }], { nofocus: true });
+    chipWire(bg); var f = bg.querySelector('[data-chip]'); if (f) f.classList.add('on');
+  };
+  act.wbpgmenu = function () {
+    var pg = curPage(), only = pages().length < 2;
+    var bg = U.modal('Page: ' + pg.n, '<label class="f"><span>Page name</span><input class="in big" id="cbPgN" value="' + E(pg.n) + '"></label><div class="cbh sm">Background</div>' + chips('bg', WBBG.map(function (b) { return b[1]; })) + (only ? '' : '<button class="btn red" style="margin-top:14px;width:100%" data-del="1">' + I('trash') + 'Delete this page</button>'),
+      [{ label: 'Cancel', cls: 'ghost' }, { label: 'Save', cls: 'pri', fn: function (b) { var d = wbDoc(); ensurePages(); var p = CP.byId(d.cbPages, pg.id); if (!p) return; var lab = chipVal(b, 'bg')[0]; p.n = ((b.querySelector('#cbPgN').value || '').trim() || p.n).slice(0, 30); p.bg = (WBBG.find(function (x) { return x[1] === lab; }) || [p.bg])[0]; p.u = CP.now(); wbSave(null, 'cbPages'); wbBar(); wbDraw(); } }], { nofocus: true });
+    chipWire(bg); bg.querySelectorAll('[data-chip]').forEach(function (c) { if (c.dataset.chip === (WBBG.find(function (x) { return x[0] === (pg.bg || 'blank'); }) || WBBG[0])[1]) c.classList.add('on'); });
+    bg.addEventListener('click', function (e) { if (!e.target.closest('[data-del]')) return; e.preventDefault(); U.closeModal(); sure('Delete "' + pg.n + '"?', 'Removes the page and everything drawn on it' + (inc() ? ' for everyone' : '') + '.', 'Delete page', function () {
+      var d = wbDoc(); ensurePages(); var ss = strokes(pg.id), p = CP.byId(d.cbPages, pg.id); ss.forEach(function (s) { s.del = true; s.u = CP.now(); }); if (p) { p.del = true; p.u = CP.now(); }
+      CB.wbPage = null; if (inc()) CP.touch(inc(), 'cbDraw'); wbSave(inc() ? 'Whiteboard page deleted: ' + pg.n : null, 'cbPages'); wbBar(); wbDraw(); }); });
+  };
+  // bring scratch pages (drawn before the incident existed) into the incident
+  function scratchLeft() { if (!inc()) return 0; var s = null; try { s = JSON.parse(localStorage.getItem(SCR) || 'null'); } catch (e) {} return s ? AL(s.cbDraw).length : 0; }
+  act.wbimport = function () {
+    var s = null; try { s = JSON.parse(localStorage.getItem(SCR) || 'null'); } catch (e) {} if (!s || !AL(s.cbDraw).length) return;
+    var i = inc(), sp = AL(s.cbPages); if (!sp.length) sp = [{ id: 'p1', n: 'Page 1', bg: 'blank' }]; ensurePages(); i.cbDraw = i.cbDraw || [];
+    var map = {}; sp.forEach(function (p) { if (!AL(s.cbDraw).some(function (x) { return pageOf(x) === p.id; })) return; var np = { id: CP.uid(), n: ('Scratch: ' + p.n).slice(0, 30), bg: p.bg || 'blank', u: CP.now() }; map[p.id] = np.id; i.cbPages.push(np); });
+    AL(s.cbDraw).forEach(function (x) { var pg = map[pageOf(x)]; if (pg) i.cbDraw.push({ id: CP.uid(), c: x.c, w: x.w, p: x.p, pg: pg, by: x.by || CP.me.name || '', u: CP.now() }); });
+    CB.wbPage = map[sp[0].id] || CB.wbPage; CB.scratch = null; localStorage.removeItem(SCR); CP.touch(i, 'cbPages'); wbSave('Scratch whiteboard pages added to the incident'); wbBar(); wbDraw(); U.toast('Scratch pages added', 'ok');
+  };
   function wbBarHtml() {
-    return WBC.map(function (c) { return '<button class="sw' + (CB.wbTool === 'pen' && CB.wbColor === c[0] ? ' on' : '') + '" data-cb="wbc" data-a="' + c[0] + '" title="' + c[1] + '"><i style="background:' + c[0] + '"></i></button>'; }).join('') + '<span class="sep"></span>' +
-      WBS.map(function (s) { return '<button class="sz' + (CB.wbSize === s[0] ? ' on' : '') + '" data-cb="wbs" data-a="' + s[0] + '" title="' + s[1] + '"><i style="width:' + (s[0] + 4) + 'px;height:' + (s[0] + 4) + 'px"></i></button>'; }).join('') + '<span class="sep"></span>' +
-      '<button class="tl' + (CB.wbTool === 'pen' ? ' on' : '') + '" data-cb="wbt" data-a="pen">' + svg('pen') + 'Pen</button><button class="tl' + (CB.wbTool === 'erase' ? ' on' : '') + '" data-cb="wbt" data-a="erase">' + svg('eraser') + 'Eraser</button><span class="sp"></span><button class="tl" data-cb="wbundo">' + I('refresh') + 'Undo</button><button class="tl" data-cb="wbclear">' + I('trash') + 'Clear</button>';
+    var cp = curPage(), pgs = pages(), sl = scratchLeft();
+    if (CB.ro) return '<div class="cbwbpages">' + pgs.map(function (p, k) { var n = strokes(p.id).length; return '<button class="pg' + (p.id === cp.id ? ' on' : '') + '" data-cb="wbpg" data-a="' + E(p.id) + '"><b>' + (k + 1) + '</b>' + E(p.n) + (n ? '<i>' + n + '</i>' : '') + '</button>'; }).join('') + '</div>';
+    return '<div class="cbwbpages">' + (pgs.length > 1 ? '<button class="tl ar" data-cb="wbstep" data-a="-1" title="Previous page">‹</button>' : '') + pgs.map(function (p, k) { var n = strokes(p.id).length; return '<button class="pg' + (p.id === cp.id ? ' on' : '') + '" data-cb="' + (p.id === cp.id ? 'wbpgmenu' : 'wbpg') + '" data-a="' + E(p.id) + '" title="' + (p.id === cp.id ? 'Rename, background or delete' : 'Open page') + '"><b>' + (k + 1) + '</b>' + E(p.n) + (n ? '<i>' + n + '</i>' : '') + (p.id === cp.id ? '<em>⋯</em>' : '') + '</button>'; }).join('') + (pgs.length > 1 ? '<button class="tl ar" data-cb="wbstep" data-a="1" title="Next page">›</button>' : '') + '<button class="tl add" data-cb="wbadd">' + I('plus') + 'Page</button>' + (sl ? '<button class="tl" data-cb="wbimport" title="Pages drawn on this tablet before the incident started">' + I('down') + 'Add scratch (' + sl + ')</button>' : '') + '</div>' +
+      '<div class="cbwbtools">' + WBC.map(function (c) { return '<button class="sw' + (CB.wbTool === 'pen' && CB.wbColor === c[0] ? ' on' : '') + '" data-cb="wbc" data-a="' + c[0] + '" title="' + c[1] + '"><i style="background:' + c[0] + '"></i></button>'; }).join('') + '<span class="sep"></span>' +
+      WBS.map(function (s) { return '<button class="sz' + (CB.wbSize === s[0] ? ' on' : '') + '" data-cb="wbs" data-a="' + s[0] + '" title="' + s[1] + '"><i style="width:' + (s[0] + 4) + 'px;height:' + (s[0] + 4) + 'px;background:' + CB.wbColor + '"></i></button>'; }).join('') + '<span class="sep"></span>' +
+      '<button class="tl' + (CB.wbTool === 'pen' ? ' on' : '') + '" data-cb="wbt" data-a="pen">' + svg('pen') + 'Pen</button><button class="tl' + (CB.wbTool === 'erase' ? ' on' : '') + '" data-cb="wbt" data-a="erase">' + svg('eraser') + 'Eraser</button><span class="sp"></span><button class="tl" data-cb="wbundo">' + I('refresh') + 'Undo</button><button class="tl" data-cb="wbclear">' + I('trash') + 'Clear page</button></div>';
   }
   function wbBar() { var b = document.getElementById('cbWbBar'); if (b) b.innerHTML = wbBarHtml(); }
   function wbView() { return '<div class="cbwb"><div class="cbwbbar" id="cbWbBar">' + wbBarHtml() + '</div><div class="cbwbhost" id="cbWbHost"></div></div>'; }
@@ -668,46 +824,84 @@
   function wbCtx() { var c = CB.wb, x = c.getContext('2d'), s = c.width / WBW; x.setTransform(s, 0, 0, s, 0, 0); x.lineCap = 'round'; x.lineJoin = 'round'; return x; }
   function pts(st) { return typeof st.p === 'string' ? st.p.split(' ').map(function (q) { return q.split(',').map(Number); }) : st.p; }
   function drawStroke(x, st) { var ps = pts(st); if (!ps.length) return; x.strokeStyle = st.c; x.lineWidth = st.w; x.beginPath(); x.moveTo(ps[0][0], ps[0][1]); if (ps.length === 1) x.lineTo(ps[0][0] + 0.5, ps[0][1] + 0.5); for (var k = 1; k < ps.length; k++) { if (k < ps.length - 1) { var mx = (ps[k][0] + ps[k + 1][0]) / 2, my = (ps[k][1] + ps[k + 1][1]) / 2; x.quadraticCurveTo(ps[k][0], ps[k][1], mx, my); } else x.lineTo(ps[k][0], ps[k][1]); } x.stroke(); }
+  // page background, drawn in board units (2000 wide, h tall)
+  function paintBg(x, kind, h) {
+    if (!kind || kind === 'blank') return;
+    x.save(); x.lineCap = 'butt';
+    if (kind === 'grid') { x.strokeStyle = 'rgba(160,190,230,.10)'; x.lineWidth = 2; for (var gx = 100; gx < WBW; gx += 100) { x.beginPath(); x.moveTo(gx, 0); x.lineTo(gx, h); x.stroke(); } for (var gy = 100; gy < h; gy += 100) { x.beginPath(); x.moveTo(0, gy); x.lineTo(WBW, gy); x.stroke(); } }
+    if (kind === 'bldg') {
+      var bw = 900, bh = Math.min(h * 0.5, 700), bx = (WBW - bw) / 2, by = (h - bh) / 2;
+      x.strokeStyle = 'rgba(200,215,235,.35)'; x.lineWidth = 6; x.setLineDash([]); x.strokeRect(bx, by, bw, bh);
+      x.strokeStyle = 'rgba(160,190,230,.10)'; x.lineWidth = 3; x.setLineDash([18, 16]); x.beginPath(); x.moveTo(bx + bw / 2, by); x.lineTo(bx + bw / 2, by + bh); x.moveTo(bx, by + bh / 2); x.lineTo(bx + bw, by + bh / 2); x.stroke(); x.setLineDash([]);
+      x.fillStyle = 'rgba(253,184,51,.55)'; x.font = '800 54px "Barlow Condensed",Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText('A · STREET', WBW / 2, by + bh + 60); x.fillText('C', WBW / 2, by - 50); x.fillText('B', bx - 60, by + bh / 2); x.fillText('D', bx + bw + 60, by + bh / 2);
+      x.font = '700 34px "Barlow Condensed",Arial'; x.fillStyle = 'rgba(200,215,235,.28)'; ['1', '2', '3', '4'].forEach(function (q, k) { x.fillText(q, bx + bw * (k % 2 ? 0.75 : 0.25), by + bh * (k < 2 ? 0.25 : 0.75)); });
+    }
+    if (kind === 'road') {
+      var cy = h / 2, lw = 140; x.fillStyle = 'rgba(160,190,230,.06)'; x.fillRect(0, cy - lw * 2, WBW, lw * 4);
+      x.strokeStyle = 'rgba(200,215,235,.35)'; x.lineWidth = 6; [cy - lw * 2, cy + lw * 2].forEach(function (y) { x.beginPath(); x.moveTo(0, y); x.lineTo(WBW, y); x.stroke(); });
+      x.strokeStyle = 'rgba(253,184,51,.45)'; x.lineWidth = 5; x.beginPath(); x.moveTo(0, cy - 6); x.lineTo(WBW, cy - 6); x.moveTo(0, cy + 6); x.lineTo(WBW, cy + 6); x.stroke();
+      x.strokeStyle = 'rgba(200,215,235,.25)'; x.lineWidth = 4; x.setLineDash([40, 40]); [cy - lw, cy + lw].forEach(function (y) { x.beginPath(); x.moveTo(0, y); x.lineTo(WBW, y); x.stroke(); }); x.setLineDash([]);
+      x.fillStyle = 'rgba(253,184,51,.5)'; x.font = '800 40px "Barlow Condensed",Arial'; x.textAlign = 'left'; x.fillText('◀ Direction of travel', 40, cy - lw * 2 - 30); x.textAlign = 'right'; x.fillText('Direction of travel ▶', WBW - 40, cy + lw * 2 + 50);
+    }
+    x.restore();
+  }
   function wbBg(x, w, h) { x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#080b10'; x.fillRect(0, 0, w, h); x.restore(); }
-  function wbDraw() { var c = CB.wb; if (!c || !c.width) return; var x = c.getContext('2d'); wbBg(x, c.width, c.height); x = wbCtx(); strokes().forEach(function (s) { drawStroke(x, s); }); }
+  function wbDraw() { var c = CB.wb; if (!c || !c.width) return; var x = c.getContext('2d'); wbBg(x, c.width, c.height); x = wbCtx(); paintBg(x, curPage().bg, c.height / (c.width / WBW)); strokes().forEach(function (s) { drawStroke(x, s); }); }
   function wbSize() { var c = CB.wb, h = c.parentNode; if (!h) return; var dpr = Math.min(window.devicePixelRatio || 1, 2), w = h.clientWidth, hh = h.clientHeight; c.width = Math.round(w * dpr); c.height = Math.round(hh * dpr); c.style.width = w + 'px'; c.style.height = hh + 'px'; }
   function eraseAt(p) { var hit = false, rad = 24; strokes().forEach(function (s) { if (pts(s).some(function (q) { return Math.abs(q[0] - p[0]) < rad && Math.abs(q[1] - p[1]) < rad; })) { s.del = true; s.u = CP.now(); hit = true; } }); if (hit) { CB.erased = true; wbDraw(); } }
+  // drop points that add nothing to the line (keeps saved boards small on the tablet and in ArcGIS)
+  function simplify(ps, eps) {
+    if (ps.length < 3) return ps;
+    var keep = new Uint8Array(ps.length); keep[0] = keep[ps.length - 1] = 1; var st = [[0, ps.length - 1]];
+    while (st.length) { var r = st.pop(), a = ps[r[0]], b = ps[r[1]], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy, best = -1, bi = -1;
+      for (var k = r[0] + 1; k < r[1]; k++) { var p = ps[k], t = L2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) : 0, ex = a[0] + t * dx - p[0], ey = a[1] + t * dy - p[1], d = ex * ex + ey * ey; if (d > best) { best = d; bi = k; } }
+      if (best > eps * eps) { keep[bi] = 1; st.push([r[0], bi], [bi, r[1]]); } }
+    return ps.filter(function (p, k) { return keep[k]; });
+  }
   function wbMount() {
     var host = document.getElementById('cbWbHost'); if (!host) return;
     if (!CB.wb) {
       var c = CB.wb = document.createElement('canvas'); c.className = 'cbwbc'; var cur = null, penSeen = false;
       c.addEventListener('pointerdown', function (e) {
+        if (CB.ro) return; // phone view: look, don't draw
         if (e.pointerType === 'pen') penSeen = true; else if (penSeen && e.pointerType === 'touch') return; // palm rejection once a pencil is used
+        if (cur && !cur.erase) return; // one line at a time (a second finger does not start a new line)
         e.preventDefault(); try { c.setPointerCapture(e.pointerId); } catch (x) {} var p = wbPt(e); CB.drawing = true;
-        if (CB.wbTool === 'erase') { cur = { erase: true }; eraseAt(p); return; }
-        cur = { id: CP.uid(), c: CB.wbColor, w: CB.wbSize, pts: [p], last: p }; var x = wbCtx(); x.fillStyle = cur.c; x.beginPath(); x.arc(p[0], p[1], cur.w / 2, 0, 7); x.fill();
+        if (CB.wbTool === 'erase') { cur = { erase: true, pid: e.pointerId }; eraseAt(p); return; }
+        cur = { id: CP.uid(), pid: e.pointerId, pg: curPage().id, c: CB.wbColor, w: CB.wbSize, pts: [p], last: p }; var x = wbCtx(); x.fillStyle = cur.c; x.beginPath(); x.arc(p[0], p[1], cur.w / 2, 0, 7); x.fill();
       });
       c.addEventListener('pointermove', function (e) {
-        if (!cur) return; e.preventDefault(); var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; if (!evs.length) evs = [e];
+        if (!cur || e.pointerId !== cur.pid) return; e.preventDefault(); var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; if (!evs.length) evs = [e];
         evs.forEach(function (ev) { var p = wbPt(ev); if (cur.erase) { eraseAt(p); return; } var l = cur.last; if (Math.abs(p[0] - l[0]) + Math.abs(p[1] - l[1]) < 3) return; var x = wbCtx(); x.strokeStyle = cur.c; x.lineWidth = cur.w; x.beginPath(); x.moveTo(l[0], l[1]); x.lineTo(p[0], p[1]); x.stroke(); cur.pts.push(p); cur.last = p; });
       });
-      var end = function () {
-        if (!cur) return; var s = cur; cur = null; CB.drawing = false;
+      var end = function (e) {
+        if (!cur || (e && e.pointerId != null && cur.pid != null && e.pointerId !== cur.pid)) return; var s = cur; cur = null; CB.drawing = false;
         if (s.erase) { if (CB.erased) { CB.erased = false; wbSave(); } return; }
-        var dd = wbDoc(); dd.cbDraw = dd.cbDraw || []; dd.cbDraw.push({ id: s.id, c: s.c, w: s.w, p: s.pts.map(function (q) { return q[0] + ',' + q[1]; }).join(' '), by: CP.me.name || '', u: CP.now() });
-        wbSave(); wbDraw();
+        var dd = wbDoc(); dd.cbDraw = dd.cbDraw || []; if (s.pg !== 'p1' || AL(dd.cbPages).length) ensurePages();
+        dd.cbDraw.push({ id: s.id, c: s.c, w: s.w, pg: s.pg, p: simplify(s.pts, 1.5).map(function (q) { return q[0] + ',' + q[1]; }).join(' '), by: CP.me.name || '', u: CP.now() });
+        wbSave(); wbDraw(); wbBar();
       };
-      c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end); c.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') end(); });
+      c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end); c.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') end(e); });
       window.addEventListener('resize', function () { if (CB.wb && CB.wb.parentNode) { wbSize(); wbDraw(); } });
     }
     host.appendChild(CB.wb); wbSize(); wbDraw();
   }
-  // whiteboard as an image for the report
-  function wbImage() {
-    var s = strokes(); if (!s.length) return '';
-    var maxY = 0; s.forEach(function (st) { pts(st).forEach(function (q) { if (q[1] > maxY) maxY = q[1]; }); });
-    var w = 1000, sc = w / WBW, h = Math.max(400, Math.min(2000, Math.round((maxY + 40) * sc))), c = document.createElement('canvas'); c.width = w; c.height = h;
-    var x = c.getContext('2d'); x.fillStyle = '#080b10'; x.fillRect(0, 0, w, h); x.setTransform(sc, 0, 0, sc, 0, 0); x.lineCap = 'round'; x.lineJoin = 'round'; s.forEach(function (st) { drawStroke(x, st); });
-    return c.toDataURL('image/png');
+  // whiteboard pages as images for the report: [{ n, url }]
+  function wbImages() {
+    return pages().map(function (pg) {
+      var s = strokes(pg.id); if (!s.length) return null;
+      var maxY = 0; s.forEach(function (st) { pts(st).forEach(function (q) { if (q[1] > maxY) maxY = q[1]; }); });
+      var w = 1000, sc = w / WBW, h = Math.max(400, Math.min(2000, Math.round((maxY + 40) * sc))), c = document.createElement('canvas'); c.width = w; c.height = h;
+      var x = c.getContext('2d'); x.fillStyle = '#080b10'; x.fillRect(0, 0, w, h); x.setTransform(sc, 0, 0, sc, 0, 0); x.lineCap = 'round'; x.lineJoin = 'round'; paintBg(x, pg.bg, h / sc); s.forEach(function (st) { drawStroke(x, st); });
+      return { n: pg.n, url: c.toDataURL('image/png') };
+    }).filter(Boolean);
   }
 
   act.signin = function () { A.signIn(); };
-  act.local = function () { CB.localOk = true; CB.list = []; CB.cad = []; render(); };
+  act.ptab = function (t) { CB.ptab = t; window.scrollTo(0, 0); render(); };
+  act.cadtoggle = function () { var on = !cadPref(); CP.store.setPref('cbCad', on ? 'on' : 'off'); CB.cadHealth = null; CB.cad = on ? undefined : []; CB.avl = on ? CB.avl : []; if (on && inc()) U.toast('CAD on', 'ok'); render(); if (!inc() || on) loadLists().then(render); };
+  act.local = function () { CB.localOk = true; CP.store.setPref('cbLocal', 1); CB.list = localBoards(); CB.cad = []; render(); };
   act.tpl = function (k) { CB.tpl = k; if (CB.call && CB.call[2] !== k) CB.call = null; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; render(); };
   act.cad = function (id) { var c = (CB.cad || []).find(function (x) { return x.callid === id; }); CB.cadPick = c; CB.addr = c.addr; var ct = callFor(c.type); if (ct) { CB.call = ct; CB.tpl = ct[2]; return render(); } if (/alarm/i.test(c.type + ' ' + c.cat)) CB.tpl = 'alarm'; else if (/struct|resid|commerc|building|house/i.test(c.type)) CB.tpl = 'structure'; else if (/mci|mass casualty|multiple patient/i.test(c.type + ' ' + c.cat)) CB.tpl = 'mci'; else if (/accident|mva|collision|crash|wreck|mvc/i.test(c.type + ' ' + c.cat)) CB.tpl = 'mva'; else if (/vehicle fire|car fire/i.test(c.type)) CB.tpl = 'vehicle'; else if (/brush|woods|grass|wild/i.test(c.type)) CB.tpl = 'brush'; render(); };
   act.start = function () { startBoard().catch(function (e) { U.toast(E(e.message), 'err'); }); };
@@ -836,7 +1030,7 @@
   act.umenu = function (id) { unitMenu(id); };
   act.note = function () { U.modal('Log entry', '<textarea class="in" id="cbNote" style="min-height:90px"></textarea><div class="cbmenu grid" style="margin-top:8px">' + quickFor().map(function (q) { return '<button data-q="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log', cls: 'pri', fn: function (b) { var t = b.querySelector('#cbNote').value.trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); } }], { onOpen: function (b) { b.addEventListener('click', function (e) { var q = e.target.closest('[data-q]'); if (!q) return; e.preventDefault(); var n = b.querySelector('#cbNote'); n.value = (n.value ? n.value + '. ' : '') + q.dataset.q; }); } }); };
   act.more = function () {
-    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], ['phonelink', 'Phone view link / QR'], ['tocp', 'Move to Command Post (full ICS)'], [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list']].map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], ['phonelink', 'Phone view link / QR'], ['itexport', 'Export for ImageTrend (NERIS)' + (cadNoOf() ? ' · CAD ' + cadNoOf() : '')], ['backup', 'Save board to a file (backup or hand-off to another tablet)'], ['cadtoggle', cadPref() ? 'Turn CAD off on this tablet (run by hand)' : 'Turn CAD on'], ['tocp', 'Move to Command Post (full ICS)'], [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list']].map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-mo]'); if (!b) return; e.preventDefault(); var k = b.dataset.mo; U.closeModal();
       if (k === 'ic') setTimeout(act.xfer, 30);
@@ -844,11 +1038,12 @@
       if (/^(staff|sizeup|r360|pov|iso|gas|peac)$/.test(k)) setTimeout(act[k], 30);
       if (k === 'upgrade') upgrade();
       if (k === 'phonelink') phoneLink();
+      if (/^(itexport|backup|cadtoggle)$/.test(k)) setTimeout(act[k], 30);
       if (k === 'tocp') toCP();
       if (k === 'close') sure('Terminate command?', 'Releases every unit and closes the incident. The incident report opens next.', 'Terminate command', function () { var all = units(); all.forEach(function (r) { r.status = 'Released'; r.released = CP.now(); r.u = CP.now(); }); CP.touch(inc(), 'resources'); log('Command terminated. ' + all.length + ' unit(s) released. Incident closed after ' + since(inc().start) + '.', 'Decision'); CP.setPath(inc(), 'status', 'Closed'); CP.setPath(inc(), 'closed', CP.now()); commit(null); setTimeout(report, 300); });
       if (k === 'report') report();
       if (k === 'reopen') { CP.setPath(inc(), 'status', 'Active'); CP.setPath(inc(), 'closed', ''); commit('Incident reopened', 'Decision'); }
-      if (k === 'exit') { CB.inc = null; history.replaceState(null, '', location.pathname); CB.list = undefined; render(); loadLists().then(render); }
+      if (k === 'exit') { CP.store.setPref('cbCur', null); CB.inc = null; history.replaceState(null, '', location.pathname); CB.list = undefined; render(); loadLists().then(render); }
     });
   };
   // =====================================================================
@@ -1153,10 +1348,11 @@
       '<div class="sub">' + E(i.number) + ' · ' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (i.exercise ? ' · PRACTICE' : '') + ' · Status ' + E(i.status) + '</div>' +
       (kv('call', null) ? '<p><b>Call type:</b> ' + E(kv('call').type) + ' · <b>Recommended response:</b> ' + E(kv('call').resp || 'none') + '</p>' : '') + (kv('mci', null) ? '<p><b>MCI declared</b> ' + E(CP.fmtDT(kv('mci').t)) + ' · patients ' + mciCounts().total + ' (red ' + mciCounts().red + ', yellow ' + mciCounts().yellow + ', green ' + mciCounts().green + ', black ' + mciCounts().black + ')</p>' : '') +
       tbl(['Started', 'Closed', 'Duration', 'Incident Commander', 'Final strategy', 'Conditions', 'Units'], [row([CP.fmtDT(i.start), i.closed ? CP.fmtDT(i.closed) : 'Open', dur(i.start, i.closed || null), CP.personName(i, 'IC'), kv('mode', ''), kv('cond', ''), all.length])]) +
-      (function () { var ps = photos(), wb = wbImage(); return (ps.length ? '<h2>Scene photos</h2><div style="display:flex;flex-wrap:wrap;gap:8px">' + ps.map(function (p) { return '<figure style="margin:0;width:150px"><img src="' + p.th + '" style="width:150px;border-radius:4px"><figcaption style="font-size:10px">' + E(CP.fmtTime(p.t)) + (p.cap ? ' · ' + E(p.cap) : '') + '</figcaption></figure>'; }).join('') + '</div><p style="font-size:10px;color:#555">Full-size photos: county ArcGIS, tag "' + E(inc().number) + '".</p>' : '') + (wb ? '<h2>Whiteboard</h2><img src="' + wb + '" style="width:100%;max-width:700px;border-radius:6px">' : ''); })() + '<h2>Benchmarks</h2>' + tbl(['Benchmark', 'Time', 'Into incident', 'By'], marks().map(function (m) { return row([m.label, m.t ? CP.fmtTime(m.t) : 'not reached', m.t ? dur(i.start, m.t) : '', m.by]); })) +
+      (function () { var ps = photos(), wbs = wbImages(); return (ps.length ? '<h2>Scene photos</h2><div style="display:flex;flex-wrap:wrap;gap:8px">' + ps.map(function (p) { return '<figure style="margin:0;width:150px"><img src="' + p.th + '" style="width:150px;border-radius:4px"><figcaption style="font-size:10px">' + E(CP.fmtTime(p.t)) + (p.cap ? ' · ' + E(p.cap) : '') + '</figcaption></figure>'; }).join('') + '</div><p style="font-size:10px;color:#555">Full-size photos: county ArcGIS, tag "' + E(inc().number) + '".</p>' : '') + wbs.map(function (w, k) { return '<h2>Whiteboard' + (wbs.length > 1 || w.n !== 'Page 1' ? ': ' + E(w.n) : '') + '</h2><img src="' + w.url + '" style="width:100%;max-width:700px;border-radius:6px;page-break-inside:avoid">'; }).join(''); })() + '<h2>Benchmarks</h2>' + tbl(['Benchmark', 'Time', 'Into incident', 'By'], marks().map(function (m) { return row([m.label, m.t ? CP.fmtTime(m.t) : 'not reached', m.t ? dur(i.start, m.t) : '', m.by]); })) +
       (function () { var st = staff(), rows = [['Command name', kv('cmdName', '')], ['Safety Officer', st.safety], ['PIO', st.pio], ['Liaison', st.liaison], ['Unified Command', (st.uc || []).join(', ') + (st.ucrep ? ' (' + st.ucrep + ')' : '')], ['Tactical channel(s)', [st.tac, st.tac2].filter(Boolean).join(' · ')], ['Command post', st.cp], ['Accountability collection point', st.acp], ['Weather', CB.wx && CB.wx.ok ? wxText(CB.wx) + ' (NWS ' + CB.wx.st + ')' : ''], ['VDOT traffic level', kv('tlevel', '') || '']].filter(function (x) { return x[1]; }); return rows.length ? '<h2>Command</h2>' + tbl(['Item', 'Detail'], rows.map(function (x) { return row(x); })) : ''; })() +
       (reqs().length ? '<h2>Resource requests</h2>' + tbl(['Request', 'Qty', 'Status', 'Requested', 'History', 'Note'], reqs().map(function (r) { return row([r.what, r.qty, r.st, CP.fmtTime(r.t), (r.hist || []).map(function (h) { return CP.fmtTime(h.t) + ' ' + h.st; }).join(' → '), r.note]); })) : '') +
       '<h2>Units</h2>' + tbl(['Unit', 'Riding', 'Type', 'Agency', 'Arrived', 'Last assignment', 'Status', 'Released', 'Time on scene', 'Note'], all.map(function (r) { return row([r.name + (r.parent ? ' (split)' : ''), r.persons || '', r.kind, r.agency, r.arrived || r.checkin ? CP.fmtTime(r.arrived || r.checkin) : '', asgName(r.assign) || (lg.slice().reverse().find(function (l) { return l.text.indexOf(r.name + ' assigned to ') === 0; }) || { text: '' }).text.replace(r.name + ' assigned to ', ''), r.status, r.released ? CP.fmtTime(r.released) : '', dur(r.arrived || r.checkin, r.released || i.closed || null), r.note || '']); })) +
+      (syms().length || Object.keys(sides()).length ? '<h2>Map</h2>' + tbl(['Symbol', 'Label', 'Placed', 'By'], SIDES.filter(function (x) { return sides()[x]; }).map(function (x) { return row(['Side ' + x, '', CP.fmtTime(sides()[x].t), sides()[x].by]); }).concat(syms().map(function (o) { var d = symDef(o.k); return row([d.n + (d.zone ? ' (' + (+o.r || d.r) + ' ft)' : ''), o.lbl, CP.fmtTime(o.t), o.by]); }))) : '') +
       '<h2>Divisions & groups</h2>' + tbl(['Assignment', 'Supervisor', 'Task', 'Last CAN report'], asgs().map(function (a) { return row([aName(a), a.reportTo, a.work, a.cbCan]); })) +
       '<h2>Safety: PAR and MAYDAY</h2>' + tbl(['Time', 'Entry'], lg.filter(function (l) { return /^(PAR|MAYDAY)/.test(l.text); }).map(function (l) { return row([CP.fmtTime(l.ts), l.text]); }).concat(lg.some(function (l) { return /^(PAR|MAYDAY)/.test(l.text); }) ? [] : [row(['', 'No PAR or MAYDAY recorded'])])) +
       '<h2>Complete timeline</h2>' + tbl(['Time', 'Elapsed', 'Category', 'Entry', 'By'], lg.map(function (l) { return row([CP.fmtTime(l.ts), dur(i.start, l.ts), l.cat, l.text, l.author]); })) +
@@ -1164,10 +1360,210 @@
     var css = '<style>body{font:12px/1.35 Arial,sans-serif;color:#111;margin:24px}h1{font:800 18px Arial;margin:2px 0}h2{font:700 13px Arial;margin:16px 0 6px;border-bottom:2px solid #0B1A2B;text-transform:uppercase;letter-spacing:.5px}.k{font:700 10px Arial;letter-spacing:2px;color:#555}.sub{color:#444;margin-bottom:10px}table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eef1f5;font-size:11px}.foot{margin-top:16px;font-size:10px;color:#666}@media print{button{display:none}}</style>';
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Incident report ' + E(i.number) + '</title>' + css + '</head><body>' + body + '</body></html>';
     var fname = 'Incident report ' + i.number + ' ' + (i.location.desc || '').replace(/[^\w ,-]+/g, '').slice(0, 40) + '.html';
-    var bg = U.modal('Incident report', '<div class="cbreport">' + body + '</div>', [{ label: I('down') + 'Download', cls: 'ghost', fn: function () { U.download(fname, html, 'text/html'); return false; } }, { label: I('print') + 'Print / save as PDF', cls: 'pri', fn: function () {
+    var bg = U.modal('Incident report', '<div class="cbreport">' + body + '</div>', [{ label: I('down') + 'Download', cls: 'ghost', fn: function () { saveFile(fname, html, 'text/html'); return false; } }, { label: I('print') + 'Print / save as PDF', cls: 'pri', fn: function () {
       var w = window.open('', '_blank'); if (w) { w.document.write(html + '<script>setTimeout(function(){print()},300)<\/script>'); w.document.close(); } else { U.download(fname, html, 'text/html'); U.toast('Downloaded. Open it and print to save a PDF.', 'ok', 6000); } return false; } }, { label: 'Close', cls: 'ghost' }].slice(0, 2).concat(sendBtns(html, fname)).concat([{ label: 'Close', cls: 'ghost' }]), { wide: true });
     return bg;
   }
+
+  // =================== autosave ===================
+  // 1. Every change is written to this tablet at once (as before).
+  // 2. Signed in and online: every change goes to county ArcGIS within a second, and every 2 minutes anything not yet
+  //    confirmed is sent again. Once it is in ArcGIS, any signed-in tablet, phone or Command Post can open it, even if this iPad dies.
+  // 3. Every 2 minutes (and when the iPad sleeps or the app is closed) a copy also goes into a second store on the
+  //    tablet (IndexedDB, last 6 copies per incident), so a damaged or full main store can be recovered.
+  var AUTOSAVE_MS = 120000, SDB = null;
+  function sdb() { return SDB || (SDB = new Promise(function (ok, no) { try { var r = indexedDB.open('beacon-cb-autosave', 1); r.onupgradeneeded = function () { r.result.createObjectStore('inc', { keyPath: 'id' }); }; r.onsuccess = function () { ok(r.result); }; r.onerror = function () { no(r.error); }; } catch (e) { no(e); } })); }
+  function idb(mode, fn) { return sdb().then(function (db) { return new Promise(function (ok, no) { var tx = db.transaction('inc', mode), st = tx.objectStore('inc'), out = fn(st); tx.oncomplete = function () { ok(out && typeof IDBRequest !== 'undefined' && out instanceof IDBRequest ? out.result : out); }; tx.onerror = function () { no(tx.error); }; }); }); }
+  async function snapshot() {
+    var i = inc(); if (!i || CB.snapU === i.updated) return; var u = i.updated, copy = JSON.stringify(i);
+    try {
+      var rec = await idb('readonly', function (st) { return st.get(i.id); }) || { id: i.id, snaps: [] };
+      rec.name = i.name; rec.status = i.status; rec.t = Date.now(); rec.snaps = (rec.snaps || []).concat([{ t: Date.now(), u: u, doc: copy }]).slice(-6);
+      await idb('readwrite', function (st) { return st.put(rec); }); CB.snapU = u; CB.snapT = Date.now();
+    } catch (e) { console.warn('autosave copy', e); }
+  }
+  function autosave(why) {
+    var i = inc(); if (!i) return;
+    CP.store.put(i); snapshot();
+    if (A.status === 'on' && !CB.saving && CB.pushedU !== i.updated) push();
+    else if (A.signedIn() && A.status !== 'on' && CP.sync) CP.sync.markIncident(i.id);
+    paintSync();
+  }
+  setInterval(function () { autosave('timer'); }, AUTOSAVE_MS);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') autosave('hidden'); });
+  window.addEventListener('pagehide', function () { autosave('close'); });
+  // Command Board home: copies in the second store that are newer than (or missing from) the main store
+  async function recoverable() {
+    try {
+      var all = await idb('readonly', function (st) { return st.getAll(); }) || [];
+      return all.filter(function (r) { var last = (r.snaps || []).slice(-1)[0]; if (!last) return false; var have = CP.store.get(r.id); return !have || (have.updated || '') < (last.u || ''); })
+        .filter(function (r) { return Date.now() - r.t < 14 * 864e5; }).sort(function (a, b) { return b.t - a.t; });
+    } catch (e) { return []; }
+  }
+  act.recover = async function () {
+    var list = await recoverable(); if (!list.length) { U.toast('Nothing to recover on this tablet', 'ok'); return; }
+    var bg = U.modal('Recover autosaved boards', '<p class="dim" style="margin-top:0">These copies are newer than what the board list has on this tablet.</p><div class="cbmenu">' + list.map(function (r) { var l = r.snaps[r.snaps.length - 1]; return '<button data-rid="' + E(r.id) + '">' + E(r.name || r.id) + ' · autosaved ' + E(CP.fmtDT(new Date(l.t).toISOString())) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    bg.addEventListener('click', function (e) { var b = e.target.closest('[data-rid]'); if (!b) return; e.preventDefault(); var r = list.find(function (x) { return x.id === b.dataset.rid; }); var doc = JSON.parse(r.snaps[r.snaps.length - 1].doc), have = CP.store.get(r.id), m = have ? CP.merge(have, doc) : doc; CP.store.put(m); if (A.signedIn() && CP.sync) CP.sync.markIncident(m.id); U.closeModal(); openBoard(m.id).then(function () { if (inc()) commit('Board recovered from the tablet autosave copy', 'Event', true); }); });
+  };
+  function saveState() {
+    var i = inc(); if (!i) return '';
+    if (A.status === 'on') return CB.saving ? 'Saving…' : CB.pushedU === i.updated && CB.savedT ? 'Saved to ArcGIS ' + CP.fmtTime(new Date(CB.savedT).toISOString()) : 'Sending…';
+    if (A.signedIn()) return 'Offline · saved on iPad · sends when back online';
+    return 'On this iPad only · sign in to share';
+  }
+
+  // =================== ImageTrend export (NERIS-shaped) ===================
+  // ImageTrend Elite builds the fire report from CAD (incident number, dispatch and unit times). The board adds what CAD
+  // does not know: tactical benchmarks, staffing, command, assignments, PAR/MAYDAY and a narrative. The export is keyed by
+  // the CAD incident number so it lines up with the report Elite already created from CAD.
+  // Field names follow the NERIS incident schema (tactic_timestamps, unit_responses); the ImageTrend admin confirms the mapping.
+  var NERIS_TS = [
+    ['command_established', /command established|^MCI declared|^Size-up/i],
+    ['completed_sizeup', /^360 complete|^Scene size-up complete|^Size-up · victims located|^360 \/ lookouts/i],
+    ['water_on_fire', /^Water on fire/i],
+    ['primary_search_begin', /^Primary search (started|begun)/i],
+    ['primary_search_complete', /^Primary search complete/i],
+    ['fire_knocked_down', /^Knockdown/i],
+    ['fire_under_control', /^Fire control|^Contained|^Forward spread stopped/i],
+    ['extrication_complete', /^Rescue\/Extrication completed/i],
+    ['suppression_complete', /^Loss stopped|^Mop-up complete/i]
+  ];
+  function isoLocal(t) { if (!t) return null; var d = new Date(t); if (isNaN(d)) return null; var o = -d.getTimezoneOffset(), sg = o >= 0 ? '+' : '-'; o = Math.abs(o); return d.getFullYear() + '-' + CP.pad(d.getMonth() + 1) + '-' + CP.pad(d.getDate()) + 'T' + CP.pad(d.getHours()) + ':' + CP.pad(d.getMinutes()) + ':' + CP.pad(d.getSeconds()) + sg + CP.pad(Math.floor(o / 60)) + ':' + CP.pad(o % 60); }
+  function cadNoOf(i) { i = i || inc(); var k = kv('cadNo', ''); if (k) return String(k); var c = AL(i.calls)[0]; return c ? String(c.callid) : ''; }
+  function tacticTimes() {
+    var out = {}, lg = AL(inc().log);
+    NERIS_TS.forEach(function (n) {
+      var m = marks().find(function (x) { return x.t && n[1].test(x.label); });
+      var l = m ? null : lg.find(function (x) { return n[1].test(String(x.text || '').replace(/^Benchmark: /, '')); });
+      out[n[0]] = m ? m.t : l ? l.ts : null;
+    });
+    if (!out.command_established) out.command_established = inc().start || null;
+    return out;
+  }
+  function unitTimeline(r, lg) { return lg.filter(function (l) { return String(l.text || '').indexOf(r.name + ' assigned to ') === 0; }).map(function (l) { return { time: isoLocal(l.ts), assignment: l.text.slice((r.name + ' assigned to ').length) }; }); }
+  function narrative() {
+    var i = inc(), call = kv('call', null), st = staff(), out = [];
+    var first = AL(i.resources).filter(function (r) { return r.arrived; }).sort(function (a, b) { return a.arrived < b.arrived ? -1 : 1; })[0];
+    out.push((call ? call.type.replace(/^F - /, '') : (TEMPLATES[kv('tpl', 'other')] || {}).n || i.type) + ' at ' + (i.location.desc || i.name) + '.' + (first ? ' First unit on scene: ' + first.name + ' at ' + CP.fmtTime(first.arrived) + '.' : ''));
+    if (kv('cond', '')) out.push('Conditions: ' + kv('cond', '') + '.');
+    if (kv('mode', '')) out.push('Strategy: ' + kv('mode', '') + '.');
+    var ic = CP.personName(i, 'IC'); if (ic) out.push((kv('cmdName', '') ? kv('cmdName', '') + ' established' : 'Command established') + '; IC ' + ic + '.');
+    if (st.safety) out.push('Safety Officer: ' + st.safety + '.');
+    var done = marks().filter(function (m) { return m.t; }); if (done.length) out.push('Benchmarks: ' + done.map(function (m) { return m.label + ' ' + CP.fmtTime(m.t); }).join('; ') + '.');
+    var asg = asgs().map(function (a) { var us = AL(i.resources).filter(function (r) { return r.assign === a.id || unitTimeline(r, AL(i.log)).some(function (x) { return x.assignment === aName(a); }); }); return us.length ? aName(a) + ': ' + us.map(function (r) { return r.name; }).join(', ') : ''; }).filter(Boolean);
+    if (asg.length) out.push('Assignments: ' + asg.join('; ') + '.');
+    var par = AL(i.log).filter(function (l) { return /^PAR/.test(l.text); }).length; if (par) out.push(par + ' PAR check(s) logged.');
+    var may = AL(i.log).filter(function (l) { return /^MAYDAY/.test(l.text); }); if (may.length) out.push(may.map(function (l) { return CP.fmtTime(l.ts) + ' ' + l.text; }).join(' '));
+    if (reqs().length) out.push('Requests: ' + reqs().map(function (r) { return (r.qty > 1 ? r.qty + ' × ' : '') + r.what + ' (' + r.st + ')'; }).join('; ') + '.');
+    var notes = AL(i.log).filter(function (l) { return /Decision|Communication/.test(l.cat) && !/^(PAR|MAYDAY|Benchmark)/.test(l.text); }).slice(-15); if (notes.length) out.push('Key entries: ' + notes.map(function (l) { return CP.fmtTime(l.ts) + ' ' + l.text; }).join(' | '));
+    if (i.closed) out.push('Command terminated ' + CP.fmtTime(i.closed) + '.');
+    return out.join(' ').replace(/\s+/g, ' ').slice(0, 7900);
+  }
+  function exportData() {
+    var i = inc(), lg = AL(i.log), cadNo = cadNoOf(i), call = kv('call', null), st = staff(), tt = tacticTimes();
+    var units = AL(i.resources).filter(function (r) { return !r.parent; });
+    return {
+      format: 'BEACON Command Board export for ImageTrend Elite (NERIS-shaped)', version: 1, exported: isoLocal(CP.now()), exported_by: CP.me.name || '',
+      practice: !!i.exercise,
+      dispatch: { incident_number: cadNo || null, call_type: call ? call.type : null, recommended_response: call ? call.resp : null, cad_calls: AL(i.calls).map(function (c) { return { incident_number: String(c.callid), call_type: c.type || null, address: c.addr || null }; }) },
+      base: {
+        board_incident_number: i.number, board_incident_id: i.id, incident_name: i.name,
+        location: { address: i.location.desc || null, latitude: i.location.lat !== '' && i.location.lat != null ? +i.location.lat : null, longitude: i.location.lng !== '' && i.location.lng != null ? +i.location.lng : null },
+        board_type: (TEMPLATES[kv('tpl', 'other')] || {}).n || i.type, conditions_on_arrival: kv('cond', '') || null, strategy: kv('mode', '') || null,
+        start: isoLocal(i.start), closed: isoLocal(i.closed), outcome_narrative: narrative()
+      },
+      tactic_timestamps: Object.keys(tt).reduce(function (o, k) { o[k] = isoLocal(tt[k]); return o; }, {}),
+      command: { command_name: kv('cmdName', '') || null, incident_commander: CP.personName(i, 'IC') || null, safety_officer: st.safety || null, pio: st.pio || null, unified_command: st.uc || [], tactical_channels: [st.tac, st.tac2].filter(Boolean), command_post: st.cp || null, accountability_point: st.acp || null,
+        transfers: lg.filter(function (l) { return /command (transferred|to )|has command|Transfer/i.test(l.text) && l.cat === 'Decision'; }).map(function (l) { return { time: isoLocal(l.ts), entry: l.text }; }) },
+      unit_responses: units.map(function (r) { var splits = AL(i.resources).filter(function (x) { return x.parent === r.id; }); return {
+        reported_unit_id: r.name, unit_type: r.kind || null, agency: r.agency || null, staffing: (+r.persons || 0) + splits.reduce(function (s, x) { return s + (x.status === 'Released' ? 0 : +x.persons || 0); }, 0) || null,
+        dispatch: null, enroute_to_scene: isoLocal(r.enr), on_scene: isoLocal(r.arrived), unit_clear: isoLocal(r.released), status_at_export: r.status,
+        assignments: unitTimeline(r, lg), note: r.note || null }; }),
+      benchmarks: marks().map(function (m) { return { benchmark: m.label, time: isoLocal(m.t), by: m.by || null }; }),
+      safety: { par_checks: lg.filter(function (l) { return /^PAR/.test(l.text); }).map(function (l) { return { time: isoLocal(l.ts), entry: l.text }; }), mayday: lg.filter(function (l) { return /^MAYDAY/.test(l.text); }).map(function (l) { return { time: isoLocal(l.ts), entry: l.text }; }) },
+      resource_requests: reqs().map(function (r) { return { request: r.what, quantity: r.qty, status: r.st, requested: isoLocal(r.t), note: r.note || null }; }),
+      mci: kv('mci', null) ? Object.assign({ declared: isoLocal(kv('mci').t) }, mciCounts()) : null,
+      timeline: lg.map(function (l) { return { time: isoLocal(l.ts), category: l.cat, entry: l.text, by: l.author || null }; })
+    };
+  }
+  function exportCsvs(d) {
+    var units = U.csv([['CAD incident #', 'Unit', 'Type', 'Agency', 'Staffing', 'En route', 'On scene', 'Clear', 'Status', 'Assignments']].concat(d.unit_responses.map(function (u) { return [d.dispatch.incident_number || '', u.reported_unit_id, u.unit_type, u.agency, u.staffing, u.enroute_to_scene, u.on_scene, u.unit_clear, u.status_at_export, u.assignments.map(function (a) { return a.time.slice(11, 16) + ' ' + a.assignment; }).join(' | ')]; })));
+    var times = U.csv([['CAD incident #', 'NERIS field', 'Time']].concat(Object.keys(d.tactic_timestamps).map(function (k) { return [d.dispatch.incident_number || '', k, d.tactic_timestamps[k] || '']; })).concat([[]]).concat([['CAD incident #', 'Benchmark', 'Time', 'By']]).concat(d.benchmarks.map(function (b) { return [d.dispatch.incident_number || '', b.benchmark, b.time || 'not reached', b.by || '']; })));
+    return { units: units, times: times };
+  }
+  function exportName(d, ext) { return 'ImageTrend ' + (d.dispatch.incident_number || d.base.board_incident_number) + ' ' + (d.base.location.address || '').replace(/[^\w ,-]+/g, '').slice(0, 30).trim() + ext; }
+  act.itexport = function () {
+    if (!inc()) return;
+    var d0 = exportData(), miss = [];
+    if (!d0.dispatch.incident_number) miss.push('No CAD incident number. ImageTrend matches on it, so enter it above.');
+    var noOn = d0.unit_responses.filter(function (u) { return !u.on_scene && u.status_at_export !== 'En Route'; }); if (noOn.length) miss.push(noOn.length + ' unit(s) have no on-scene time: ' + noOn.map(function (u) { return u.reported_unit_id; }).join(', ') + '.');
+    var still = d0.unit_responses.filter(function (u) { return !u.unit_clear; }); if (still.length && inc().status !== 'Closed') miss.push('The incident is still open; ' + still.length + ' unit(s) have no clear time yet.');
+    if (d0.practice) miss.push('This is a PRACTICE incident.');
+    var tt = d0.tactic_timestamps;
+    var body = '<label class="f"><span>CAD incident number</span><input class="in big" id="cbItNo" inputmode="numeric" value="' + E(d0.dispatch.incident_number || '') + '" placeholder="From dispatch"></label>' +
+      (miss.length ? '<div class="cbitwarn">' + miss.map(function (m) { return '<div' + (/^No CAD/.test(m) ? ' data-w="nocad"' : '') + '>' + I('warn') + E(m) + '</div>'; }).join('') + '</div>' : '') +
+      '<div class="cbh sm">Times sent (NERIS)</div><table class="cbittbl">' + Object.keys(tt).map(function (k) { return '<tr><td>' + E(k.replace(/_/g, ' ')) + '</td><td class="mono">' + (tt[k] ? E(CP.fmtTime(tt[k])) : '<span class="dim">–</span>') + '</td></tr>'; }).join('') + '</table>' +
+      '<div class="cbh sm">' + d0.unit_responses.length + ' unit(s) · ' + d0.benchmarks.filter(function (b) { return b.time; }).length + ' benchmark(s) · ' + d0.timeline.length + ' log entries</div>' +
+      '<p class="dim" style="font-size:13px">Dispatch and en-route times come from CAD in ImageTrend. The board adds on-scene and clear times, staffing, benchmarks, command and the narrative. Files: one .json (everything) and two .csv sheets (units, times).</p>';
+    function fresh(b) { var no = (b.querySelector('#cbItNo').value || '').trim(); if (no !== kv('cadNo', '')) { setKV('cadNo', no); commit(no ? 'CAD incident number set: ' + no : null, 'Event', true); } return exportData(); }
+    var btns = [
+      { label: I('copy') + 'Copy narrative', cls: 'ghost', fn: function (b) { var t = fresh(b).base.outcome_narrative; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { U.toast('Narrative copied. Paste it into the ImageTrend narrative.', 'ok', 5000); }, function () { U.modal('Narrative', '<textarea class="in" style="min-height:220px">' + E(t) + '</textarea>', [{ label: 'Close', cls: 'ghost' }]); }); return false; } },
+      { label: I('down') + 'Units .csv', cls: 'ghost', fn: function (b) { var d = fresh(b); saveFile(exportName(d, ' units.csv'), exportCsvs(d).units, 'text/csv'); return false; } },
+      { label: I('down') + 'Times .csv', cls: 'ghost', fn: function (b) { var d = fresh(b); saveFile(exportName(d, ' times.csv'), exportCsvs(d).times, 'text/csv'); return false; } },
+      { label: I('down') + 'Export .json', cls: 'pri', fn: function (b) { var d = fresh(b); saveFile(exportName(d, '.json'), JSON.stringify(d, null, 2), 'application/json'); log('Exported for ImageTrend' + (d.dispatch.incident_number ? ' (CAD ' + d.dispatch.incident_number + ')' : ''), 'Event'); commit(null, null, true); return false; } }
+    ];
+    if (canShareFiles()) btns.push({ label: I('up') + 'Share all 3', cls: 'ghost', fn: function (b) { var d = fresh(b), c = exportCsvs(d); navigator.share({ files: [new File([JSON.stringify(d, null, 2)], exportName(d, '.json'), { type: 'application/json' }), new File([c.units], exportName(d, ' units.csv'), { type: 'text/csv' }), new File([c.times], exportName(d, ' times.csv'), { type: 'text/csv' })], title: 'ImageTrend export ' + (d.dispatch.incident_number || '') }).catch(function () {}); return false; } });
+    btns.push({ label: 'Close', cls: 'ghost' });
+    var mb = U.modal('Export for ImageTrend', body, btns, { nofocus: true, wide: true }), w = mb.querySelector('[data-w="nocad"]');
+    mb.querySelector('#cbItNo').addEventListener('input', function (e) { if (w) w.style.display = e.target.value.trim() ? 'none' : ''; });
+  };
+
+  // =================== files on an iPad, board backup and hand-off ===================
+  function standalone() { return !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)); }
+  function canShareFiles() { try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.txt', { type: 'text/plain' })] })); } catch (e) { return false; } }
+  // Installed on an iPad, a plain download has nowhere to go; the share sheet (Save to Files, AirDrop, Mail) does.
+  function saveFile(name, content, type) {
+    if (standalone() && canShareFiles()) { var f = new File([content], name, { type: type }); navigator.share({ files: [f], title: name }).catch(function (e) { if (e && e.name !== 'AbortError') U.download(name, content, type); }); return; }
+    U.download(name, content, type);
+  }
+  act.backup = function () {
+    if (!inc()) return; var i = CP.clone(inc()); delete i.arc;
+    var name = 'Board ' + i.number + ' ' + (i.location.desc || '').replace(/[^\w ,-]+/g, '').slice(0, 30).trim() + ' ' + CP.fmtTime(CP.now()) + '.beacon.json';
+    saveFile(name, JSON.stringify({ beacon: 'command-board', v: 1, saved: CP.now(), by: CP.me.name || '', incident: i }), 'application/json');
+    CP.store.setPref('cbLastBackup', { id: i.id, t: Date.now() });
+  };
+  act.restore = function () {
+    var f = document.createElement('input'); f.type = 'file'; f.accept = '.json,application/json';
+    f.onchange = function () {
+      var file = f.files && f.files[0]; if (!file) return;
+      file.text().then(function (txt) {
+        var j = JSON.parse(txt), i = j && j.incident; if (!i || !i.id || !Array.isArray(i.resources)) throw new Error('That file is not a Command Board backup.');
+        var have = CP.store.get(i.id), m = have ? CP.merge(have, i) : i; m.arc = (have && have.arc) || { auto: { incident: false, facilities: false } };
+        CP.store.put(m); if (A.signedIn() && CP.sync) CP.sync.markIncident(m.id);
+        U.toast((have ? 'Merged with the copy on this tablet: ' : 'Opened: ') + E(m.name), 'ok', 5000);
+        return openBoard(m.id).then(function () { if (inc()) commit('Board opened from a backup file' + (j.by ? ' saved by ' + j.by : '') + ' (' + CP.fmtDT(j.saved) + ')', 'Event', true); });
+      }).catch(function (e) { U.toast(E(e.message || 'Could not read that file'), 'err', 6000); });
+    };
+    f.click();
+  };
+  // device storage full: the board keeps working in memory, so say so loudly and offer a backup file
+  function storeFull() {
+    if (CB.fullShown && Date.now() - CB.fullShown < 120000) return; CB.fullShown = Date.now();
+    U.modal('This tablet is out of storage', '<p>The latest changes could not be saved on this tablet.' + (A.status === 'on' ? ' They are still being shared to ArcGIS.' : ' <b>You are offline, so they are only on screen.</b>') + '</p><p>Save a backup file now. Then close finished boards: Command Board home clears closed incidents older than a week.</p>', [{ label: I('down') + 'Save backup file', cls: 'pri', fn: function () { act.backup(); } }, { label: 'Later', cls: 'ghost' }], { sticky: true });
+  }
+  window.addEventListener('cp-store-full', storeFull);
+  // keep the screen on while a board is open (iPadOS 16.4+; ignored where not supported)
+  async function wake() {
+    try { if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return; if (inc() && inc().status !== 'Closed') { if (!CB.wl) { CB.wl = await navigator.wakeLock.request('screen'); CB.wl.addEventListener('release', function () { CB.wl = null; }); } } else if (CB.wl) { CB.wl.release(); CB.wl = null; } } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { CB.wl = null; wake(); } });
+  act.install = function () {
+    var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (CB.bip) { CB.bip.prompt(); CB.bip.userChoice.finally(function () { CB.bip = null; render(); }); return; }
+    U.modal('Install on this ' + (ios ? 'iPad' : 'device'), ios ? '<ol class="cbsteps"><li>Open this page in <b>Safari</b> (not Chrome or the Teams pane).</li><li>Tap the <b>Share</b> button ' + I('up') + ' at the top right.</li><li>Tap <b>Add to Home Screen</b>. Leave <b>Open as Web App</b> on, then tap <b>Add</b>.</li><li>Open <b>Command Board</b> from the home screen and sign in once. It opens full screen and works with no connection.</li></ol><p class="dim">Boards are kept on the iPad. Save a backup file (More → Save board to a file) before deleting the app.</p>' :
+      '<p>Use your browser menu: <b>Install app</b> or <b>Add to Home screen</b>.</p>', [{ label: 'Done', cls: 'pri' }]);
+  };
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); CB.bip = e; });
 
   // ---------- MCI ----------
   function mciLevel(n) { return n <= 15 ? 4 : n <= 30 ? 3 : n <= 100 ? 2 : 1; }
@@ -1233,7 +1629,7 @@
     window.open('index.html?incident=' + encodeURIComponent(i.id) + '&view=dash', '_blank');
   }
   act.slot = function (ix) { setKV('slot_' + ix, !kv('slot_' + ix, 0)); commit(null); };
-  act.home = function () { CB.htab = 'home'; CB.inc = null; CB.sel = null; history.replaceState(null, '', location.pathname); CB.list = undefined; CB.cad = undefined; render(); loadLists().then(render); };
+  act.home = function () { CP.store.setPref('cbCur', null); CB.htab = 'home'; CB.inc = null; CB.sel = null; history.replaceState(null, '', location.pathname); CB.list = undefined; CB.cad = undefined; render(); loadLists().then(render); };
   act.report = function () { report(); };
   act.reopen = function () { CP.setPath(inc(), 'status', 'Active'); CP.setPath(inc(), 'closed', ''); commit('Incident reopened', 'Decision'); };
   act.tocp = function (a, el, e) { e && e.preventDefault(); toCP(); };
@@ -1243,6 +1639,7 @@
     U.modal('Phone view', '<div style="text-align:center">' + img + '<p class="mono" style="word-break:break-all;font-size:12px">' + E(url) + '</p><p class="dim">Read-only live view for chiefs, officers and the EOC. Needs a county ArcGIS sign-in.</p></div>', [{ label: 'Copy link', fn: function () { navigator.clipboard.writeText(url); U.toast('Copied', 'ok'); return false; } }, { label: 'Close', cls: 'ghost' }]);
   }
   act.cadunits = async function () {
+    if (!cadOn()) { U.toast(cadPref() ? 'CAD is not connected. Add units by tapping a type.' : 'CAD is off on this tablet. Add units by tapping a type.', 'err'); return; }
     var ids = AL(inc().calls).map(function (c) { return c.callid; }); if (!CB.cad) await loadLists();
     var calls = (CB.cad || []).filter(function (c) { return !ids.length || ids.indexOf(c.callid) >= 0; });
     if (!calls.length) { U.toast('No linked CAD call with units. Add units by tapping a type.', 'err'); return; }
@@ -1271,6 +1668,10 @@
     setInterval(function () { var c = document.getElementById('cbClock'); if (c) c.textContent = new Date().toTimeString().slice(0, 5); }, 5000);
     try { if (await A.handleRedirect() === 'away') return; } catch (e) {}
     var qs = new URLSearchParams(location.search), want = qs.get('incident');
+    // reopened from the home screen (iPadOS often closes web apps in the background): go straight back to the board in use
+    if (!want) { var cur = CP.store.prefs().cbCur, li = cur && Date.now() - cur.t < 12 * 3600e3 && CP.store.get(cur.key); if (li && li.status !== 'Closed') want = cur.key; }
+    if (CP.store.prefs().cbLocal) CB.localOk = true;
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     render();
     if (A.signedIn()) await A.connect();
     if (want) await openBoard(want); else { await loadLists(); render(); }
