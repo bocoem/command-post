@@ -626,12 +626,7 @@ html,body.cbbody{overscroll-behavior:none;-webkit-tap-highlight-color:transparen
 .cbsymb{display:flex;align-items:center;gap:8px;min-height:44px;padding:4px 8px;border-radius:10px;border:1px solid var(--line2,rgba(255,255,255,.12));background:rgba(255,255,255,.04);color:var(--text,#e8eef6);font:600 13px var(--sans,inherit);text-align:left;cursor:pointer;touch-action:manipulation}
 .cbsymb span{flex:1;line-height:1.15}
 .cbsymb.on{border-color:#FDB833;box-shadow:0 0 0 2px #FDB833;background:rgba(253,184,51,.12)}
-.cbsymb i,.cbsym i{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 4px;border-radius:7px;background:var(--c);color:#111;font:800 12px var(--cond);font-style:normal;border:2px solid rgba(0,0,0,.55);box-sizing:border-box}
-.cbsymb i.z{border-radius:50%;background:transparent;border:3px dashed var(--c)}
 .cbsym{position:absolute;transform:translate(-14px,-14px);display:flex;align-items:center;gap:4px;white-space:nowrap;cursor:grab}
-.cbsym i{box-shadow:0 2px 8px rgba(0,0,0,.6)}
-.cbsym.z i{background:rgba(0,0,0,.6);color:var(--c);border:2px solid var(--c);border-radius:50%}
-.cbsym b{font:700 12px var(--sans,Arial);color:#fff;background:rgba(8,12,18,.82);padding:2px 6px;border-radius:6px;border-left:3px solid var(--c)}
 .cbsymb{min-width:0}.cbsymb span{min-width:0;overflow-wrap:anywhere;font-size:12.5px}
 
 /* phone view: tabs, map and whiteboard (view only) */
@@ -643,8 +638,42 @@ html,body.cbbody{overscroll-behavior:none;-webkit-tap-highlight-color:transparen
 .cbphmap .cbmapel{position:absolute;inset:0}
 .cblegs{display:flex;flex-wrap:wrap;gap:6px 12px;margin:10px 2px;font-size:12.5px;color:#c9d6e6}
 .cbleg{display:inline-flex;align-items:center;gap:6px}
-.cbleg i{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 3px;border-radius:6px;background:var(--c);color:#111;font:800 10px var(--cond);font-style:normal;border:2px solid rgba(0,0,0,.5)}
-.cbleg i.z{border-radius:50%;background:transparent;border:2px dashed var(--c);color:var(--c)}
 .cbwbro .cbwbhost{height:62vh;min-height:300px}
 .cbwbro .cbwbc{cursor:default}
 @media (max-width:560px){.cbbody .cbwrap{padding-bottom:calc(16px + env(safe-area-inset-bottom))}}
+
+/* ICS-style symbols (palette, map, phone legend) */
+.ics{flex:none;position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;box-sizing:border-box;font-style:normal;font:800 12px/1 var(--cond,'Barlow Condensed',Arial);color:#111}
+.ics b{font:inherit;color:inherit;background:none;padding:0;border:0}
+.ics.chip{border-radius:7px;background:var(--c);border:2px solid rgba(0,0,0,.55);padding:0 3px;min-width:28px;width:auto}
+.ics.sq{border-radius:3px;background:#fff;border:2.5px solid var(--c);color:var(--c);min-width:28px;width:auto;padding:0 3px}
+.ics.ring{border-radius:50%;background:#fff;border:2.5px solid var(--c);color:var(--c);font-size:14px}
+.ics.solid{border-radius:50%;background:#111;border:2px solid #fff;color:#fff;font-size:15px}
+.ics.icp{border:2px solid #111;background:linear-gradient(135deg,#fff 0 49%,#111 51% 100%);border-radius:2px;width:26px;height:26px}
+.ics.tri{width:30px;height:27px;background:var(--c);clip-path:polygon(50% 0,100% 100%,0 100%);color:#111;padding-top:7px;font-size:14px;border:0}
+.ics.origin{border-radius:50%;background:#fff;border:3px solid var(--c)}.ics.origin::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--c)}
+.ics.zone{border-radius:50%;border:3px dashed var(--c);background:rgba(0,0,0,.35)}
+.cbsym .ics{box-shadow:0 1px 6px rgba(0,0,0,.7)}
+.cbsym .ics.tri{box-shadow:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,.8))}
+.cbsym b.lbl{font:700 12px var(--sans,Arial);color:#fff;background:rgba(8,12,18,.85);padding:2px 6px;border-radius:6px;border-left:3px solid var(--c)}
+.cbleg .ics{transform:scale(.8)}
+.cbsideA.sm{width:22px;height:22px;font-size:12px;border-width:1.5px;box-shadow:0 1px 5px rgba(0,0,0,.7)}
+
+/* address lookup on the start screen */
+.cbsug{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.cbsug button{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 12px;border-radius:10px;border:1px solid var(--line2,rgba(255,255,255,.12));background:rgba(255,255,255,.05);color:var(--text,#e8eef6);font:500 15px var(--sans,inherit);text-align:left;cursor:pointer}
+.cbsug button .ic{flex:none;width:18px;height:18px;color:#FDB833}
+.cbsugok{display:flex;align-items:center;gap:6px;color:#2FBF71;font-size:13.5px;padding:2px 2px}.cbsugok .ic{width:16px;height:16px}
+.cbsugwait{font-size:13px;padding:2px}
+
+/* lat/long panel on the map */
+.cbcoords{position:absolute;left:10px;bottom:28px;z-index:500;display:flex;flex-direction:column;gap:3px;padding:6px;border-radius:10px;background:rgba(8,12,18,.86);border:1px solid rgba(255,255,255,.14);max-width:calc(100% - 20px);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.cbcrow{display:grid;grid-template-columns:auto auto;column-gap:8px;align-items:baseline;text-align:left;background:none;border:0;padding:3px 6px;border-radius:6px;color:#e8eef6;cursor:pointer}
+.cbcrow:active{background:rgba(253,184,51,.15)}
+.cbcrow em{grid-row:span 2;font:800 10px var(--cond,Arial);letter-spacing:1.2px;text-transform:uppercase;color:#FDB833;font-style:normal;align-self:center}
+.cbcrow b{font:700 14px var(--mono,'JetBrains Mono',monospace)}
+.cbcrow span{font:500 11.5px var(--mono,'JetBrains Mono',monospace);color:#9fb2c9}
+.cbchint{font-size:11px;color:#9fb2c9;padding:0 6px 2px}
+/* building sides: small gold squares, so they never read as ICS circle symbols (Base B, Camp C) */
+.cbsideA.sm,.cbsidebtns .cbsideA{border-radius:4px;background:#FDB833;color:#111;border:1.5px solid #111}
+.cbsideA.sm{width:20px;height:20px;font-size:12px}

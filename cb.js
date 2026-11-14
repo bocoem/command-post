@@ -175,7 +175,7 @@
       '<label class="f"><span>Call type (county response plan)</span><select class="in big" id="cbCall" data-cbchg="call"><option value="">Pick a call type, or tap a type above</option>' +
       [['Fire', /^(F - |TARGET)/], ['Vehicle crashes', /^MVC/], ['Rescue (SOTT)', /^SOTT/], ['Other', /^BOMB/]].map(function (g) { return '<optgroup label="' + g[0] + '">' + CALLS.filter(function (c) { return g[1].test(c[0]); }).map(function (c) { return '<option' + (CB.call && CB.call[0] === c[0] ? ' selected' : '') + '>' + E(c[0]) + '</option>'; }).join('') + '</optgroup>'; }).join('') + '</select></label>' +
       (CB.call ? '<div class="cbresp start">' + I('truck') + ' <b>Recommended response:</b> ' + E(CB.call[1] || 'none') + (CB.call[3] ? ' <span class="dim">(' + E(CB.call[3]) + ')</span>' : '') + '</div>' : '') +
-      '<label class="f"><span>Address / location</span><input class="in big" id="cbAddr" placeholder="e.g. 123 Main St, Daleville" value="' + E(CB.addr || '') + '"></label>' +
+      '<label class="f"><span>Address / location</span><input class="in big" id="cbAddr" autocomplete="off" autocorrect="off" placeholder="e.g. 123 Main St, Daleville" value="' + E(CB.addr || '') + '"><div class="cbsug" id="cbAddrSug">' + (CB.addrLL ? '<div class="cbsugok">' + I('check') + 'Located: ' + E(CB.addrLL[0].toFixed(5) + ', ' + CB.addrLL[1].toFixed(5)) + '</div>' : '') + '</div></label>' +
       '<label class="f"><span>CAD incident number <i class="dim">(optional · matches the ImageTrend report)</i></span><input class="in" id="cbCadNo" inputmode="numeric" placeholder="From dispatch, if you have it" value="' + E(CB.cadPick ? CB.cadPick.callid : CB.cadNo || '') + '"></label>' +
       '<div class="grid g2"><label class="f"><span>Incident Commander</span><input class="in" id="cbIC" value="' + E(CP.me.name || '') + '" placeholder="Your name / unit"></label><label class="f"><span>Command name</span><input class="in" id="cbCmd" placeholder="' + E(streetCmd(CB.addr) || 'Main St Command') + '"></label></div>' +
       '<label class="chk" style="margin:6px 0 12px"><input type="checkbox" id="cbEx"> Practice / training</label>' +
@@ -211,8 +211,9 @@
     var tk = CB.tpl || 'structure', T = TEMPLATES[tk], addr = (document.getElementById('cbAddr').value || '').trim(), ic = (document.getElementById('cbIC').value || '').trim(), ex = document.getElementById('cbEx').checked;
     if (!addr) { U.toast('Enter the address or location', 'err'); return; }
     if (ic) { CP.me = Object.assign({}, CP.me, { name: CP.me.name || ic }); CP.store.setPref('me', CP.me); }
-    var ll = CB.cadPick && CB.cadPick.ll;
-    if (!ll && A.status === 'on') { try { var g = await A.req('https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates', { singleLine: addr + (/va|virginia/i.test(addr) ? '' : ', Botetourt County, VA'), maxLocations: 1, outFields: 'Score' }); var c = (g.candidates || [])[0]; if (c && c.score >= 80) ll = [c.location.y, c.location.x]; } catch (e) {} }
+    var ll = (CB.cadPick && CB.cadPick.ll) || (CB.addrLL && CB.addr === addr ? CB.addrLL : null);
+    if (!ll && navigator.onLine) { try { var gg = await geocode(addr); if (gg) ll = gg.ll; } catch (e) {} }
+    CB.addrLL = null;
     var ctName = CB.call ? CB.call[0].replace(/^F - /, '').toLowerCase().replace(/(^|[\s\/(-])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }).replace(/Mvc/, 'MVC').replace(/Sott/, 'SOTT').replace(/Vsp/, 'VSP').replace(/Mci/, 'MCI').replace(/Pi\)/, 'PI)') : T.n;
     var i = CP.newIncident({ name: (ex ? 'PRACTICE: ' : '') + ctName + ' · ' + addr, type: T.type, start: CP.now(), locdesc: addr, lat: ll ? +ll[0].toFixed(6) : null, lng: ll ? +ll[1].toFixed(6) : null, icName: ic, complexity: 5, opHours: 12, author: ic });
     if (ex) i.exercise = true;
@@ -347,7 +348,7 @@
   function phoneTabs() { return '<div class="cbphtabs">' + [['list', 'truck', 'Board'], ['map', 'map', 'Map'], ['wb', 'pen', 'Whiteboard']].map(function (t) { return '<button class="' + ((CB.ptab || 'list') === t[0] ? 'on' : '') + '" data-cb="ptab" data-a="' + t[0] + '">' + (t[1] === 'pen' ? svg('pen') : I(t[1])) + '<span>' + t[2] + '</span></button>'; }).join('') + '</div>'; }
   function phoneMapView() {
     var used = {}; syms().forEach(function (o) { used[o.k] = 1; });
-    var leg = Object.keys(used).map(function (k) { var d = symDef(k); return '<span class="cbleg"><i style="--c:' + d.c + '"' + (d.zone ? ' class="z"' : '') + '>' + E(d.zone ? '◎' : d.code) + '</i>' + E(d.n) + '</span>'; }).join('');
+    var leg = Object.keys(used).map(function (k) { var d = symDef(k); return '<span class="cbleg">' + symI(d) + E(d.n) + '</span>'; }).join('');
     return '<div class="cbph">' + phoneTabs() + '<div class="cbphmap"><div class="cbmaphost" id="cbMapHost"></div></div>' + (leg ? '<div class="cblegs">' + leg + '</div>' : '') + (CB.wx && CB.wx.ok ? '<div class="cbwxrow">' + wxChip() + '</div>' : '') + '<p class="dim" style="font-size:12px">View only. Updates every few seconds.</p></div>';
   }
   function phoneWbView() { return '<div class="cbph">' + phoneTabs() + '<div class="cbwb cbwbro"><div class="cbwbbar" id="cbWbBar">' + wbBarHtml() + '</div><div class="cbwbhost" id="cbWbHost"></div></div><p class="dim" style="font-size:12px">View only. Drawing is done on the command tablet.</p></div>'; }
@@ -627,6 +628,52 @@
   act.sidea = function (d) { setKV('sideA', +d); commit('Side A faces ' + ({ 0: 'north', 90: 'east', 180: 'south', 270: 'west' })[d], 'Event', true); render(); };
   act.lyr = function (k) { CB['hide_' + k] = !CB['hide_' + k]; render(); };
   act.mapfit = function () { if (!CB.map) return; var c = incLL(); var pts = units().filter(function (r) { return r.lat != null; }).map(function (r) { return [r.lat, r.lng]; }).concat(syms().filter(function (o) { return o.lat != null; }).map(function (o) { return [o.lat, o.lng]; })).concat(SIDES.map(function (x) { return (sides()[x] || {}).ll; }).filter(Boolean)); if (c) pts.push(c); if (pts.length > 1) CB.map.fitBounds(pts, { padding: [40, 40], maxZoom: 19 }); else if (c) CB.map.setView(c, 18); };
+  // ---------- address lookup (works signed in or not: the public ArcGIS World Geocoder) ----------
+  var GEO = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer', GEO_NEAR = '-79.80,37.55'; // biased to Botetourt County
+  function geoGet(op, p) { return fetch(GEO + '/' + op + '?' + new URLSearchParams(Object.assign({ f: 'json', countryCode: 'USA', location: GEO_NEAR }, p))).then(function (r) { return r.json(); }); }
+  async function geocode(text, magicKey) {
+    var p = { maxLocations: 1, outFields: 'Score,Match_addr' }; if (magicKey) { p.magicKey = magicKey; p.SingleLine = text; } else p.SingleLine = text + (/\b(va|virginia)\b/i.test(text) ? '' : ', Botetourt County, VA');
+    var g = await geoGet('findAddressCandidates', p), c = (g.candidates || [])[0];
+    return c && (magicKey || c.score >= 80) ? { ll: [+c.location.y.toFixed(6), +c.location.x.toFixed(6)], addr: c.address } : null;
+  }
+  var sugT = null;
+  function addrSuggest(el) {
+    clearTimeout(sugT); CB.addrLL = null; CB.addr = el.value;
+    var box = document.getElementById('cbAddrSug'); if (!box) return; var q = el.value.trim();
+    if (q.length < 4 || !navigator.onLine) { box.innerHTML = ''; return; }
+    sugT = setTimeout(function () {
+      geoGet('suggest', { text: q, maxSuggestions: 6 }).then(function (r) {
+        if (el.value.trim() !== q) return;
+        var s = (r.suggestions || []).filter(function (x) { return !x.isCollection; });
+        box.innerHTML = s.map(function (x) { return '<button type="button" data-sug="' + E(x.magicKey) + '">' + I('pin') + '<span>' + E(x.text) + '</span></button>'; }).join('');
+      }).catch(function () { box.innerHTML = ''; });
+    }, 300);
+  }
+  document.addEventListener('input', function (e) { if (e.target && e.target.id === 'cbAddr') addrSuggest(e.target); });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-sug]'); if (!b) return; e.preventDefault();
+    var el = document.getElementById('cbAddr'), box = document.getElementById('cbAddrSug'), txt = b.querySelector('span').textContent;
+    if (el) el.value = txt; if (box) box.innerHTML = '<div class="dim cbsugwait">Finding it on the map…</div>';
+    geocode(txt, b.dataset.sug).then(function (g) {
+      if (!g) throw new Error('not found');
+      var short = g.addr.replace(/, (USA|United States)$/, '').replace(/, Virginia, (\d{5})/, ', VA $1');
+      CB.addr = short; CB.addrLL = g.ll; if (el) el.value = short;
+      if (box) box.innerHTML = '<div class="cbsugok">' + I('check') + 'Located: ' + E(g.ll[0].toFixed(5) + ', ' + g.ll[1].toFixed(5)) + '</div>';
+      var cmd = document.getElementById('cbCmd'); if (cmd && !cmd.value) cmd.placeholder = streetCmd(short) || cmd.placeholder;
+    }).catch(function () { if (box) box.innerHTML = '<div class="dim cbsugwait">Could not place that address. It will be looked up again when the board starts, or set the pin on the map.</div>'; });
+  });
+  // default call type for each hot button (the IC can still change it)
+  var TPL_CALL = { alarm: 'F - FIRE ALARM', structure: 'F - STRUCTURE FIRE', vehicle: 'F - VEHICLE FIRE', brush: 'F - BRUSH / GRASS FIRE', mva: 'MVC - INJURY', mci: 'MVC - MCI/BUS', hazard: 'F - INSIDE FIRE HAZARD', rescue: 'SOTT - TECHNICAL RESCUE', other: 'F - FIRE SERVICE CALL' };
+
+  // ---------- coordinates ----------
+  function ddm(v, pos, neg) { var a = Math.abs(v), d = Math.floor(a), m = (a - d) * 60; return d + '°' + (m < 10 ? '0' : '') + m.toFixed(3) + '\'' + (v >= 0 ? pos : neg); }
+  function coordTxt(ll) { return ll ? { dec: ll[0].toFixed(5) + ', ' + ll[1].toFixed(5), ddm: ddm(ll[0], 'N', 'S') + ' ' + ddm(ll[1], 'E', 'W') } : null; }
+  function coordsHtml() {
+    var c = coordTxt(incLL()), t = coordTxt(CB.tapLL), row = function (lab, x, k) { return '<button class="cbcrow" data-cb="copyll" data-a="' + k + '" title="Tap to copy"><em>' + lab + '</em><b>' + E(x.dec) + '</b><span>' + E(x.ddm) + '</span></button>'; };
+    return (c ? row('Incident', c, 'inc') : '<div class="cbcrow"><em>Incident</em><span>No location set</span></div>') + (t ? row('Tapped', t, 'tap') : '<div class="cbchint">Tap the map for a point\'s lat/long</div>');
+  }
+  function paintCoords() { var el = document.getElementById('cbCoords'); if (el) el.innerHTML = coordsHtml(); }
+
   // ---------- building sides: the IC places A, B, C and D (nothing is placed automatically) ----------
   var SIDES = ['A', 'B', 'C', 'D'];
   function sides() { return kv('sides', {}) || {}; }
@@ -636,16 +683,20 @@
 
   // ---------- incident symbols the IC places on the map ----------
   // [key, short code, name, color, group]
+  // [key, code, name, color, group, shape]. Shapes follow ICS map symbols where one exists:
+  // icp = square split on the diagonal; ring = letter in an open circle (Staging S, Base B, Camp C, Helibase H); solid = filled circle (Helispot H-1).
+  // Symbols with no ICS standard keep the same look so the map reads as one set.
   var SYM = [
-    ['icp', 'CP', 'Command post', '#2f7bff', 'Command'], ['stg', 'S', 'Staging', '#FDB833', 'Command'], ['acp', 'AC', 'Accountability point', '#9b6bff', 'Command'], ['rehab', 'RH', 'Rehab', '#2FBF71', 'Command'], ['lz', 'H', 'Landing zone', '#f2f2f2', 'Command'], ['tcp', 'TC', 'Traffic control / roadblock', '#ff8d3a', 'Command'],
-    ['entry', '▲', 'Entry point', '#2FBF71', 'Building'], ['victim', 'V', 'Victim / last seen', '#ff3b47', 'Building'], ['origin', 'O', 'Fire origin / seat', '#ff3030', 'Building'], ['exp', 'X', 'Exposure', '#ffb020', 'Building'], ['fdc', 'FDC', 'FDC / standpipe', '#ff3030', 'Building'], ['knox', 'K', 'Knox box', '#ffb020', 'Building'],
-    ['ug', 'G', 'Gas shutoff / meter', '#ffd400', 'Utilities'], ['ue', 'E', 'Electric shutoff / meter', '#ff8d3a', 'Utilities'], ['uw', 'WS', 'Water shutoff', '#3fa9ff', 'Utilities'], ['wires', 'W!', 'Wires down', '#ff8d3a', 'Utilities'],
-    ['water', 'FS', 'Fill site / water source', '#3fa9ff', 'Water'], ['dump', 'DT', 'Dump tank / draft site', '#3fa9ff', 'Water'], ['eng', 'PE', 'Pump engine / supply engine', '#3fa9ff', 'Water'],
-    ['haz', '!', 'Hazard', '#ff3b47', 'Hazards & EMS'], ['triage', 'TRI', 'Triage', '#ffd400', 'Hazards & EMS'], ['treat', 'TX', 'Treatment area', '#ff3b47', 'Hazards & EMS'], ['trans', 'TR', 'Ambulance loading / transport', '#2FBF71', 'Hazards & EMS'], ['sz', 'SZ', 'Safety zone (wildland)', '#2FBF71', 'Hazards & EMS'], ['note', '✎', 'Map note', '#93A9C3', 'Hazards & EMS']
+    ['icp', 'ICP', 'Incident command post', '#111111', 'Command', 'icp'], ['stg', 'S', 'Staging area', '#111111', 'Command', 'ring'], ['base', 'B', 'Incident base', '#111111', 'Command', 'ring'], ['camp', 'C', 'Camp', '#111111', 'Command', 'ring'],
+    ['lz', 'H', 'Helispot / landing zone', '#111111', 'Command', 'solid'], ['acp', 'AC', 'Accountability point', '#9b6bff', 'Command', 'ring'], ['rehab', 'RH', 'Rehab', '#2FBF71', 'Command', 'ring'], ['tcp', 'TC', 'Traffic control / roadblock', '#ff8d3a', 'Command', 'sq'],
+    ['entry', '▲', 'Entry point', '#2FBF71', 'Building'], ['victim', 'V', 'Victim / last seen', '#ff3b47', 'Building'], ['origin', '', 'Fire origin', '#ff3030', 'Building', 'origin'], ['exp', 'X', 'Exposure', '#ffb020', 'Building'], ['fdc', 'FDC', 'FDC / standpipe', '#ff3030', 'Building'], ['knox', 'K', 'Knox box', '#ffb020', 'Building'],
+    ['ug', 'G', 'Gas shutoff / meter', '#ffd400', 'Utilities'], ['ue', 'E', 'Electric shutoff / meter', '#ff8d3a', 'Utilities'], ['uw', 'WS', 'Water shutoff', '#3fa9ff', 'Utilities'], ['wires', '!', 'Wires down', '#ff8d3a', 'Utilities', 'tri'],
+    ['water', 'W', 'Water source / fill site', '#1e7bff', 'Water', 'ring'], ['dump', 'DT', 'Dump tank / draft site', '#1e7bff', 'Water', 'ring'], ['eng', 'PE', 'Supply / pump engine', '#1e7bff', 'Water', 'sq'], ['dp', 'DP', 'Drop point', '#111111', 'Water', 'sq'],
+    ['haz', '!', 'Hazard', '#ff3b47', 'Hazards & EMS', 'tri'], ['triage', 'TRI', 'Triage', '#ffd400', 'Hazards & EMS'], ['treat', 'TX', 'Treatment area', '#ff3b47', 'Hazards & EMS'], ['trans', 'TR', 'Ambulance loading / transport', '#2FBF71', 'Hazards & EMS'], ['sz', 'SZ', 'Safety zone (wildland)', '#2FBF71', 'Hazards & EMS', 'ring'], ['note', '✎', 'Map note', '#93A9C3', 'Hazards & EMS']
   ];
   // circles: [key, name, color, default radius in feet]
   var ZONES = [['collapse', 'Collapse zone', '#ff3b47', 100], ['hot', 'Hot zone', '#ff3b47', 150], ['warm', 'Warm zone', '#ffb020', 300], ['cold', 'Cold zone', '#3fa9ff', 600]];
-  function symDef(k) { var s = SYM.find(function (x) { return x[0] === k; }); if (s) return { k: k, code: s[1], n: s[2], c: s[3] }; var z = ZONES.find(function (x) { return x[0] === k; }); return z ? { k: k, code: '', n: z[1], c: z[2], zone: true, r: z[3] } : { k: k, code: '?', n: 'Symbol', c: '#93A9C3' }; }
+  function symDef(k) { var s = SYM.find(function (x) { return x[0] === k; }); if (s) return { k: k, code: s[1], n: s[2], c: s[3], sh: s[5] || 'chip' }; var z = ZONES.find(function (x) { return x[0] === k; }); return z ? { k: k, code: '', n: z[1], c: z[2], zone: true, r: z[3] } : { k: k, code: '?', n: 'Symbol', c: '#93A9C3' }; }
   function syms() { return AL(inc().cbSym); }
   act.sym = function (k) { CB.sel = null; CB.placing = CB.placing === 'sym:' + k ? null : 'sym:' + k; render(); };
   act.symshow = function () { CB.symOpen = !CB.symOpen; render(); };
@@ -670,19 +721,26 @@
     h += '<div class="cbsymg">Zones (circles)</div><div class="cbsyms">' + ZONES.map(function (z) { return symBtn(symDef(z[0]), cur); }).join('') + '</div>';
     return h;
   }
-  function symBtn(d, cur) { return '<button class="cbsymb' + (cur === d.k ? ' on' : '') + '" data-cb="sym" data-a="' + d.k + '" title="' + E(d.n) + '"><i style="--c:' + d.c + '"' + (d.zone ? ' class="z"' : '') + '>' + E(d.code) + '</i><span>' + E(d.n) + '</span></button>'; }
+  // one icon for the palette, the map and the phone legend
+  function symI(d) {
+    if (d.zone) return '<i class="ics zone" style="--c:' + d.c + '"></i>';
+    if (d.sh === 'icp') return '<i class="ics icp" title="Incident Command Post"></i>';
+    if (d.sh === 'origin') return '<i class="ics origin" style="--c:' + d.c + '"></i>';
+    return '<i class="ics ' + d.sh + '" style="--c:' + d.c + '"><b>' + E(d.code) + '</b></i>';
+  }
+  function symBtn(d, cur) { return '<button class="cbsymb' + (cur === d.k ? ' on' : '') + '" data-cb="sym" data-a="' + d.k + '" title="' + E(d.n) + '">' + symI(d) + '<span>' + E(d.n) + '</span></button>'; }
   function drawSyms(Ly) {
     syms().forEach(function (o) {
       var d = symDef(o.k), ll = [o.lat, o.lng]; if (o.lat == null) return;
       if (d.zone) Ly.scene.addLayer(L.circle(ll, { radius: (+o.r || d.r) * 0.3048, color: d.c, weight: 2, dashArray: o.k === 'collapse' ? '10 6' : null, fillColor: d.c, fillOpacity: o.k === 'cold' ? 0.04 : 0.1, interactive: false }));
-      var mk = L.marker(ll, { draggable: !CB.ro, zIndexOffset: 700, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbsym' + (d.zone ? ' z' : '') + '" style="--c:' + d.c + '"><i>' + E(d.zone ? '◎' : d.code) + '</i>' + (o.lbl || d.zone ? '<b>' + E(o.lbl || d.n + ' ' + (+o.r || d.r) + ' ft') + '</b>' : '') + '</div>' }) });
+      var mk = L.marker(ll, { draggable: !CB.ro, zIndexOffset: 700, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="cbsym' + (d.zone ? ' z' : '') + '">' + symI(d) + (o.lbl || d.zone ? '<b class="lbl" style="--c:' + d.c + '">' + E(o.lbl || d.n + ' ' + (+o.r || d.r) + ' ft') + '</b>' : '') + '</div>' }) });
       mk.on('dragend', function (ev) { var p = ev.target.getLatLng(); o.lat = +p.lat.toFixed(6); o.lng = +p.lng.toFixed(6); o.u = CP.now(); CP.touch(inc(), 'cbSym'); commit(null, null, true); mapDraw(); });
       mk.on('click', function () { if (CB.ro) { if (o.lbl) U.toast(E(d.n + ': ' + o.lbl), 'ok'); return; } act.symedit(o.id); });
       Ly.scene.addLayer(mk);
     });
     var sd = sides(); SIDES.forEach(function (s) {
       var v = sd[s]; if (!v || !v.ll) return;
-      var mk = L.marker(v.ll, { draggable: !CB.ro, zIndexOffset: 850, icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '<div class="cbsideA s' + s + ' big">' + s + '</div>' }) });
+      var mk = L.marker(v.ll, { draggable: !CB.ro, zIndexOffset: 850, icon: L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: '<div class="cbsideA s' + s + ' sm">' + s + '</div>' }) });
       mk.on('dragend', function (ev) { var p = ev.target.getLatLng(); setSide(s, [+p.lat.toFixed(6), +p.lng.toFixed(6)], true); mapDraw(); });
       Ly.scene.addLayer(mk);
     });
@@ -726,11 +784,15 @@
     if (CB.ro && !CB.roFit) { CB.roFit = true; setTimeout(act.mapfit, 120); } // phone: open showing everything that is placed
     CB.mapEl.classList.toggle('placing', !!(CB.placing || CB.sel));
     setTimeout(function () { CB.map.invalidateSize(); }, 40);
+    if (!c && !CB.ro && i.location.desc && navigator.onLine && !(CB.geoTried || {})[i.id]) { CB.geoTried = CB.geoTried || {}; CB.geoTried[i.id] = 1; geocode(i.location.desc).then(function (g) { if (!g || !inc() || inc().id !== i.id || incLL()) return; i.location.lat = g.ll[0]; i.location.lng = g.ll[1]; CP.touch(i, 'location'); CB.hyd = null; CB.hydFor = null; commit('Incident located from the address (' + g.ll[0].toFixed(5) + ', ' + g.ll[1].toFixed(5) + ')', 'Event'); }).catch(function () {}); }
+    if (!host.querySelector('#cbCoords')) { var cc = document.createElement('div'); cc.id = 'cbCoords'; cc.className = 'cbcoords'; host.appendChild(cc); } paintCoords();
     mapDraw(); loadHyd(); if (!CB.avl || Date.now() - (CB.avlT || 0) > 15000) loadAvl().then(function (ok) { if (ok && CB.tab === 'map') render(); });
   }
   function mapClick(e) {
-    if (!inc() || CB.ro) return;
+    if (!inc()) return;
+    if (CB.ro) { CB.tapLL = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)]; paintCoords(); return; }
     var p = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)], i = inc();
+    if (!CB.placing && !CB.sel) { CB.tapLL = p; paintCoords(); if (CB.tapMk) CB.tapMk.remove(); CB.tapMk = L.circleMarker(p, { radius: 7, color: '#FDB833', weight: 3, fillOpacity: 0 }).addTo(CB.map); return; }
     if (CB.placing && CB.placing.indexOf('side:') === 0) { var sd = CB.placing.slice(5); CB.placing = null; setSide(sd, p); return; }
     if (CB.placing && CB.placing.indexOf('sym:') === 0) { var sk = CB.placing.slice(4); placeSym(sk, p); if (symDef(sk).zone || /^(icp|stg|acp|rehab|lz)$/.test(sk)) { CB.placing = null; render(); } return; }
     if (CB.placing === 'inc') { i.location.lat = p[0]; i.location.lng = p[1]; CP.touch(i, 'location'); CB.placing = null; CB.hyd = null; CB.hydFor = null; commit('Incident location set on the map', 'Event'); return; }
@@ -899,10 +961,11 @@
   }
 
   act.signin = function () { A.signIn(); };
+  act.copyll = function (k) { var x = coordTxt(k === 'tap' ? CB.tapLL : incLL()); if (!x) return; var t = x.dec + ' (' + x.ddm + ')'; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { U.toast('Copied ' + E(t), 'ok'); }, function () { U.toast(E(t), 'ok', 8000); }); };
   act.ptab = function (t) { CB.ptab = t; window.scrollTo(0, 0); render(); };
   act.cadtoggle = function () { var on = !cadPref(); CP.store.setPref('cbCad', on ? 'on' : 'off'); CB.cadHealth = null; CB.cad = on ? undefined : []; CB.avl = on ? CB.avl : []; if (on && inc()) U.toast('CAD on', 'ok'); render(); if (!inc() || on) loadLists().then(render); };
   act.local = function () { CB.localOk = true; CP.store.setPref('cbLocal', 1); CB.list = localBoards(); CB.cad = []; render(); };
-  act.tpl = function (k) { CB.tpl = k; if (CB.call && CB.call[2] !== k) CB.call = null; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; render(); };
+  act.tpl = function (k) { CB.tpl = k; if (!CB.call || CB.call[2] !== k) CB.call = CALLS.find(function (c) { return c[0] === TPL_CALL[k]; }) || null; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; render(); };
   act.cad = function (id) { var c = (CB.cad || []).find(function (x) { return x.callid === id; }); CB.cadPick = c; CB.addr = c.addr; var ct = callFor(c.type); if (ct) { CB.call = ct; CB.tpl = ct[2]; return render(); } if (/alarm/i.test(c.type + ' ' + c.cat)) CB.tpl = 'alarm'; else if (/struct|resid|commerc|building|house/i.test(c.type)) CB.tpl = 'structure'; else if (/mci|mass casualty|multiple patient/i.test(c.type + ' ' + c.cat)) CB.tpl = 'mci'; else if (/accident|mva|collision|crash|wreck|mvc/i.test(c.type + ' ' + c.cat)) CB.tpl = 'mva'; else if (/vehicle fire|car fire/i.test(c.type)) CB.tpl = 'vehicle'; else if (/brush|woods|grass|wild/i.test(c.type)) CB.tpl = 'brush'; render(); };
   act.start = function () { startBoard().catch(function (e) { U.toast(E(e.message), 'err'); }); };
   act.open = function (k) { openBoard(k); };
