@@ -28,7 +28,9 @@
   var SHORT = { em: 'Emergency Mgmt', so: "Sheriff's Office", fire: 'Fire & EMS', disp: 'Dispatch', ems: 'EMS patient care', lead: 'Leadership', pre: 'Preplan reviewers', prot: 'Preplan readers', shel: 'Shelter staff', all: 'Anyone' };
   var S123 = 'https://survey123.arcgis.com/share/', DASH = function (id) { return A.portal + '/apps/dashboards/' + id; };
   function apps() {
-    var dash = CP.store.prefs().leadDash, pp = CP.store.prefs().ppState || {}, ppf = pp.forms || {};
+    // links remembered on the computer that set them up, with the county's known items as fallback, so the page is the same whoever updates it
+    var dash = CP.store.prefs().leadDash || '929c8e9c97bd4c16accad6d3409595fd', pp = Object.assign({ dash: '4f1d541ca2e54d4dad313641f252f459' }, CP.store.prefs().ppState || {});
+    var ppf = Object.assign({ crew: '392daad970a74319a4114381d717d0bb', review: 'f0568d791f9241ed805bb126fc41107a' }, pp.forms || {});
     return [
       { k: 'cp', n: 'Command Post', ty: 'Web app', off: 1, url: BASE, btn: 'Open Command Post', d: 'Run an incident: ICS 201–215 forms, resources, assignments, activity log and briefings. Shared live through ArcGIS; works offline and catches up when the connection is back.', who: ['em', 'so', 'fire', 'disp'] },
       { k: 'ops', n: 'EM Ops tools', ty: 'Web app', off: 1, url: BASE + 'ops.html', btn: 'Open EM Ops', d: 'County resources and requests, PODs, infrastructure, flood watch, volunteers, cost recovery and training, all tied to the Command Post incident. You see the tools your group can use.', who: ['em', 'so', 'fire', 'disp'] },
