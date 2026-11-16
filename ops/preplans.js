@@ -47,9 +47,14 @@
     var c = await A.req(P('/content/users/' + me() + '/createFolder'), { title: S.folder }, true); return (c.folder || {}).id || '';
   }
   async function base() { var f = await folder(); return P('/content/users/' + me() + (f ? '/' + f : '')); }
-  function share(it, how) {
-    return A.req(P('/content/users/' + it.owner + '/items/' + it.id + '/share'), { everyone: !!how.everyone, org: !!(how.org || how.everyone), groups: (how.groups || []).join(',') }, true)
-      .then(function (r) { if (r.notSharedWith && r.notSharedWith.length) throw new Error('could not share with ' + r.notSharedWith.length + ' group(s)'); });
+  async function share(it, how) {
+    var r = await A.req(P('/content/users/' + it.owner + '/items/' + it.id + '/share'), { everyone: !!how.everyone, org: !!(how.org || how.everyone), groups: (how.groups || []).join(',') }, true);
+    var miss = r.notSharedWith || [];
+    if (miss.length) { // ArcGIS also lists groups the item is already shared with: only the rest are a problem
+      var g = await A.req(P('/content/items/' + it.id + '/groups'), {}).catch(function () { return {}; }), have = (g.admin || []).concat(g.member || [], g.other || []).map(function (x) { return x.id; });
+      miss = miss.filter(function (id) { return have.indexOf(id) < 0; });
+      if (miss.length) throw new Error('could not share with ' + miss.length + ' group(s)');
+    }
   }
   function protect(it) { return it.protected ? Promise.resolve() : A.req(P('/content/users/' + it.owner + '/items/' + it.id + '/protect'), {}, true).catch(function () {}); }
   async function layerIds(url) { var j = await A.req(url, { _: Date.now() }), o = {}; (j.layers || []).concat(j.tables || []).forEach(function (x) { o[x.name] = x.id; }); return { ids: o, caps: j.capabilities || '' }; }
