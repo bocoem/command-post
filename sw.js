@@ -4,9 +4,9 @@
    - ArcGIS reads (GET): network first, last copy when offline. Sign-in tokens are stripped from the stored key.
      Records with personal information (protected services, shelter registry) are never stored on the device.
    - Writes (POST) are never cached; the app's outbox handles them. */
-var V = 'cp-v25', SHELL = 'cp-shell-' + V, DATA = 'cp-data-' + V, LIB = 'cp-lib-' + V;
-var PRIVATE = /BOCO_EM_Protected|BOCO_EMS_PatientCare|Shelter_Registry|Shelter_Checkouts|Reunification|oauth2|\/generateToken/i;
-var PAGES = ['./', 'index.html', 'ops.html', 'mci.html', 'reunify.html', 'checkin.html', 'family.html', 'hotline.html', 'faq.html', 'commandboard.html', 'commandboard.webmanifest', 'cb_icon_180.png', 'cb_icon_192.png', 'cb_icon_512.png', 'cb.css', 'cb.js', 'data.js', 'ui.js', 'forms.js', 'arc.js', 'config.js', 'sync.js', 'map.js', 'lib/jsQR.js', 'app.css', 'seal.png', 'patch.png', 'icon.png', 'cp_lockup.png', 'manifest.webmanifest', 'usng.html', 'usng.webmanifest', 'usng_icon.png', 'mt_lockup.png', 'mt_header_phone.png'];
+var V = 'cp-v29', SHELL = 'cp-shell-' + V, DATA = 'cp-data-' + V, LIB = 'cp-lib-' + V;
+var PRIVATE = /BOCO_Preplans_(Protected|Review|Intake)|BOCO_EM_Protected|BOCO_EMS_PatientCare|Shelter_Registry|Shelter_Checkouts|Reunification|oauth2|\/generateToken/i;
+var PAGES = ['./', 'index.html', 'ops.html', 'mci.html', 'reunify.html', 'checkin.html', 'family.html', 'hotline.html', 'faq.html', 'commandboard.html', 'commandboard.webmanifest', 'cb_icon_180.png', 'cb_icon_192.png', 'cb_icon_512.png', 'cb.css', 'cb.js', 'preplan.js', 'preplan.html', 'preplan.webmanifest', 'pp_icon_180.png', 'pp_icon_192.png', 'pp_icon_512.png', 'pb.css', 'pb.js', 'pb.data.js', 'data.js', 'ui.js', 'forms.js', 'arc.js', 'config.js', 'sync.js', 'map.js', 'lib/jsQR.js', 'app.css', 'seal.png', 'patch.png', 'icon.png', 'cp_lockup.png', 'manifest.webmanifest', 'usng.html', 'usng.webmanifest', 'usng_icon.png', 'mt_lockup.png', 'mt_header_phone.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(SHELL).then(function (c) { return Promise.all(PAGES.map(function (p) { return c.add(new Request(p, { cache: 'reload' })).catch(function () {}); })); }).then(function () { return self.skipWaiting(); }));
@@ -16,16 +16,26 @@ self.addEventListener('activate', function (e) {
 });
 
 function keyOf(req) { var u = new URL(req.url); u.searchParams.delete('token'); u.searchParams.delete('_'); return u.toString(); }
+var SLOW_MS = 8000; // how long to wait for the site before using the saved copy of a page
+function savedCopy(hit) { var h = new Headers(hit.headers); h.set('x-cp-offline', '1'); return hit.blob().then(function (b) { return new Response(b, { status: hit.status, statusText: hit.statusText, headers: h }); }); }
 async function netFirst(req, cacheName, key) {
-  var c = await caches.open(cacheName);
+  var c = await caches.open(cacheName), shell = cacheName === SHELL;
+  var find = async function () { return await c.match(key || req, { ignoreVary: true }) || (shell ? await c.match(stripQuery(req)) : null); };
   try {
-    // Own pages and code: always ask the server for a newer copy (GitHub Pages otherwise lets the browser reuse one for 10 minutes).
-    var r = cacheName === SHELL ? await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : await fetch(req);
+    var r;
+    if (shell) {
+      // Own pages and code: always ask the server for a newer copy (GitHub Pages otherwise lets the browser reuse one for 10 minutes).
+      // If the site is down, a saved copy is used instead: when it cannot be reached, when it answers with a server error,
+      // and when it has not answered after a few seconds.
+      var have = await find(), ask = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' });
+      r = have ? await Promise.race([ask, new Promise(function (ok, no) { setTimeout(function () { no(new Error('slow')); }, SLOW_MS); })]) : await ask;
+      if (have && r && r.status >= 500) return savedCopy(have);
+    } else r = await fetch(req);
     if (r && r.ok) c.put(key || req, r.clone()).catch(function () {});
     return r;
   } catch (e) {
-    var hit = await c.match(key || req, { ignoreVary: true }) || (cacheName === SHELL ? await c.match(stripQuery(req)) : null);
-    if (hit) { var h = new Headers(hit.headers); h.set('x-cp-offline', '1'); return new Response(await hit.blob(), { status: hit.status, statusText: hit.statusText, headers: h }); }
+    var hit = await find();
+    if (hit) return savedCopy(hit);
     throw e;
   }
 }

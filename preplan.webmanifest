@@ -1,0 +1,16 @@
+{
+  "id": "./preplan.html",
+  "name": "Preplan Builder · BEACON",
+  "short_name": "Preplan",
+  "description": "Botetourt County Fire & EMS preplan builder.",
+  "start_url": "./preplan.html?source=homescreen",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0A1724",
+  "theme_color": "#0B1A2B",
+  "icons": [
+    { "src": "pp_icon_192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "pp_icon_512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

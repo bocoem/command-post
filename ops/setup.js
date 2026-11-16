@@ -217,6 +217,7 @@
     h += SX.golive();
     h += '<div class="grid g2" style="align-items:start">' + SX.feeds() + SX.groups() + '</div>';
     h += SX.services(canPub, built);
+    if (OPS.preplans) h += OPS.preplans.panel(canPub);
     h += '<div class="grid g2" style="align-items:start">' + SX.cleanup() + SX.print() + '</div>';
     return h;
   };
