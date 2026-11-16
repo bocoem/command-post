@@ -4,13 +4,13 @@
    - BOCO_Preplans (private): sites, map features, building outlines, hazmat, contacts, photos
    - views: Intake (public, add-only, review fields hidden), Protected (read), Review (edit), Tactical (approved, safe only)
    - groups, three web maps, the Preplan Program dashboard, delete protection on all of it
-   Day to day the program runs in ArcGIS: crews use the Survey123 crew form, reviewers use the Survey123 review form.
+   Day to day the work is done in the Preplan Builder app (preplan.html), which reads and writes these layers.
    The definitions come from ops/preplans.data.js (generated from the preplan schema; loaded only when this runs). */
 (function (CP) {
   'use strict';
   var OPS = CP.ops, A = CP.arc, U = CP.ui, E = CP.esc, I = U.icon;
   var PP = OPS.preplans = { settle: 2500, lines: [], busy: false };
-  var S123 = 'https://survey123.arcgis.com/share/';
+  var APP = location.origin + location.pathname.replace(/[^\/]*$/, '') + 'preplan.html'; // the Preplan Builder, beside this page
   var S; // the spec, once loaded
 
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -20,7 +20,7 @@
   function capsSame(a, b) { var n = function (x) { return String(x || '').split(',').map(function (y) { return y.trim(); }).filter(Boolean).sort().join(','); }; return n(a) === n(b); }
   PP.loadSpec = function () {
     if (OPS.PREPLAN_SPEC) return Promise.resolve(S = OPS.PREPLAN_SPEC);
-    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'ops/preplans.data.js?v=2'; s.onload = function () { S = OPS.PREPLAN_SPEC; S ? ok(S) : no(new Error('preplan definitions did not load')); }; s.onerror = function () { no(new Error('could not load the preplan definitions (connection?)')); }; document.head.appendChild(s); });
+    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'ops/preplans.data.js?v=3'; s.onload = function () { S = OPS.PREPLAN_SPEC; S ? ok(S) : no(new Error('preplan definitions did not load')); }; s.onerror = function () { no(new Error('could not load the preplan definitions (connection?)')); }; document.head.appendChild(s); });
   };
 
   // ---------- small ArcGIS helpers ----------
@@ -156,36 +156,24 @@
   }
 
   // ---------- 5. web maps and dashboard ----------
-  // the two Survey123 forms, once published: found by what they submit to (any title), or by title
-  async function forms(st) {
-    st.forms = {}; var want = { crew: S.names.intake, review: S.names.review };
-    for (var k of Object.keys(want)) {
-      var f = null;
-      try { var r = await A.req(P('/content/items/' + st.views[want[k]].id + '/relatedItems'), { relationshipType: 'Survey2Service', direction: 'reverse' }); f = (r.relatedItems || []).find(function (x) { return x.type === 'Form'; }) || null; } catch (e) {}
-      if (!f) f = await find(S.forms[k], 'Form').catch(function () { return null; });
-      if (f) st.forms[k] = f.id;
-    }
-  }
   async function put(type, title, text, snippet, extra, knownId) {
     var it = await findKnown(knownId, title, type);
     if (!it) { var r = await A.req((await base()) + '/addItem', Object.assign({ type: type, title: title, tags: S.tags, snippet: snippet, text: text }, extra || {}), true); if (!r.success) throw new Error('could not create ' + title); return item(r.id); }
     await A.req(P('/content/users/' + it.owner + '/items/' + it.id + '/update'), { text: text }, true); return it;
   }
   async function maps(st) {
-    await forms(st);
-    var reviewUrl = st.forms.review ? S123 + st.forms.review + '?mode=edit&recalculate=' + S.recalc + '&globalId=' : '', plan = sharePlan(st), N = S.names, out = [];
+    var reviewUrl = APP + '?review=', plan = sharePlan(st), N = S.names, out = [];
     st.maps = {}; var old = CP.store.prefs().ppState || {};
     for (var m of S.maps) {
-      var v = st.views[N[m.view]], link = reviewUrl ? JSON.stringify(S.linkHtml.replace('__REVIEW_URL__', reviewUrl)).slice(1, -1) : '';
+      var v = st.views[N[m.view]], link = JSON.stringify(S.linkHtml.replace('__REVIEW_URL__', reviewUrl)).slice(1, -1);
       var text = JSON.stringify(m.json).split('__URL__').join(v.url).split('__ITEM__').join(v.id).split('__LINK__').join(link);
       var it = await put('Web Map', m.title, text, m.snippet, { extent: '-80.2,37.3,-79.4,37.85', typeKeywords: 'ArcGIS Online,Explorer Web Map,Map,Online Map,Web Map' }, (old.maps || {})[m.key]);
       await share(it, plan[N[m.view]]); await protect(it); st.maps[m.key] = it.id; out.push(m.key);
     }
-    var d = JSON.stringify(S.dash.json).split('__ITEM__').join(st.views[N.protected].id).split('__MAP__').join(st.maps.protected);
-    d = reviewUrl ? d.split('__REVIEW_URL__').join(reviewUrl) : d.replace(/<p [^>]*><a href=\\"__REVIEW_URL__.*?<\/a><\/p>/g, '');
+    var d = JSON.stringify(S.dash.json).split('__ITEM__').join(st.views[N.protected].id).split('__MAP__').join(st.maps.protected).split('__REVIEW_URL__').join(reviewUrl);
     var dash = await put('Dashboard', S.dash.title, d, S.dash.snippet, { typeKeywords: 'Dashboard,Operations Dashboard,ArcGIS Dashboards' }, old.dash);
     await share(dash, { groups: [st.groups.protected, st.groups.review] }); await protect(dash); st.dash = dash.id;
-    return out.length + ' maps and the dashboard' + (reviewUrl ? ', linked to the review form' : ' (publish the review form, then run this again to add its links)');
+    return out.length + ' maps and the dashboard, linked to the Preplan Builder';
   }
 
   // ---------- 6. health check: what can someone with no sign-in actually do? ----------
@@ -196,8 +184,8 @@
     try {
       var d = await anon(V[N.intake].url + '/0'), leak = S.intakeHidden.filter(function (n) { return (d.fields || []).some(function (f) { return f.name === n; }); });
       ok(/Create/.test(d.capabilities || ''), 'Intake: crews can submit with no sign-in');
-      ok(!leak.length, leak.length ? 'Intake: the public form could set ' + leak.join(', ') + ' (must be hidden)' : 'Intake: the public form cannot set status or any review field');
-      ok((d.relationships || []).length > 0, 'Intake: map features, hazmat, contacts and photos are linked for the Survey123 form');
+      ok(!leak.length, leak.length ? 'Intake: someone with no sign-in could set ' + leak.join(', ') + ' (must be hidden)' : 'Intake: someone with no sign-in cannot set status or any review field');
+      var ph = await anon(V[N.intake].url + '/' + S.layers.find(function (l) { return l.hasAttachments; }).id); ok(!!ph.hasAttachments, 'Intake: photos can be attached');
     } catch (e) { ok(false, 'Intake is not public yet, so crews could not submit (' + e.message + ')'); }
     var pub = await readable(N.tactical);
     ok(pub === (st.tactical === 'everyone'), 'Field view: ' + (pub ? 'open with no sign-in' : 'needs a sign-in') + ' (set to: ' + ({ everyone: 'anyone, no sign-in', org: 'anyone signed in to the county', groups: 'Preplans groups only' })[st.tactical] + ')');
@@ -205,9 +193,7 @@
     var t0 = await A.req(V[N.tactical].url + '/0', { _: Date.now() }), want = S.views.find(function (v) { return v.name === N.tactical; }).layers[0];
     ok((t0.viewDefinitionQuery || '') === want.where, 'Field view shows approved, non-restricted preplans only');
     ok(!want.hide.some(function (n) { return (t0.fields || []).some(function (f) { return f.name === n; }); }), 'Field view hides Knox location, gate codes, occupant notes and reviewer notes');
-    for (var k of Object.keys(N)) { var exp = 'https://services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/' + N[k] + '/FeatureServer'; if ((k === 'intake' || k === 'review') && V[N[k]].url !== exp) ok(false, 'The ' + k + ' view has a different address than the form expects. In the ' + (k === 'intake' ? 'crew' : 'review') + ' XLSForm settings sheet, set submission_url to ' + V[N[k]].url); }
-    ok(!!st.forms.crew, st.forms.crew ? 'Crew form is published' : 'Crew form not published yet (Survey123 Connect: BEACON Preplan.xlsx)');
-    ok(!!st.forms.review, st.forms.review ? 'Review form is published' : 'Review form not published yet (Survey123 Connect: BEACON Preplan - Review.xlsx)');
+    for (var k of ['intake', 'review', 'protected', 'tactical']) { var exp = 'https://services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/' + N[k] + '/FeatureServer'; if (V[N[k]].url !== exp) ok(false, 'The ' + k + ' view was given a different address than the apps expect: ' + V[N[k]].url + '. Put it in config.js under preplans.' + k + 'Url.'); }
     return out;
   };
 
@@ -226,8 +212,8 @@
       await step('Web maps and dashboard', function () { return maps(st); });
       if (!failed) {
         var h = await PP.health(st); h.forEach(function (x) { PP.lines.push((x[0] === 'ok' ? '✓ ' : '✗ ') + x[1]); });
-        PP.result = { ok: h.every(function (x) { return x[0] === 'ok' || /not published yet/.test(x[1]); }), health: h };
-        CP.store.setPref('ppState', { t: Date.now(), tactical: st.tactical, dash: st.dash, maps: st.maps, forms: st.forms, intake: st.views[S.names.intake].url, review: st.views[S.names.review].url });
+        PP.result = { ok: h.every(function (x) { return x[0] === 'ok'; }), health: h };
+        CP.store.setPref('ppState', { t: Date.now(), tactical: st.tactical, dash: st.dash, maps: st.maps });
       } else PP.lines.push('Stopped. Fix the line marked ✗ and run it again; it is safe to rerun.');
     } finally { PP.busy = false; paint(); if (OPS.repaint) OPS.repaint(); }
     return { st: st, failed: failed, result: PP.result };
@@ -237,12 +223,11 @@
   PP.panel = function (canPub) {
     var p = CP.store.prefs().ppState, t = (p && p.tactical) || 'groups', link = function (href, ic, label) { return '<a class="btn ghost" target="_blank" rel="noopener" href="' + E(href) + '">' + I(ic) + E(label) + '</a>'; };
     var opt = function (v, l) { return '<option value="' + v + '"' + (t === v ? ' selected' : '') + '>' + E(l) + '</option>'; };
-    var h = '<p class="dim" style="margin-top:0">Crews build preplans in a Survey123 form with no sign-in. A reviewer approves them in the review form, and approved preplans load onto the Command Board. This button builds the ArcGIS side once and checks it any time after. Nothing runs on a schedule.</p>' +
+    var h = '<p class="dim" style="margin-top:0">Crews build preplans in the Preplan Builder app on an iPad, with no sign-in. A reviewer approves them in the same app, and approved preplans load onto the Command Board. This button builds the ArcGIS side once and checks it any time after. Nothing runs on a schedule.</p>' +
       '<label class="f" style="max-width:520px"><span>Who can open approved preplans in the field view (never Knox, codes, contacts, photos or restricted buildings)</span><select class="in" id="ppShare">' + opt('groups', 'Preplans groups only (sign-in)') + opt('org', 'Anyone signed in to the county ArcGIS') + opt('everyone', 'Anyone, no sign-in') + '</select></label>' +
       '<div class="row" style="margin-top:10px"><button class="btn pri" data-act="ppBuild"' + (canPub && !PP.busy ? '' : ' disabled') + '>' + I('build') + (p ? 'Check and repair preplans' : 'Build preplans') + '</button>' +
-      (p && p.dash ? link(A.portal + '/apps/dashboards/' + p.dash, 'dash', 'Preplan dashboard') : '') + (p && p.forms && p.forms.crew ? link(S123 + p.forms.crew, 'forms', 'Crew form') : '') +
+      link(APP, 'brief', 'Open Preplan Builder') + (p && p.dash ? link(A.portal + '/apps/dashboards/' + p.dash, 'dash', 'Preplan dashboard') : '') +
       (p && p.maps && p.maps.field ? link(A.portal + '/apps/mapviewer/index.html?webmap=' + p.maps.field, 'map', 'Field map') : '') + '</div>' +
-      (p && !(p.forms && p.forms.crew && p.forms.review) ? '<p class="warn-t" style="font-size:12.5px;margin:8px 0 0">Next: publish the two forms in Survey123 Connect, then press the button again so the dashboard links to them.</p>' : '') +
       '<div id="ppLog" class="mono" style="font-size:12.5px;white-space:pre-wrap;margin-top:10px">' + E(PP.lines.join('\n')) + '</div>';
     return '<div class="card" style="margin-top:14px"><h3>' + I('brief') + 'Fire preplans' + (p ? '<span class="x">' + OPS.chip('Active') + '</span>' : '') + '</h3>' + h + '</div>';
   };

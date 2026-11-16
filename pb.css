@@ -1,0 +1,59 @@
+/* BEACON — Preplan Builder (preplan.html). iPad first: big touch targets, one hand, daylight. Uses the Command Board look (cb.css). */
+.pbhome{max-width:1200px;margin:0 auto}
+.pbhero{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:6px 0 16px;padding:18px 20px;border-radius:18px;border:1px solid var(--t-edge2,rgba(255,255,255,.12));background:linear-gradient(120deg,rgba(253,184,51,.14),rgba(255,255,255,.03))}
+.pbhero h1{margin:0;font:800 30px var(--cond);letter-spacing:1px;text-transform:uppercase}.pbhero p{margin:4px 0 0;color:#9fb2c9;font-size:15px}
+.btn.pbbig{min-height:58px;padding:0 26px;font-size:19px;border-radius:14px}
+.pbsec{margin:0 0 20px}.pbsec h2{font:800 15px var(--cond);letter-spacing:1.6px;text-transform:uppercase;color:#9fb2c9;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.pbsec h2 span,.pbh span,.pbtabs span,.pbltabs span{font:700 12px var(--cond);padding:1px 8px;border-radius:999px;background:rgba(255,255,255,.1);color:#e8eef6;letter-spacing:.5px}
+.pbcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.pbcard{display:flex;flex-direction:column;gap:3px;text-align:left;padding:12px 14px;min-height:92px;border-radius:14px;border:1px solid var(--line2,rgba(255,255,255,.14));background:var(--card,#101d30);color:var(--text,#e8eef6);cursor:pointer;font:inherit}
+.pbcard:active{transform:scale(.99)}.pbcard b{font:800 19px var(--cond);letter-spacing:.3px}.pbcard>span{color:#9fb2c9;font-size:14px}
+.pbcard em{font-style:normal;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}.pbcard em i{font-style:normal;font-size:12px;color:#8296ad}
+.pbcard u{text-decoration:none;font-size:12.5px;color:#ffb86b;margin-top:2px}.pbcard.warn{border-color:#ff8d3a}
+.pbltabs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.pbltabs>button:not(.btn),.pbtabs button{min-height:46px;padding:0 16px;border-radius:12px;border:1px solid var(--line2,rgba(255,255,255,.14));background:rgba(255,255,255,.04);color:#c9d6e6;font:700 15px var(--cond);letter-spacing:1px;text-transform:uppercase;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.pbltabs>button.on,.pbtabs button.on{background:linear-gradient(180deg,#ffd166,#FDB833);color:#121212;border-color:#FDB833}
+.pbltabs>button.on span,.pbtabs button.on span{background:rgba(0,0,0,.18);color:#121212}
+.pbltabs .in{flex:1;min-width:200px;min-height:46px;font-size:16px}
+.pbfoot{font-size:12.5px;color:#7f93aa;text-align:center;margin-top:18px}
+/* editor */
+.pbx{display:flex;flex-direction:column;gap:8px;min-height:0}
+.pbtop{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 14px;border-radius:14px;border:1px solid var(--line,rgba(255,255,255,.1));background:var(--panel,#0e1a2b)}
+.pbname{flex:1;min-width:0}.pbname b{display:block;font:800 22px var(--cond);letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pbname span{font-size:13px;color:#9fb2c9}
+.pbsave{font-size:12px;color:#7fd6a4}.pbsave.bad{color:#fff;background:#C8102E;padding:4px 8px;border-radius:8px;font-weight:700}
+.pbtabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}.pbtabs::-webkit-scrollbar{display:none}
+.pbtabs span.need{background:#C8102E;color:#fff}
+.pbpage{max-width:1100px;width:100%;margin:0 auto;padding:4px 2px 30px}
+.pbh{font:800 18px var(--cond);letter-spacing:1.2px;text-transform:uppercase;margin:16px 0 8px;display:flex;align-items:center;gap:8px;border-bottom:2px solid rgba(253,184,51,.5);padding-bottom:4px}
+.pbhelp{font-size:13.5px;margin:0 0 10px}
+.pbform{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}.pbform.one{grid-template-columns:1fr}.pbform .wide{grid-column:1/-1}
+.pbform .f{display:block;min-width:0}.pbform .f>span{display:block;font:700 12px var(--cond);letter-spacing:1.2px;text-transform:uppercase;color:#a9b8ca;margin:0 0 5px}
+.pbform .f small{display:block;font-size:12.5px;color:#8296ad;margin-top:4px;line-height:1.3}
+.pbform .in{min-height:48px;font-size:17px;border-radius:10px}.pbform textarea.in{min-height:96px;line-height:1.35}
+.pbform .req{font-style:normal;font-size:10px;color:#ffb86b;letter-spacing:1px;margin-left:4px}
+.pbseg{display:flex;gap:6px;flex-wrap:wrap}.pbseg button{flex:1 1 auto;min-height:48px;padding:0 14px;border-radius:10px;border:1px solid var(--line2,rgba(255,255,255,.14));background:rgba(255,255,255,.04);color:#e8eef6;font:700 15px var(--sans,Arial);cursor:pointer}
+.pbseg button.on{background:#FDB833;border-color:#FDB833;color:#111}.pbseg button:disabled{opacity:.75;cursor:default}
+.pblock{min-height:48px;display:flex;align-items:center;padding:0 12px;border-radius:10px;border:1px dashed rgba(253,184,51,.5);background:rgba(253,184,51,.07);font-weight:600}
+.pbx.ro .in:disabled{opacity:1;color:#e8eef6;-webkit-text-fill-color:#e8eef6;background:rgba(255,255,255,.03)}
+.pbrows{display:grid;gap:6px;margin-bottom:10px}
+.pbrow{display:flex;align-items:center;gap:10px;text-align:left;min-height:54px;padding:8px 12px;border-radius:12px;border:1px solid var(--line2,rgba(255,255,255,.14));background:rgba(255,255,255,.04);color:#e8eef6;cursor:pointer;font:inherit;flex-wrap:wrap}
+.pbrow b{font:700 16px var(--sans,Arial)}.pbrow span{color:#9fb2c9;font-size:13.5px}.pbrow.sm{min-height:44px;padding:5px 8px;width:100%;margin-bottom:4px}.pbrow.sm b{font-size:13.5px}
+.pbneed,.pbwarn,.pbok{border-radius:12px;padding:10px 14px;margin:8px 0;font-size:15px}.pbneed{border:1px solid #C8102E;background:rgba(200,16,46,.14)}.pbwarn{border:1px solid rgba(253,184,51,.6);background:rgba(253,184,51,.08)}.pbok{border:1px solid rgba(47,191,113,.6);background:rgba(47,191,113,.1);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pbneed ul,.pbwarn ul{margin:4px 0 0 18px;padding:0}
+.pbact{margin-top:14px;gap:10px}.pbact .btn{min-height:50px}
+/* map */
+.pbmapv{grid-template-columns:300px minmax(0,1fr)}.pbmapside .cbsymb.on{background:#FDB833;color:#111;border-color:#FDB833}
+.pbpickb{display:flex;gap:6px;flex-wrap:wrap}.pbpickb .btn{min-height:42px}
+body.pbfit .cbwrap{height:calc(100dvh - 96px);padding-bottom:10px;display:flex;flex-direction:column}body.pbfit .pbx{flex:1}body.pbfit .pbmapv{flex:1;min-height:0}
+body.pbfit .cbmaphost{min-height:0}
+.cbbtns button.set{border-color:#2FBF71}
+/* photos and sketch */
+.pbphotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.pbphotos button{display:flex;flex-direction:column;gap:2px;text-align:left;padding:0;border:1px solid var(--line2,rgba(255,255,255,.14));border-radius:12px;overflow:hidden;background:rgba(255,255,255,.04);color:#e8eef6;cursor:pointer;font:inherit}
+.pbphotos img{width:100%;height:140px;object-fit:cover;display:block;background:#0b1320}.pbphotos b{padding:6px 10px 0;font-size:14px}.pbphotos span{padding:0 10px 8px;font-size:12.5px;color:#9fb2c9;min-height:10px}
+.pbbigimg{display:block;max-width:100%;max-height:46vh;margin:0 auto 12px;border-radius:10px}
+.pbsk canvas{width:100%;height:auto;max-height:62vh;border-radius:10px;background:#fff;touch-action:none;display:block}
+.pbskbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.pbskbar button{min-width:46px;min-height:42px;border-radius:10px;border:2px solid rgba(255,255,255,.35);color:#fff;background:rgba(255,255,255,.08);font:700 13px var(--sans,Arial);padding:0 10px;cursor:pointer}
+@media (max-width:900px){.pbmapv{grid-template-columns:1fr;grid-template-rows:minmax(0,42%) minmax(0,58%)}.pbmapv .cbmaphost{order:-1}.pbform{grid-template-columns:1fr}body.pbfit .cbwrap{height:calc(100dvh - 78px)}}
+/* the Command Board hides its name on an iPad to make room for its tabs; this header has room */
+@media (min-width:600px){.cbbody .cbh2.pbhead .cblock .t span{display:inline}}

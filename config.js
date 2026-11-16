@@ -6,8 +6,8 @@ window.CP_CONFIG = {
   clientId: 'n2nFWHs6Eb9dg9Cs',
   serviceName: 'BOCO_Command_Post',
   serviceUrl: '',
-  // Fire preplans (preplan.js). Leave blank to use BOCO_Preplans_Protected / BOCO_Preplans_Tactical in the county org.
-  preplans: { protectedUrl: '', tacticalUrl: '' }
+  // Fire preplans (Preplan Builder and the Command Board). Leave blank to use the BOCO_Preplans views in the county org.
+  preplans: { intakeUrl: '', reviewUrl: '', protectedUrl: '', tacticalUrl: '' }
 };
 // System name shown on every app, sign-in page and hub page.
 window.CP_BRAND = { name: 'BEACON', long: 'Botetourt Emergency Activity, Coordination & Operations Network' };

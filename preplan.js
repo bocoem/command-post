@@ -192,6 +192,7 @@
     var feats = d.feats.map(function (f) { return f.attributes; }).filter(function (a) { return !/^side_/.test(a.feature_type); });
     if (feats.length) h += '<h4>Map features</h4><table class="pptab">' + feats.map(function (a) { return '<tr><th>' + E(NAMES[a.feature_type] || a.feature_type) + '</th><td>' + E([a.feat_label, a.feat_details, a.feat_floor ? 'floor ' + a.feat_floor : ''].filter(Boolean).join(' · ')) + '</td></tr>'; }).join('') + '</table>';
     if (d.photos.length) h += '<h4>Photos</h4><div class="ppphotos">' + d.photos.map(function (p) { return '<a href="' + E(p.url) + '" target="_blank" rel="noopener"><img loading="lazy" src="' + E(p.url) + '" alt=""><span>' + E([p.view, p.caption].filter(Boolean).join(' · ')) + '</span></a>'; }).join('') + '</div>';
+    if (A.signedIn() && !d.off) h += '<p style="margin-top:12px"><a class="btn sm ghost" href="preplan.html?update=' + encodeURIComponent(s.GlobalID) + '" target="_blank" rel="noopener">Something changed? Update this preplan</a></p>';
     h += '<p class="dim" style="font-size:12px;margin-top:10px">' + (s.reviewed_date ? 'Approved ' + E(when(s.reviewed_date)) : 'Approved') + (rs ? ' · ' + E(rs) : '') + ' · Source: ' + E(d.off ? 'offline copy' : PP.src ? (PP.src.kind === 'protected' ? 'full preplan' : 'field view (no Knox, codes, contacts or photos)') : '') + '</p></div>';
     return h;
   }
