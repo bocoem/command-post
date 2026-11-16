@@ -18,6 +18,7 @@
         '<a href="checkin.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank"><b>Check-In app</b><span>Phone check-in for responders and volunteers</span></a>' +
         '<a href="commandboard.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank" class="red"><b>Command Board</b><span>Fire alarm, structure fire, first-hour command</span></a>' +
         '<a href="preplan.html" target="_blank"><b>Preplan Builder</b><span>Build and review fire preplans on an iPad</span></a>' +
+        (function () { var f = ((CP.store.prefs().ppState || {}).forms || {}).crew; return f ? '<a href="https://survey123.arcgis.com/share/' + encodeURIComponent(f) + '" target="_blank" rel="noopener"><b>Preplan form (Survey123)</b><span>The same preplan in Survey123. Works when these apps are not reachable</span></a>' : ''; })() +
         '<a href="hotline.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank" class="blue"><b>Hotline desk</b><span>Public information line: calls, talking points, routing</span></a>' +
         '<a href="mci.html' + (OPS.inc ? '?incident=' + encodeURIComponent(OPS.inc.key) : '') + '" target="_blank" class="red"><b>MCI app</b><span>Triage, transport, hospitals</span></a>' +
         '<a href="' + OPS.cpLink() + '" target="_blank"><b>Command Post</b><span>Incident record and ICS forms</span></a>' +

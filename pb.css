@@ -57,3 +57,4 @@ body.pbfit .cbmaphost{min-height:0}
 @media (max-width:900px){.pbmapv{grid-template-columns:1fr;grid-template-rows:minmax(0,42%) minmax(0,58%)}.pbmapv .cbmaphost{order:-1}.pbform{grid-template-columns:1fr}body.pbfit .cbwrap{height:calc(100dvh - 78px)}}
 /* the Command Board hides its name on an iPad to make room for its tabs; this header has room */
 @media (min-width:600px){.cbbody .cbh2.pbhead .cblock .t span{display:inline}}
+.pbaud .row{margin-top:10px;align-items:center;gap:12px;flex-wrap:wrap}.pbaud li{margin:2px 0}

@@ -1,6 +1,9 @@
 /* BEACON — Preplan Builder (preplan.html)
    The fire preplan app, built for an iPad. Its own home-screen app; its data is the county ArcGIS layer BOCO_Preplans,
    which the Command Board, the Preplan Program dashboard and any ArcGIS map read.
+   It is the second way in. The backbone is the pair of Survey123 forms (crew form, review form), which work without this app.
+   Both write the same records, so a preplan submitted in one can be reviewed in the other; a reviewer signed in here also gets
+   a check that finishes what a Survey123 review cannot do by itself (retire the older version of an updated preplan).
    - No sign-in needed to build: a crew walks the building, taps the aerial photo to place the same symbols the Command Board
      uses, traces the outline, fills in the building facts, takes photos and submits. Work is saved on the iPad as it is typed
      and stays there, offline too, until it is submitted. Submitting adds the preplan through the add-only Intake view.
@@ -17,6 +20,7 @@
   var KEY = { Preplan_Features: 'feats', Preplan_Footprints: 'outline', Preplan_Hazmat: 'haz', Preplan_Contacts: 'contacts', Preplan_Photos: 'photos' };
   var FT = {}; S.features.forEach(function (f) { FT[f[0]] = { code: f[0], short: f[1], name: f[2], color: f[3], shape: f[4], group: f[5] }; });
   var QUEUE = ['Submitted', 'In Review', 'Needs Changes'], GRACE_MS = 120000;
+  var PHOTO_Q = S.photoQ || 'photo'; // the Survey123 photo question: pictures saved under this keyword show in the review form
   var GEO = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer', GEO_NEAR = '-79.80,37.55';
 
   // ---------- small helpers ----------
@@ -84,6 +88,7 @@
     var a = { GlobalID: d.gid };
     Object.keys(S.site).forEach(function (k) { if (!review && S.review.indexOf(k) >= 0) return; a[k] = nul(d.site[k]); });
     a.restricted = restrictedOf(d.site); a.fire_flow_gpm = flow(d.site); a.site_id = String(a.site_id || '').trim();
+    if ((d.haz || []).length) a.hazmat = 'Yes'; // materials are listed, so the answer is Yes (the Survey123 review form only shows the list then)
     if (a.submit_type !== 'New' && a.replaces_site_id) a.site_id = String(a.replaces_site_id).trim(); // an update keeps the ID of the preplan it replaces
     if (a.submit_type === 'New') a.replaces_site_id = null;
     return a;
@@ -117,7 +122,7 @@
       if (p.sent || !p.blob) continue;
       try {
         var data = await PB.store.blobGet(p.blob); if (!data) { p.sent = true; continue; }
-        await edit(url, [{ id: ids.Preplan_Photos, adds: [PB.childRow('Preplan_Photos', d, p, stamp)], attachments: { adds: [{ globalId: guid(), parentGlobalId: p.gid, contentType: 'image/jpeg', name: 'preplan-' + (++n) + '.jpg', data: String(data).replace(/^data:[^,]*,/, '') }] } }]);
+        await edit(url, [{ id: ids.Preplan_Photos, adds: [PB.childRow('Preplan_Photos', d, p, stamp)], attachments: { adds: [{ globalId: guid(), parentGlobalId: p.gid, contentType: 'image/jpeg', name: PHOTO_Q + '-' + Date.now() + '-' + (++n) + '.jpg', keywords: PHOTO_Q, data: String(data).replace(/^data:[^,]*,/, '') }] } }]);
         p.sent = true; await PB.save(d);
       } catch (e) { left++; d.sub = d.sub || {}; d.sub.err = e.message; }
     }
@@ -132,6 +137,13 @@
   };
 
   // ---------- from ArcGIS (signed in) ----------
+  // every record, a page at a time: ArcGIS hands out a limited number per request, and the lists and the check need them all
+  PB.page = 1000;
+  async function queryAll(layer, where, o) {
+    var out = [], off = 0;
+    for (var k = 0; k < 200; k++) { var r = await A.query(layer, where, Object.assign({}, o, { n: PB.page, order: 'OBJECTID', extra: { resultOffset: off } })); out = out.concat(r); if (r.length < PB.page) break; off += r.length; }
+    return out;
+  }
   function seen(a, table, site) { return a[S.child[table].stamp[0]] === 'Approved' || (site.EditDate != null && a.CreationDate != null && a.CreationDate <= site.EditDate + GRACE_MS); }
   PB.loadRemote = async function (gid, kind) {
     var url = URLS[kind], ids = await layerIds(url);
@@ -162,7 +174,7 @@
   // the review queue and the approved list, with the flags a reviewer needs
   PB.fetchLists = async function () {
     var kind = PB.can.review ? 'review' : 'protected', url = URLS[kind], ids = await layerIds(url);
-    var rows = await A.query(url + '/' + ids.Preplan_Sites, PB.can.review ? '1=1' : "status = 'Approved'", { geom: true, n: 4000, fields: 'OBJECTID,GlobalID,site_id,site_name,address,status,submit_type,prepared_unit,prepared_by,CreationDate,EditDate,reviewed_date,review_months,occupancy,target_hazard' });
+    var rows = await queryAll(url + '/' + ids.Preplan_Sites, PB.can.review ? '1=1' : "status = 'Approved'", { geom: true, fields: 'OBJECTID,GlobalID,site_id,site_name,address,status,submit_type,prepared_unit,prepared_by,CreationDate,EditDate,reviewed_date,review_months,occupancy,target_hazard' });
     var all = rows.map(function (f) { var a = f.attributes; a.status = a.status || 'Submitted'; a._ll = f.geometry && f.geometry.y != null ? [f.geometry.y, f.geometry.x] : null; return a; });
     var appr = all.filter(function (a) { return a.status === 'Approved'; }), best = {};
     appr.forEach(function (a) { var k = String(a.site_id || '').toUpperCase(), t = a.reviewed_date || a.EditDate || 0; if (k && (!best[k] || t > best[k])) best[k] = t; });
@@ -203,9 +215,50 @@
     await edit(url, edits.filter(function (e) { return (e.adds || []).length || (e.updates || []).length || (e.deletes || []).length; }));
     d.site.site_id = attrs.site_id; TABLES.forEach(function (t) { d[KEY[t]].forEach(function (c) { if (t !== 'Preplan_Photos') c._r = 1; }); d.remote.gids[t] = d[KEY[t]].filter(function (c) { return c._r; }).map(function (c) { return c.gid; }); });
     var left = await PB.sendPhotos(d, url, ids, stamp); d.photos.forEach(function (p) { if (p.sent) p._r = 1; }); d.remote.gids.Preplan_Photos = d.photos.filter(function (p) { return p._r; }).map(function (p) { return p.gid; });
-    d.remote.status = status; PB.lists = null;
+    d.remote.status = status; PB.lists = null; PB.aud = null;
     return { superseded: n, photosLeft: left };
   };
+  // ---------- keeping the two ways in step (reviewers) ----------
+  // A review saved in the Survey123 form cannot retire the older version of an updated preplan, and if its stamps did not
+  // take, map features stay out of the field view. This finds both; PB.repair puts them right in one all-or-nothing save.
+  // Only records a reviewer has already seen are released: anything added after the review waits for a reviewer.
+  PB.audit = async function () {
+    var url = URLS.review, ids = await layerIds(url), by = {}, best = {}, out = { old: [], release: 0, hide: 0, late: [], edits: [] }, siteUpd = [];
+    var sites = (await queryAll(url + '/' + ids.Preplan_Sites, '1=1', { fields: 'OBJECTID,GlobalID,site_id,site_name,status,restricted,occupancy,reviewed_date,EditDate' })).map(function (f) { var a = f.attributes; a.status = a.status || 'Submitted'; return a; });
+    var tm = function (a) { return a.reviewed_date || a.EditDate || 0; }, key = function (a) { return String(a.site_id || '').toUpperCase(); };
+    sites.forEach(function (a) { by[gkey(a.GlobalID)] = a; a._eff = a.status; if (a.status === 'Approved' && key(a) && (best[key(a)] == null || tm(a) > best[key(a)])) best[key(a)] = tm(a); });
+    sites.forEach(function (a) { if (a.status === 'Approved' && key(a) && tm(a) < best[key(a)]) { a._eff = 'Superseded'; a._old = 1; out.old.push(a); siteUpd.push({ attributes: { GlobalID: a.GlobalID, status: 'Superseded' } }); } });
+    if (siteUpd.length) out.edits.push({ id: ids.Preplan_Sites, updates: siteUpd });
+    for (var t of TABLES) {
+      if (ids[t] == null) continue;
+      var st = S.child[t].stamp, upd = [], kids = await queryAll(url + '/' + ids[t], '1=1', { fields: 'OBJECTID,GlobalID,parentglobalid,CreationDate,' + st.join(',') });
+      kids.forEach(function (f) {
+        var c = f.attributes, p = by[gkey(c.parentglobalid)]; if (!p) return;
+        var want = restrictedOf(p), a = { GlobalID: c.GlobalID };
+        if (p._eff === 'Approved') {
+          if (c[st[0]] === 'Approved' && c[st[1]] === want) return;
+          if (c[st[0]] !== 'Approved' && !(p.EditDate != null && c.CreationDate != null && c.CreationDate <= p.EditDate + GRACE_MS)) { if (out.late.indexOf(p) < 0) out.late.push(p); return; }
+          out.release++;
+        } else { if (c[st[0]] !== 'Approved') return; if (!p._old) out.hide++; } // only what is showing and should not be
+        a[st[0]] = p._eff; a[st[1]] = want; upd.push({ attributes: a });
+      });
+      if (upd.length) out.edits.push({ id: ids[t], updates: upd });
+    }
+    out.n = out.old.length + out.release + out.hide; out.t = Date.now(); return (PB.aud = out);
+  };
+  PB.repair = async function () {
+    var a = await PB.audit(); if (!a.edits.length) return a; // looked again first: someone may have fixed it since
+    await edit(URLS.review, a.edits); PB.aud = null; PB.lists = null; return a;
+  };
+  function audLines(a) {
+    var names = function (l) { return l.slice(0, 4).map(function (x) { return (x.site_id || '') + ' ' + (x.site_name || ''); }).join('; ') + (l.length > 4 ? '; and ' + (l.length - 4) + ' more' : ''); }, o = [];
+    if (a.old.length) o.push(a.old.length + ' older version' + (a.old.length > 1 ? 's' : '') + ' still approved after an update was approved: ' + names(a.old));
+    if (a.release) o.push(a.release + ' item' + (a.release > 1 ? 's' : '') + ' of approved preplans not released (map features, outlines, hazmat, contacts or photos)');
+    if (a.hide) o.push(a.hide + ' item' + (a.hide > 1 ? 's' : '') + ' still showing for preplans that are no longer approved');
+    return o;
+  }
+  PB.audLines = audLines;
+
   // a new draft that carries everything from an existing preplan, so an update starts complete
   PB.updateFrom = async function (src) {
     var d = PB.blank(), keep = { by: d.site.prepared_by, unit: d.site.prepared_unit };
@@ -242,7 +295,7 @@
   function draftCard(d) {
     return '<button class="pbcard" data-pb="open" data-a="' + E(d.id) + '"><b>' + E(d.site.site_name || 'Unnamed building') + '</b><span>' + E(d.site.address || 'No address yet') + '</span><em>' + stateChip(d) + ' <i>' + E(d.site.site_id || '') + ' · edited ' + E(CP.fmtDT(d.u)) + '</i></em></button>';
   }
-  function remoteCard(a, sub) { return '<button class="pbcard' + (a._old ? ' warn' : '') + '" data-pb="ropen" data-a="' + E(a.GlobalID) + '"><b>' + E(a.site_name || 'Unnamed building') + '</b><span>' + E(a.address || '') + '</span><em>' + chip(a.status, a.status === 'Approved' ? 'ok' : 'gold') + ' <i>' + E([a.site_id, sub].filter(Boolean).join(' · ')) + '</i></em>' + ((a._flags || []).length ? '<u>' + a._flags.map(E).join('<br>') + '</u>' : '') + (a._old ? '<u>Older version still approved. Open it and retire it.</u>' : '') + (a._due ? '<u>' + E(a._due) + '</u>' : '') + '</button>'; }
+  function remoteCard(a, sub) { return '<button class="pbcard' + (a._old ? ' warn' : '') + '" data-pb="ropen" data-a="' + E(a.GlobalID) + '"><b>' + E(a.site_name || 'Unnamed building') + '</b><span>' + E(a.address || '') + '</span><em>' + chip(a.status, a.status === 'Approved' ? 'ok' : 'gold') + ' <i>' + E([a.site_id, sub].filter(Boolean).join(' · ')) + '</i></em>' + ((a._flags || []).length ? '<u>' + a._flags.map(E).join('<br>') + '</u>' : '') + (a._old ? '<u>Older version still approved. Use Fix now above, or open it and retire it.</u>' : '') + (a._due ? '<u>' + E(a._due) + '</u>' : '') + '</button>'; }
   function home() {
     var mine = PB.drafts.filter(function (d) { return d.state !== 'remote'; }).sort(function (a, b) { return a.u < b.u ? 1 : -1; });
     var h = '<div class="pbhome"><div class="pbhero"><div><h1>Preplan Builder</h1><p>Walk the building. Tap the map to place what crews need to find. Photos, facts, done.</p></div><button class="btn pri pbbig" data-pb="new">' + I('plus') + 'New preplan</button></div>';
@@ -253,6 +306,8 @@
       var L = PB.lists, q = PB.q.toUpperCase(), f = function (a) { return !q || (String(a.site_name || '') + ' ' + String(a.address || '') + ' ' + String(a.site_id || '')).toUpperCase().indexOf(q) >= 0; };
       var tabs = (PB.can.review ? [['wait', 'Waiting for review', L ? L.wait.length : '']] : []).concat([['appr', 'Approved', L ? L.appr.length : '']]); if (!tabs.some(function (t) { return t[0] === PB.ltab; })) PB.ltab = tabs[0][0];
       h += '<section class="pbsec"><h2>In ArcGIS' + (PB.can.review ? ' · reviewer' : '') + '</h2><div class="pbltabs">' + tabs.map(function (t) { return '<button class="' + (PB.ltab === t[0] ? 'on' : '') + '" data-pb="ltab" data-a="' + t[0] + '">' + E(t[1]) + (t[2] !== '' ? ' <span>' + t[2] + '</span>' : '') + '</button>'; }).join('') + '<input class="in" id="pbQ" placeholder="Search name, address or ID" value="' + E(PB.q) + '"><button class="btn ghost" data-pb="refresh">' + I('refresh') + 'Refresh</button></div>';
+      var au = PB.can.review ? PB.aud : null;
+      if (au && (au.n || au.late.length)) h += '<div class="pbneed pbaud"><b>Needs attention</b><ul>' + audLines(au).map(function (x) { return '<li>' + E(x) + '</li>'; }).join('') + (au.late.length ? '<li>' + au.late.length + ' approved preplan' + (au.late.length > 1 ? 's have' : ' has') + ' items added after the review. Open and approve again: ' + E(au.late.slice(0, 4).map(function (x) { return (x.site_id || '') + ' ' + (x.site_name || ''); }).join('; ')) + '</li>' : '') + '</ul>' + (au.n ? '<div class="row"><button class="btn pri" data-pb="fix">' + I('check') + 'Fix now</button><span class="dim" style="font-size:13px">One save. Nothing is deleted. This is what a review saved in Survey123 leaves to do.</span></div>' : '') + '</div>';
       if (!L) h += '<div class="empty">' + (PB.listErr ? E(PB.listErr) : 'Loading…') + '</div>';
       else { var rows = (PB.ltab === 'wait' ? L.wait : L.appr).filter(f); h += rows.length ? '<div class="pbcards">' + rows.slice(0, 200).map(function (a) { return remoteCard(a, PB.ltab === 'wait' ? 'sent ' + when(a.CreationDate) + (a.prepared_unit ? ' · ' + a.prepared_unit : '') : a.reviewed_date ? 'approved ' + when(a.reviewed_date) : ''); }).join('') + '</div>' : '<div class="empty">' + (PB.ltab === 'wait' ? 'Nothing is waiting for review.' : 'No approved preplans' + (q ? ' match that search.' : ' yet.')) + '</div>'; }
       h += '</section>';
@@ -438,7 +493,7 @@
         '<div class="pbform">' + field('site_id', Object.assign({}, S.site.site_id, { hint: 'Change it only to fix a wrong ID.' }), s, 'site') + field('review_months', Object.assign({}, S.site.review_months, { hint: 'Blank means every 12 months.' }), s, 'site') + '<label class="f wide"><span>Reviewer notes (what to fix, if you send it back)</span><textarea class="in" id="pbNotes" data-f="site.review_notes" maxlength="1000">' + E(s.review_notes || '') + '</textarea></label></div>' +
         (c.miss.length ? '<div class="pbneed"><b>Missing</b><ul>' + c.miss.map(function (m) { return '<li>' + E(m) + '</li>'; }).join('') + '</ul></div>' : '') +
         '<div class="row pbact"><button class="btn pri pbbig" data-pb="decide" data-a="Approved"' + (c.miss.length ? ' disabled' : '') + '>' + I('check') + 'Approve</button><button class="btn" data-pb="decide" data-a="Needs Changes">Needs changes</button><button class="btn" data-pb="decide" data-a="save">Save my edits only</button><button class="btn ghost" data-pb="decide" data-a="Retired">Retire</button><button class="btn ghost" data-pb="print">' + I('print') + 'Print</button></div>' +
-        '<p class="dim pbhelp">Approve puts it on the Command Board right away and releases every map feature, outline, hazmat row, contact and photo. If it is an update, the older version is retired in the same save.</p>';
+        '<p class="dim pbhelp">Approve puts it on the Command Board right away and releases every map feature, outline, hazmat row, contact and photo. If it is an update, the older version is retired in the same save. The Survey123 review form opens the same record, if you would rather review there.</p>';
     }
     return h;
   }
@@ -500,7 +555,7 @@
   act.home = async function () { PB.view = 'home'; PB.d = null; PB.placing = null; PB.ring = null; history.replaceState(null, '', location.pathname); await loadDrafts(); render(); if (A.signedIn() && !PB.lists) refresh(); };
   act.tab = function (t) { PB.tab = t; PB.placing = null; PB.ring = null; render(); window.scrollTo(0, 0); };
   act.ltab = function (t) { PB.ltab = t; render(); };
-  act.refresh = function () { PB.lists = null; render(); return refresh(); };
+  act.refresh = function () { PB.lists = null; PB.aud = null; render(); return refresh(); };
   act.signin = function () { A.signIn(); };
   act.seg = function (a) { if (PB.ro && !/^row\|/.test(a)) return; var p = a.split('|'), obj = p[0] === 'row' ? PB.rowTmp : PB.d.site; obj[p[1]] = obj[p[1]] === p[2] && !(S.site[p[1]] || {}).req ? '' : p[2]; if (p[0] === 'row') return PB.rowPaint && PB.rowPaint(); touch(true); render(); };
   act.new = function () {
@@ -521,7 +576,20 @@
       openDraft(d, kind !== 'review');
     } catch (e) { done(); U.toast(E(e.offline ? 'No connection' : e.message), 'err', 6000); }
   };
-  async function refresh() { if (!A.signedIn() || !(PB.can.review || PB.can.read)) return; try { PB.listErr = ''; await PB.fetchLists(); } catch (e) { PB.listErr = e.offline ? 'No connection. Lists load when you are back in range.' : e.message; } if (PB.view === 'home') render(); }
+  async function refresh() {
+    if (!A.signedIn() || !(PB.can.review || PB.can.read)) return;
+    try { PB.listErr = ''; await PB.fetchLists(); } catch (e) { PB.listErr = e.offline ? 'No connection. Lists load when you are back in range.' : e.message; }
+    if (PB.view === 'home') render();
+    if (PB.can.review && !PB.listErr) { try { await PB.audit(); } catch (e) { PB.aud = null; } if (PB.view === 'home') render(); }
+  }
+  act.fix = function () {
+    var a = PB.aud; if (!a || !a.n) return;
+    U.confirm('Fix these now?', E(audLines(a).join('. ')) + '. Older versions are set to Superseded and come off the Command Board and the field view; items of approved preplans are released. Nothing is deleted.', 'Fix now', async function () {
+      if (busy) return; busy = true; wait('Fixing…');
+      try { var r = await PB.repair(); done(); U.toast(r.n ? 'Fixed: ' + E(audLines(r).join('. ')) : 'Already in order', 'ok', 7000); } catch (e) { done(); U.toast('Not fixed: ' + E(e.offline ? 'no connection' : e.message), 'err', 8000); }
+      busy = false; render(); refresh();
+    });
+  };
   async function access() { var ok = function (u) { return A.req(u, {}).then(function (j) { return !!(j && (j.layers || j.tables)); }, function () { return false; }); }; var r = await Promise.all([ok(URLS.review), ok(URLS.protected)]); PB.can = { review: r[0], read: r[1], checked: true }; }
 
   function render() {

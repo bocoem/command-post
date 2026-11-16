@@ -4,13 +4,17 @@
    - BOCO_Preplans (private): sites, map features, building outlines, hazmat, contacts, photos
    - views: Intake (public, add-only, review fields hidden), Protected (read), Review (edit), Tactical (approved, safe only)
    - groups, three web maps, the Preplan Program dashboard, delete protection on all of it
-   Day to day the work is done in the Preplan Builder app (preplan.html), which reads and writes these layers.
+   - the two Survey123 forms, once they are published from Survey123 Connect: found, shared and linked from the dashboard
+   Day to day there are two ways in, and they read and write the same layers:
+   - Survey123 (the backbone): the crew form and the review form. All of it is in ArcGIS, so it works when the BEACON apps are not reachable.
+   - the Preplan Builder app (preplan.html): build on one map on an iPad, review in one save.
    The definitions come from ops/preplans.data.js (generated from the preplan schema; loaded only when this runs). */
 (function (CP) {
   'use strict';
   var OPS = CP.ops, A = CP.arc, U = CP.ui, E = CP.esc, I = U.icon;
   var PP = OPS.preplans = { settle: 2500, lines: [], busy: false };
   var APP = location.origin + location.pathname.replace(/[^\/]*$/, '') + 'preplan.html'; // the Preplan Builder, beside this page
+  var S123 = 'https://survey123.arcgis.com/share/';
   var S; // the spec, once loaded
 
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -20,7 +24,7 @@
   function capsSame(a, b) { var n = function (x) { return String(x || '').split(',').map(function (y) { return y.trim(); }).filter(Boolean).sort().join(','); }; return n(a) === n(b); }
   PP.loadSpec = function () {
     if (OPS.PREPLAN_SPEC) return Promise.resolve(S = OPS.PREPLAN_SPEC);
-    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'ops/preplans.data.js?v=3'; s.onload = function () { S = OPS.PREPLAN_SPEC; S ? ok(S) : no(new Error('preplan definitions did not load')); }; s.onerror = function () { no(new Error('could not load the preplan definitions (connection?)')); }; document.head.appendChild(s); });
+    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'ops/preplans.data.js?v=4'; s.onload = function () { S = OPS.PREPLAN_SPEC; S ? ok(S) : no(new Error('preplan definitions did not load')); }; s.onerror = function () { no(new Error('could not load the preplan definitions (connection?)')); }; document.head.appendChild(s); });
   };
 
   // ---------- small ArcGIS helpers ----------
@@ -155,32 +159,51 @@
     return out.join(' · ');
   }
 
-  // ---------- 5. web maps and dashboard ----------
+  // ---------- 5. the two Survey123 forms ----------
+  // Published once from Survey123 Connect. Found by what they submit to (whatever they were titled), or by title.
+  // The crew form is opened to everyone so crews need no sign-in; the review form goes to the reviewers' group.
+  async function forms(st) {
+    st.forms = {}; st.formItems = {}; var want = { crew: S.names.intake, review: S.names.review }, out = [], todo = false;
+    for (var k of Object.keys(want)) {
+      var f = null;
+      try { var r = await A.req(P('/content/items/' + st.views[want[k]].id + '/relatedItems'), { relationshipType: 'Survey2Service', direction: 'reverse' }); f = (r.relatedItems || []).find(function (x) { return x.type === 'Form'; }) || null; } catch (e) {}
+      if (!f) f = await findKnown(((CP.store.prefs().ppState || {}).forms || {})[k], S.forms[k], 'Form').catch(function () { return null; });
+      if (!f) { out.push((k === 'crew' ? 'crew' : 'review') + ' form not published yet'); todo = true; continue; }
+      st.forms[k] = f.id; st.formItems[k] = f;
+      try { await share(f, k === 'crew' ? { everyone: true } : { groups: [st.groups.review] }); await protect(f); out.push((k === 'crew' ? 'crew form: public' : 'review form: reviewers only')); }
+      catch (e) { out.push((k === 'crew' ? 'crew' : 'review') + ' form found, but it could not be shared (' + (e.message || 'refused') + '). Share it in Survey123: Collaborate.'); st.formShareErr = true; }
+    }
+    return todo ? { todo: true, text: out.join(' · ') } : out.join(' · ');
+  }
+
+  // ---------- 6. web maps and dashboard ----------
   async function put(type, title, text, snippet, extra, knownId) {
     var it = await findKnown(knownId, title, type);
     if (!it) { var r = await A.req((await base()) + '/addItem', Object.assign({ type: type, title: title, tags: S.tags, snippet: snippet, text: text }, extra || {}), true); if (!r.success) throw new Error('could not create ' + title); return item(r.id); }
     await A.req(P('/content/users/' + it.owner + '/items/' + it.id + '/update'), { text: text }, true); return it;
   }
   async function maps(st) {
-    var reviewUrl = APP + '?review=', plan = sharePlan(st), N = S.names, out = [];
+    // one preplan's links: Survey123 first (once the review form is published), then the Preplan Builder
+    var s123 = st.forms && st.forms.review ? S123 + st.forms.review + '?mode=edit&recalculate=' + S.recalc + '&globalId=' : '', plan = sharePlan(st), N = S.names, out = [];
+    var links = function (where) { var w = S.links[where], parts = []; if (s123) parts.push(S.links.s123.replace('__S123__', s123)); parts.push(S.links.app.replace('__APP__', APP + '?review=')); return JSON.stringify(w[0] + parts.join(S.links.sep).split('__GID__').join(w[2]) + w[1]).slice(1, -1); };
     st.maps = {}; var old = CP.store.prefs().ppState || {};
     for (var m of S.maps) {
-      var v = st.views[N[m.view]], link = JSON.stringify(S.linkHtml.replace('__REVIEW_URL__', reviewUrl)).slice(1, -1);
-      var text = JSON.stringify(m.json).split('__URL__').join(v.url).split('__ITEM__').join(v.id).split('__LINK__').join(link);
+      var v = st.views[N[m.view]];
+      var text = JSON.stringify(m.json).split('__URL__').join(v.url).split('__ITEM__').join(v.id).split('__LINK__').join(links('map'));
       var it = await put('Web Map', m.title, text, m.snippet, { extent: '-80.2,37.3,-79.4,37.85', typeKeywords: 'ArcGIS Online,Explorer Web Map,Map,Online Map,Web Map' }, (old.maps || {})[m.key]);
       await share(it, plan[N[m.view]]); await protect(it); st.maps[m.key] = it.id; out.push(m.key);
     }
-    var d = JSON.stringify(S.dash.json).split('__ITEM__').join(st.views[N.protected].id).split('__MAP__').join(st.maps.protected).split('__REVIEW_URL__').join(reviewUrl);
+    var d = JSON.stringify(S.dash.json).split('__ITEM__').join(st.views[N.protected].id).split('__MAP__').join(st.maps.protected).split('__DLINK__').join(links('dash'));
     var dash = await put('Dashboard', S.dash.title, d, S.dash.snippet, { typeKeywords: 'Dashboard,Operations Dashboard,ArcGIS Dashboards' }, old.dash);
     await share(dash, { groups: [st.groups.protected, st.groups.review] }); await protect(dash); st.dash = dash.id;
-    return out.length + ' maps and the dashboard, linked to the Preplan Builder';
+    return out.length + ' maps and the dashboard, linked to ' + (s123 ? 'the Survey123 review form and the Preplan Builder' : 'the Preplan Builder (the Survey123 link is added once the review form is published)');
   }
 
-  // ---------- 6. health check: what can someone with no sign-in actually do? ----------
+  // ---------- 7. health check: what can someone with no sign-in actually do? ----------
   PP.health = async function (st) {
-    var N = S.names, V = st.views, out = [], ok = function (good, msg) { out.push([good ? 'ok' : 'bad', msg]); };
+    var N = S.names, V = st.views, out = [], ok = function (good, msg) { out.push([good ? 'ok' : 'bad', msg]); }, todo = function (msg) { out.push(['todo', msg]); };
     var readable = async function (n) { try { await anon(V[n].url + '/0/query', { where: '1=1', returnCountOnly: true }); return true; } catch (e) { return false; } };
-    ok(!(await readable(N.intake)), 'Intake: nobody can read preplans through the public form');
+    ok(!(await readable(N.intake)), 'Intake: nobody can read preplans through the public form or the app');
     try {
       var d = await anon(V[N.intake].url + '/0'), leak = S.intakeHidden.filter(function (n) { return (d.fields || []).some(function (f) { return f.name === n; }); });
       ok(/Create/.test(d.capabilities || ''), 'Intake: crews can submit with no sign-in');
@@ -193,7 +216,13 @@
     var t0 = await A.req(V[N.tactical].url + '/0', { _: Date.now() }), want = S.views.find(function (v) { return v.name === N.tactical; }).layers[0];
     ok((t0.viewDefinitionQuery || '') === want.where, 'Field view shows approved, non-restricted preplans only');
     ok(!want.hide.some(function (n) { return (t0.fields || []).some(function (f) { return f.name === n; }); }), 'Field view hides Knox location, gate codes, occupant notes and reviewer notes');
-    for (var k of ['intake', 'review', 'protected', 'tactical']) { var exp = 'https://services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/' + N[k] + '/FeatureServer'; if (V[N[k]].url !== exp) ok(false, 'The ' + k + ' view was given a different address than the apps expect: ' + V[N[k]].url + '. Put it in config.js under preplans.' + k + 'Url.'); }
+    for (var k of ['intake', 'review', 'protected', 'tactical']) { var exp = 'https://services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/' + N[k] + '/FeatureServer'; if (V[N[k]].url !== exp) ok(false, 'The ' + k + ' view was given a different address than expected: ' + V[N[k]].url + '. Put it in config.js under preplans.' + k + 'Url' + (k === 'intake' || k === 'review' ? ', and in the ' + (k === 'intake' ? 'crew' : 'review') + ' XLSForm settings sheet as submission_url, then publish that form again.' : '.')); }
+    // the Survey123 forms (the backbone): published, and reachable by the right people
+    var F = st.forms || {};
+    if (!F.crew) todo('Survey123 crew form not published yet (Survey123 Connect: ' + S.formFiles.crew + '), then press this button again');
+    else { var pubForm = false; try { var fi = await anon(P('/content/items/' + F.crew)); pubForm = fi.access === 'public'; } catch (e) {} ok(pubForm, pubForm ? 'Survey123 crew form: open with no sign-in' : 'Survey123 crew form is published but not open to everyone, so crews would be asked to sign in. In Survey123: Collaborate → Everyone (public).'); }
+    if (!F.review) todo('Survey123 review form not published yet (Survey123 Connect: ' + S.formFiles.review + '), then press this button again');
+    else { var rf = await item(F.review).catch(function () { return {}; }), priv = rf.access !== 'public'; ok(priv && !st.formShareErr, priv ? 'Survey123 review form: reviewers only' + (st.formShareErr ? ' (sharing needs a look, see above)' : '') : 'Survey123 review form is open to everyone. It must be shared with the Preplans (Review) group only.'); }
     return out;
   };
 
@@ -202,18 +231,19 @@
     if (PP.busy) return; PP.busy = true; PP.lines = []; PP.result = null;
     var st = { tactical: tactical || 'groups', views: {} }, failed = false;
     var paint = function () { var b = document.getElementById('ppLog'); if (b) b.textContent = PP.lines.join('\n'); };
-    var step = async function (name, fn) { if (failed) return; PP.lines.push('… ' + name); paint(); var at = PP.lines.length - 1; try { var r = await fn(); PP.lines[at] = '✓ ' + name + (r ? ': ' + r : ''); } catch (e) { console.warn(name, e); PP.lines[at] = '✗ ' + name + ': ' + (OPS.errText ? OPS.errText(e) : e.message); failed = true; } paint(); };
+    var step = async function (name, fn) { if (failed) return; PP.lines.push('… ' + name); paint(); var at = PP.lines.length - 1; try { var r = await fn(), mk = '✓ '; if (r && typeof r === 'object') { mk = r.todo ? '○ ' : '✓ '; r = r.text; } PP.lines[at] = mk + name + (r ? ': ' + r : ''); } catch (e) { console.warn(name, e); PP.lines[at] = '✗ ' + name + ': ' + (OPS.errText ? OPS.errText(e) : e.message); failed = true; } paint(); };
     try {
       await step('Preplan definitions', async function () { await PP.loadSpec(); return 'loaded'; });
       await step('Groups', function () { return groups(st); });
       await step(S ? S.service : 'Service', function () { return service(st); });
       for (var v of (S ? S.views : [])) { var vv = v; await step(vv.name, function () { return view(st, vv); }); }
       await step('Sharing and delete protection', function () { return sharing(st); });
+      await step('Survey123 forms', function () { return forms(st); });
       await step('Web maps and dashboard', function () { return maps(st); });
       if (!failed) {
-        var h = await PP.health(st); h.forEach(function (x) { PP.lines.push((x[0] === 'ok' ? '✓ ' : '✗ ') + x[1]); });
-        PP.result = { ok: h.every(function (x) { return x[0] === 'ok'; }), health: h };
-        CP.store.setPref('ppState', { t: Date.now(), tactical: st.tactical, dash: st.dash, maps: st.maps });
+        var h = await PP.health(st); h.forEach(function (x) { PP.lines.push((x[0] === 'ok' ? '✓ ' : x[0] === 'todo' ? '○ ' : '✗ ') + x[1]); });
+        PP.result = { ok: h.every(function (x) { return x[0] !== 'bad'; }), todo: h.filter(function (x) { return x[0] === 'todo'; }).length, health: h };
+        CP.store.setPref('ppState', { t: Date.now(), tactical: st.tactical, dash: st.dash, maps: st.maps, forms: st.forms });
       } else PP.lines.push('Stopped. Fix the line marked ✗ and run it again; it is safe to rerun.');
     } finally { PP.busy = false; paint(); if (OPS.repaint) OPS.repaint(); }
     return { st: st, failed: failed, result: PP.result };
@@ -223,11 +253,13 @@
   PP.panel = function (canPub) {
     var p = CP.store.prefs().ppState, t = (p && p.tactical) || 'groups', link = function (href, ic, label) { return '<a class="btn ghost" target="_blank" rel="noopener" href="' + E(href) + '">' + I(ic) + E(label) + '</a>'; };
     var opt = function (v, l) { return '<option value="' + v + '"' + (t === v ? ' selected' : '') + '>' + E(l) + '</option>'; };
-    var h = '<p class="dim" style="margin-top:0">Crews build preplans in the Preplan Builder app on an iPad, with no sign-in. A reviewer approves them in the same app, and approved preplans load onto the Command Board. This button builds the ArcGIS side once and checks it any time after. Nothing runs on a schedule.</p>' +
+    var fm = (p && p.forms) || {};
+    var h = '<p class="dim" style="margin-top:0">Crews build preplans with no sign-in, in the Survey123 crew form or the Preplan Builder app. A reviewer approves them in the Survey123 review form or the app, and approved preplans load onto the Command Board. Both write the same ArcGIS layer; Survey123 keeps working when the BEACON apps are not reachable. This button builds the ArcGIS side once and checks it any time after. Nothing runs on a schedule.</p>' +
       '<label class="f" style="max-width:520px"><span>Who can open approved preplans in the field view (never Knox, codes, contacts, photos or restricted buildings)</span><select class="in" id="ppShare">' + opt('groups', 'Preplans groups only (sign-in)') + opt('org', 'Anyone signed in to the county ArcGIS') + opt('everyone', 'Anyone, no sign-in') + '</select></label>' +
       '<div class="row" style="margin-top:10px"><button class="btn pri" data-act="ppBuild"' + (canPub && !PP.busy ? '' : ' disabled') + '>' + I('build') + (p ? 'Check and repair preplans' : 'Build preplans') + '</button>' +
-      link(APP, 'brief', 'Open Preplan Builder') + (p && p.dash ? link(A.portal + '/apps/dashboards/' + p.dash, 'dash', 'Preplan dashboard') : '') +
+      (fm.crew ? link(S123 + fm.crew, 'forms', 'Survey123 crew form') : '') + link(APP, 'brief', 'Preplan Builder app') + (p && p.dash ? link(A.portal + '/apps/dashboards/' + p.dash, 'dash', 'Preplan dashboard') : '') +
       (p && p.maps && p.maps.field ? link(A.portal + '/apps/mapviewer/index.html?webmap=' + p.maps.field, 'map', 'Field map') : '') + '</div>' +
+      (p && !(fm.crew && fm.review) ? '<p class="warn-t" style="font-size:12.5px;margin:8px 0 0">Next: publish the two forms in Survey123 Connect (' + E('BEACON Preplan.xlsx') + ' and ' + E('BEACON Preplan - Review.xlsx') + '), then press the button again. It finds them, shares them and adds their links to the dashboard.</p>' : '') +
       '<div id="ppLog" class="mono" style="font-size:12.5px;white-space:pre-wrap;margin-top:10px">' + E(PP.lines.join('\n')) + '</div>';
     return '<div class="card" style="margin-top:14px"><h3>' + I('brief') + 'Fire preplans' + (p ? '<span class="x">' + OPS.chip('Active') + '</span>' : '') + '</h3>' + h + '</div>';
   };
