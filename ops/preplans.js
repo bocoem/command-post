@@ -83,9 +83,14 @@
     var url = it.url.replace(/\/$/, ''), have = (await layerIds(url)).ids, missing = S.layers.filter(function (l) { return have[l.name] == null; }), out = [];
     if (missing.length && missing.length < S.layers.length) throw new Error(S.service + ' is only partly built (' + (S.layers.length - missing.length) + ' of ' + S.layers.length + ' layers). If it holds no records, delete it in ArcGIS and run this again.');
     if (missing.length) {
-      var a = await A.req(admin(url) + '/addToDefinition', { addToDefinition: split(S.layers) }, true); if (a.success === false) throw new Error('could not add the layers to ' + S.service);
+      // ArcGIS will not take the links between layers in the same request that creates them, so: layers first, then the links
+      var bare = S.layers.map(function (l) { var c = JSON.parse(JSON.stringify(l)); c.relationships = []; return c; });
+      var a = await A.req(admin(url) + '/addToDefinition', { addToDefinition: split(bare) }, true); if (a.success === false) throw new Error('could not add the layers to ' + S.service);
       out.push(S.layers.length + ' layers added');
-    } else {
+      have = (await layerIds(url)).ids;
+    }
+    out.push(await links(url, have));
+    if (!missing.length) {
       for (var l of S.layers) { // schema grew since the last run: add fields, extend pick lists. Nothing is ever removed.
         var li = await A.req(url + '/' + have[l.name], { _: Date.now() }), cur = {}; (li.fields || []).forEach(function (f) { cur[f.name] = f; });
         var add = l.fields.filter(function (f) { return !cur[f.name]; });
@@ -97,6 +102,22 @@
     }
     st.main = it; st.url = url; st.srcName = decodeURIComponent(url.match(/services\/([^/]+)\/FeatureServer/)[1]);
     return (made ? 'created' : 'found') + (out.length ? ', ' + out.join('; ') : ', up to date');
+  }
+
+  // the links from each preplan to its map features, outlines, hazmat, contacts and photos (Survey123's lists and the app need them)
+  async function links(url, have) {
+    var need = S.layers.filter(function (l) { return (l.relationships || []).length; }), lacking = [];
+    for (var l of need) { var li = await A.req(url + '/' + have[l.name], { _: Date.now() }); if (!(li.relationships || []).length) lacking.push(l); }
+    if (!lacking.length) return 'links in place';
+    var defs = lacking.map(function (l) { return { id: l.id, relationships: l.relationships, geometryType: l.geometryType }; });
+    try { await A.req(admin(url) + '/addToDefinition', { addToDefinition: { layers: defs.filter(function (d) { return d.geometryType; }).map(function (d) { return { id: d.id, relationships: d.relationships }; }), tables: defs.filter(function (d) { return !d.geometryType; }).map(function (d) { return { id: d.id, relationships: d.relationships }; }) } }, true); } catch (e) { console.warn('links in one request', e); }
+    var still = [];
+    for (var l2 of lacking) { var l3 = await A.req(url + '/' + have[l2.name], { _: Date.now() }); if (!(l3.relationships || []).length) still.push(l2); }
+    for (var l4 of still) await A.req(admin(url) + '/' + have[l4.name] + '/updateDefinition', { updateDefinition: { relationships: l4.relationships } }, true); // one layer at a time
+    var bad = [];
+    for (var l5 of lacking) { var l6 = await A.req(url + '/' + have[l5.name], { _: Date.now() }); if (!(l6.relationships || []).length) bad.push(l5.name); }
+    if (bad.length) throw new Error('the layers are there, but ArcGIS did not take the links for ' + bad.join(', '));
+    return 'links added (' + lacking.length + ' layers)';
   }
 
   // ---------- 3. views ----------
