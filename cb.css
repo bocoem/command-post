@@ -677,3 +677,18 @@ html,body.cbbody{overscroll-behavior:none;-webkit-tap-highlight-color:transparen
 /* building sides: small gold squares, so they never read as ICS circle symbols (Base B, Camp C) */
 .cbsideA.sm,.cbsidebtns .cbsideA{border-radius:4px;background:#FDB833;color:#111;border:1.5px solid #111}
 .cbsideA.sm{width:20px;height:20px;font-size:12px}
+
+/* ---------- fire preplans (preplan.js) ---------- */
+.ppbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px;padding:6px 10px;border-radius:12px;border:1px solid var(--t-gold,#FDB833);background:linear-gradient(90deg,rgba(253,184,51,.20),rgba(253,184,51,.05));font-size:14px}
+.ppbar>span{display:flex;align-items:center;gap:6px;min-width:0}.ppbar b{font:800 16px var(--cond,Arial);letter-spacing:.3px}
+.ppbar.on{border-color:#2FBF71;background:linear-gradient(90deg,rgba(47,191,113,.18),rgba(47,191,113,.04))}
+.ppbar .ppb{display:flex;gap:6px}.ppbar .btn{min-height:38px}
+.pprow{border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 8px;margin:4px 0 6px}.pprow>b{display:block;font:800 15px var(--cond,Arial)}.pprow>span{display:block;font-size:12px;opacity:.8;margin-bottom:4px}
+.pprow.on{border-color:#2FBF71}
+.ppfacts .pphead{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}.ppfacts .pphead b{font:800 20px var(--cond,Arial)}.ppfacts .pphead em{font-style:normal;color:#FDB833;font-weight:700}
+.ppfacts .ppnote{border-left:4px solid #FDB833;background:rgba(253,184,51,.10);padding:6px 10px;margin:6px 0;border-radius:6px;white-space:pre-wrap}.ppfacts .ppnote b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.5px;opacity:.85}
+.ppfacts .ppnote.red{border-color:#ff3b47;background:rgba(255,59,71,.10)}
+.ppfacts h4{margin:12px 0 4px;font:800 14px var(--cond,Arial);text-transform:uppercase;letter-spacing:.5px}
+.pptab{width:100%;border-collapse:collapse;font-size:14px}.pptab th{text-align:left;vertical-align:top;width:34%;padding:4px 8px 4px 0;font-weight:600;opacity:.75}.pptab td{padding:4px 0;border-bottom:1px solid rgba(127,127,127,.18);white-space:pre-wrap}
+.pptab a{color:#3fa9ff;font-weight:700}
+.ppphotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}.ppphotos a{display:block;text-decoration:none;color:inherit}.ppphotos img{width:100%;height:110px;object-fit:cover;border-radius:8px;display:block}.ppphotos span{font-size:12px;opacity:.8}

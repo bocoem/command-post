@@ -5,7 +5,9 @@ window.CP_CONFIG = {
   portal: 'https://botetourt.maps.arcgis.com',
   clientId: 'n2nFWHs6Eb9dg9Cs',
   serviceName: 'BOCO_Command_Post',
-  serviceUrl: ''
+  serviceUrl: '',
+  // Fire preplans (preplan.js). Leave blank to use BOCO_Preplans_Protected / BOCO_Preplans_Tactical in the county org.
+  preplans: { protectedUrl: '', tacticalUrl: '' }
 };
 // System name shown on every app, sign-in page and hub page.
 window.CP_BRAND = { name: 'BEACON', long: 'Botetourt Emergency Activity, Coordination & Operations Network' };
