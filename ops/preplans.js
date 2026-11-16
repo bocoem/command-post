@@ -24,7 +24,7 @@
   function capsSame(a, b) { var n = function (x) { return String(x || '').split(',').map(function (y) { return y.trim(); }).filter(Boolean).sort().join(','); }; return n(a) === n(b); }
   PP.loadSpec = function () {
     if (OPS.PREPLAN_SPEC) return Promise.resolve(S = OPS.PREPLAN_SPEC);
-    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'ops/preplans.data.js?v=4'; s.onload = function () { S = OPS.PREPLAN_SPEC; S ? ok(S) : no(new Error('preplan definitions did not load')); }; s.onerror = function () { no(new Error('could not load the preplan definitions (connection?)')); }; document.head.appendChild(s); });
+    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'ops/preplans.data.js?v=5'; s.onload = function () { S = OPS.PREPLAN_SPEC; S ? ok(S) : no(new Error('preplan definitions did not load')); }; s.onerror = function () { no(new Error('could not load the preplan definitions (connection?)')); }; document.head.appendChild(s); });
   };
 
   // ---------- small ArcGIS helpers ----------
