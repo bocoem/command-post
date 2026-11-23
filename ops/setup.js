@@ -218,6 +218,7 @@
     h += '<div class="grid g2" style="align-items:start">' + SX.feeds() + SX.groups() + '</div>';
     h += SX.services(canPub, built);
     if (OPS.preplans) h += OPS.preplans.panel(canPub);
+    if (OPS.appaccess) h += OPS.appaccess.panel();
     h += '<div class="grid g2" style="align-items:start">' + SX.cleanup() + SX.print() + '</div>';
     return h;
   };

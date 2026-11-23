@@ -692,3 +692,7 @@ html,body.cbbody{overscroll-behavior:none;-webkit-tap-highlight-color:transparen
 .pptab{width:100%;border-collapse:collapse;font-size:14px}.pptab th{text-align:left;vertical-align:top;width:34%;padding:4px 8px 4px 0;font-weight:600;opacity:.75}.pptab td{padding:4px 0;border-bottom:1px solid rgba(127,127,127,.18);white-space:pre-wrap}
 .pptab a{color:#3fa9ff;font-weight:700}
 .ppphotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}.ppphotos a{display:block;text-decoration:none;color:inherit}.ppphotos img{width:100%;height:110px;object-fit:cover;border-radius:8px;display:block}.ppphotos span{font-size:12px;opacity:.8}
+
+/* app: incident code for mutual aid */
+.cbgcode{font:800 44px/1.1 var(--mono,'JetBrains Mono',monospace);letter-spacing:6px;text-align:center;padding:14px;margin:10px 0;border-radius:12px;background:#FDB833;color:#111}
+.cbgqr{max-width:220px;margin:6px auto;background:#fff;border-radius:10px;padding:6px}.cbgqr svg{width:100%;height:auto;display:block}

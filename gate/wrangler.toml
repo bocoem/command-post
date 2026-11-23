@@ -1,0 +1,17 @@
+name = "beacon-gate"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+# Optional: users table layer URL without https://. Empty = layer 0 of SERVICES.users.
+USERS_TABLE = ""
+# Optional: anyone with an email at this domain who is not on the list gets Viewer in the Command Board. Leave empty to require the list.
+AUTO_VIEWER_DOMAIN = ""
+# ArcGIS services the apps may use, as JSON (paste from EM Ops -> Setup -> "Command Board & MCI apps" -> Copy gate settings).
+SERVICES = ""
+
+# Secrets (set with: npx wrangler secret put NAME)
+#   ARC_KEY        ArcGIS API key (developer credentials scoped to the layers in worker.js)
+#   SIGNING_KEY    long random string that signs sign-in sessions
+#   MAIL_FLOW_URL  Power Automate "BEACON sign-in code" flow (HTTP trigger) that emails the code

@@ -1,0 +1,30 @@
+# Builds the Command Board iPhone/iPad app to check that it compiles, and checks the built-in board page is current.
+name: Command Board iOS build
+on:
+  push:
+    paths: ['ios/CommandBoard/**', 'ios/shared/**', 'gate/**', 'cb.js', 'cb.css', 'gate.js', 'arc.js', '.github/workflows/commandboard-ios.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Built-in board page matches the website's code
+        run: |
+          python3 ios/shared/build_web.py commandboard.html /tmp/board.html
+          cmp /tmp/board.html ios/CommandBoard/CommandBoard/board.html || (echo "::error::board.html is out of date: run python3 ios/shared/build_web.py commandboard.html ios/CommandBoard/CommandBoard/board.html" && exit 1)
+      - name: Build for the iPhone simulator (no signing)
+        working-directory: ios/CommandBoard
+        run: |
+          set -o pipefail
+          xcodebuild -project CommandBoard.xcodeproj -target CommandBoard -configuration Debug \
+            -sdk iphonesimulator -arch arm64 CODE_SIGNING_ALLOWED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO build 2>&1 | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commandboard-build-log
+          path: ios/CommandBoard/build.log

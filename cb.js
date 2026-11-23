@@ -133,6 +133,7 @@
     var i = inc(); if (text) log(text, cat);
     i.updatedBy = CP.me.name || ''; i.updated = CP.now(); CP.store.put(i); CP.store.setPref('cbCur', { key: i.id, t: Date.now() });
     if (A.status === 'on') { clearTimeout(saveT); saveT = setTimeout(push, 900); } else if (A.signedIn() && CP.sync) CP.sync.markIncident(i.id);
+    if (CP.native) { clearTimeout(CB.natT); CB.natT = setTimeout(function () { nativeSave(inc()); }, 2500); }
     if (!quiet) render();
   }
   async function push() {
@@ -166,7 +167,14 @@
   }
 
   // ---------- start screen ----------
+  function viewerStart() {
+    var l = CB.list || [];
+    return '<div class="cbstart"><div class="cbstrip"><span class="lead">Signed in as ' + E(CP.gate.name) + ' · ' + E(CP.gate.level) + '. Running incidents open view-only.</span></div><div class="cbcols"><section class="card"><h3>' + I('list') + 'Running incidents</h3>' +
+      (!Array.isArray(CB.list) ? '<div class="empty">Loading…</div>' : !l.length ? '<div class="empty">No running incidents.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(x.start_time ? CP.fmtTime(new Date(x.start_time).toISOString()) : '') + '</i></button>'; }).join('')) +
+      '</section></div></div>';
+  }
   function startScreen() {
+    if (app() && !CP.gate.can('Command')) return viewerStart();
     var l = CB.list, cad = CB.cad;
     var nCad = Array.isArray(cad) ? cad.length : '–', nInc = Array.isArray(l) ? l.length : '–';
     var h = '<div class="cbstart"><div class="cbstrip"><span class="lead">Start a board, pick up a CAD call, or rejoin a running incident.</span>' +
@@ -182,7 +190,7 @@
       '<button class="btn big pri" style="width:100%" data-cb="start">' + I('play') + 'Start command board</button></section>';
     h += '<section class="card"><h3>' + I('radio') + 'From an active CAD call</h3>' + cadStatus() + (cadOn() ? '<p class="dim" style="margin-top:0">Tap a call to fill the address and bring its units onto the board.</p>' : '') +
       (!cadOn() ? '' : cad === undefined ? '<div class="empty">Loading CAD…</div>' : !cad || !cad.length ? '<div class="dim">No active CAD calls' + (A.signedIn() ? '' : ' (sign in to see CAD)') + '.</div>' : cad.slice(0, 20).map(function (c) { return '<button class="cbcad' + (CB.cadPick && CB.cadPick.callid === c.callid ? ' on' : '') + '" data-cb="cad" data-a="' + E(c.callid) + '"><b>' + E(c.type || c.cat || 'Call') + '</b><span>' + E(c.addr || '') + '</span><i>' + E((c.units || []).map(function (u) { return u.id; }).join(' ') || 'no units yet') + '</i></button>'; }).join('')) + '</section>';
-    h += '<section class="card"><h3>' + I('list') + 'Open a running incident</h3>' + (l === undefined ? '<div class="empty">Loading incidents…</div>' : !l || !l.length ? '<div class="dim">No open incidents' + (A.signedIn() ? '' : ' (sign in to see shared incidents)') + '.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.local ? 'ON THIS TABLET · ' : '') + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(CP.fmtDT(new Date(x.start_time).toISOString())) + '</i></button>'; }).join('')) + ((CB.closedList || []).length ? '<div class="cbsub" style="margin-top:14px">Closed in the last 3 days</div>' + CB.closedList.map(function (x) { return '<button class="cbcad closed" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>Closed ' + E(CP.fmtDT(new Date(x.closed_time).toISOString())) + '</span><i>open for the report</i></button>'; }).join('') : '') + '<div class="cbfilebtns">' + (CB.recN ? '<button class="btn pri" data-cb="recover">' + I('refresh') + 'Recover autosaved board' + (CB.recN > 1 ? 's (' + CB.recN + ')' : '') + '</button>' : '') + '<button class="btn" data-cb="restore">' + I('up') + 'Open a board from a file</button>' + (standalone() ? '' : '<button class="btn ghost" data-cb="install">' + I('plus') + 'Install on this iPad</button>') + '</div></section></div></div>';
+    h += '<section class="card"><h3>' + I('list') + 'Open a running incident</h3>' + (l === undefined ? '<div class="empty">Loading incidents…</div>' : !l || !l.length ? '<div class="dim">No open incidents' + (A.signedIn() ? '' : ' (sign in to see shared incidents)') + '.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.local ? 'ON THIS TABLET · ' : '') + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(CP.fmtDT(new Date(x.start_time).toISOString())) + '</i></button>'; }).join('')) + ((CB.closedList || []).length ? '<div class="cbsub" style="margin-top:14px">Closed in the last 3 days</div>' + CB.closedList.map(function (x) { return '<button class="cbcad closed" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>Closed ' + E(CP.fmtDT(new Date(x.closed_time).toISOString())) + '</span><i>open for the report</i></button>'; }).join('') : '') + '<div class="cbfilebtns">' + (CB.recN ? '<button class="btn pri" data-cb="recover">' + I('refresh') + 'Recover autosaved board' + (CB.recN > 1 ? 's (' + CB.recN + ')' : '') + '</button>' : '') + '<button class="btn" data-cb="restore">' + I('up') + 'Open a board from a file</button>' + (standalone() || app() ? '' : '<button class="btn ghost" data-cb="install">' + I('plus') + 'Install on this iPad</button>') + '</div></section></div></div>';
     return h;
   }
   // boards kept on this tablet (started offline, without signing in, or not yet shared)
@@ -272,7 +280,8 @@
   function saveNote(t) { t = (t || '').trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); return true; }
 
   // ---------- the board ----------
-  function phone() { return window.innerWidth < 720 || new URLSearchParams(location.search).get('view') === '1'; }
+  function phone() { return window.innerWidth < 720 || new URLSearchParams(location.search).get('view') === '1' || (A.gate && !CP.gate.can('Command')); }
+  function app() { return !!A.gate; }
   function board() {
     var i = inc(), mode = kv('mode', ''), cond = kv('cond', ''), parEvery = +kv('parEvery', 20), parT = kv('parT', i.start), parDue = new Date(parT).getTime() + parEvery * 60000, parLeft = Math.round((parDue - Date.now()) / 1000);
     var may = kv('mayday', null), ic = CP.personName(i, 'IC');
@@ -364,7 +373,8 @@
       '<div class="cbphasg"><b>Not assigned</b><div>' + units().filter(function (r) { return !r.assign; }).map(function (r) { return '<span class="chip' + (r.status === 'En Route' ? ' blue' : '') + '">' + E(r.name) + (r.status === 'En Route' ? ' (resp.)' : '') + '</span>'; }).join(' ') + '</div></div>' +
       '<div class="cbh">Benchmarks</div>' + marks().map(function (m) { return '<div class="cbphm ' + (m.t ? 'ok-t' : 'dim') + '">' + I(m.t ? 'check' : 'clock') + E(m.label) + (m.t ? ' · ' + E(CP.fmtTime(m.t)) : '') + '</div>'; }).join('') +
       '<div class="cbh">Activity</div><div class="cblog">' + AL(i.log).slice(-10).reverse().map(function (l) { return '<div><span class="mono">' + E(CP.fmtTime(l.ts)) + '</span> ' + E(l.text) + '</div>'; }).join('') + '</div>' +
-      '<div class="row" style="margin-top:12px;gap:8px"><a class="btn" href="commandboard.html?incident=' + encodeURIComponent(i.id) + '&view=0">Full board</a><a class="btn" href="index.html?incident=' + encodeURIComponent(i.id) + '">Command Post</a></div><p class="dim" style="font-size:12px">Updates every few seconds.</p></div>';
+      (app() ? (CP.gate.can('Command') ? '<div class="row" style="margin-top:12px;gap:8px"><a class="btn" href="commandboard.html?incident=' + encodeURIComponent(i.id) + '&view=0">Full board</a></div>' : '') + '<p class="dim" style="font-size:12px">Updates every few seconds · ' + E(CP.gate.name) + ' · ' + E(CP.gate.level) + (CP.gate.can('Officer') ? '' : ' (view only)') + '</p></div>' :
+      '<div class="row" style="margin-top:12px;gap:8px"><a class="btn" href="commandboard.html?incident=' + encodeURIComponent(i.id) + '&view=0">Full board</a><a class="btn" href="index.html?incident=' + encodeURIComponent(i.id) + '">Command Post</a></div><p class="dim" style="font-size:12px">Updates every few seconds.</p></div>');
     return h;
   }
 
@@ -396,7 +406,7 @@
     var y = window.scrollY, qn = document.getElementById('cbQuick'), qv = qn ? qn.value : '', qf = qn && document.activeElement === qn;
     var force = new URLSearchParams(location.search).get('view');
     CB.ro = false;
-    m.innerHTML = inc().status === 'Closed' ? closedScreen() : (force === '0' ? false : phone()) ? phoneView() : board();
+    m.innerHTML = inc().status === 'Closed' ? closedScreen() : (force === '0' && !(app() && !CP.gate.can('Command')) ? false : phone()) ? phoneView() : board();
     document.body.classList.toggle('cbfit', !!m.querySelector('.cbx'));
     var ts = document.getElementById('cbTabSlot'); if (ts) ts.innerHTML = m.querySelector('.cbx') ? tabs() : '';
     if (m.querySelector('.cbx') && (!CB.wx || (incLL() && CB.wx.key !== incLL()[0].toFixed(2) + ',' + incLL()[1].toFixed(2)))) loadWx();
@@ -537,7 +547,7 @@
   };
   var upBusy = false, grpIds = null;
   async function uploadPhotos() {
-    if (upBusy || A.status !== 'on' || !inc() || !A.user) return; var pend = photos().filter(function (p) { return !p.item; }); if (!pend.length) return; upBusy = true;
+    if (A.gate || upBusy || A.status !== 'on' || !inc() || !A.user) return; var pend = photos().filter(function (p) { return !p.item; }); if (!pend.length) return; upBusy = true;
     try {
       if (!grpIds) { var me = await A.req(A.portal + '/sharing/rest/community/self'); grpIds = (me.groups || []).filter(function (g) { return /^BOCO Access [1-4] /.test(g.title); }).map(function (g) { return g.id; }); }
       for (var k = 0; k < pend.length; k++) {
@@ -552,7 +562,7 @@
     } catch (e) { console.warn('photo upload', e); } finally { upBusy = false; }
   }
   setInterval(uploadPhotos, 60000);
-  function photoUrl(p) { return p.item && A.signedIn() ? A.portal + '/sharing/rest/content/items/' + p.item + '/data?token=' + encodeURIComponent((A.auth() || {}).token || '') : ''; }
+  function photoUrl(p) { return p.item && A.signedIn() && !A.gate ? A.portal + '/sharing/rest/content/items/' + p.item + '/data?token=' + encodeURIComponent((A.auth() || {}).token || '') : ''; }
   act.pview = async function (id) {
     var p = CP.byId(inc().cbPhotos, id); if (!p) return; var src = p.th, b = await pget(p.id); if (b) src = URL.createObjectURL(b); else if (photoUrl(p)) src = photoUrl(p);
     U.modal('Photo · ' + CP.fmtTime(p.t) + (p.by ? ' · ' + p.by : ''), '<img src="' + E(src) + '" alt="" style="width:100%;max-height:62vh;object-fit:contain;border-radius:8px;background:#000"><label class="f" style="margin-top:8px"><span>Caption</span><input class="in" name="cap" value="' + E(p.cap || '') + '" placeholder="Side C, second floor"></label><div class="dim" style="font-size:12px">' + (p.item ? 'Saved to county ArcGIS.' : 'Saved on this device. It uploads to county ArcGIS when online.') + '</div>',
@@ -568,6 +578,7 @@
   act.ack = function (id) { var r = CP.byId(inc().resources, id); if (!r) return; var a = r.assign && CP.byId(inc().assignments, r.assign); r.ack = CP.now(); r.u = CP.now(); CP.touch(inc(), 'resources'); if (navigator.vibrate) navigator.vibrate(80); commit(r.name + ' acknowledged ' + (a ? aName(a) : 'assignment'), 'Communication'); };
   function needsAck(r) { return !!(r && r.assign && r.asgT && (!r.ack || r.ack < r.asgT)); }
   function myUnitCard() {
+    if (app() && !CP.gate.can('Officer')) return '';
     var my = CP.store.prefs().cbMyUnit || '', mu = units().find(function (r) { return r.name === my; });
     var h = '<div class="cbmyu"><div class="cbh">' + I('truck') + 'My unit</div><div class="cbmyus">' + units().map(function (r) { return '<button class="' + (r.name === my ? 'on' : '') + (needsAck(r) ? ' need' : '') + '" data-cb="myunit" data-a="' + E(r.name) + '">' + E(r.name) + '</button>'; }).join('') + '</div>';
     if (!mu) return h + '<div class="dim" style="font-size:13px">Tap your unit to see your assignment and acknowledge it.</div></div>';
@@ -600,7 +611,7 @@
   }
 
   // =================== live unit locations (CAD AVL) ===================
-  var HYD = A.L.cad.replace(/CAD%20Calls.*$/, 'Hydrants/FeatureServer/0');
+  var HYD = A.hydrants || A.L.cad.replace(/CAD%20Calls.*$/, 'Hydrants/FeatureServer/0');
   function norm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
   function miles(a, b) { var R = 3958.8, t = Math.PI / 180, dl = (b[0] - a[0]) * t, dn = (b[1] - a[1]) * t, x = Math.sin(dl / 2) * Math.sin(dl / 2) + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dn / 2) * Math.sin(dn / 2); return 2 * R * Math.asin(Math.sqrt(x)); }
   function incLL() { var l = inc() && inc().status !== 'Closed' && inc().location; return l && l.lat != null && l.lat !== '' ? [+l.lat, +l.lng] : null; }
@@ -1098,7 +1109,7 @@
   act.umenu = function (id) { unitMenu(id); };
   act.note = function () { U.modal('Log entry', '<textarea class="in" id="cbNote" style="min-height:90px"></textarea><div class="cbmenu grid" style="margin-top:8px">' + quickFor().map(function (q) { return '<button data-q="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log', cls: 'pri', fn: function (b) { var t = b.querySelector('#cbNote').value.trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); } }], { onOpen: function (b) { b.addEventListener('click', function (e) { var q = e.target.closest('[data-q]'); if (!q) return; e.preventDefault(); var n = b.querySelector('#cbNote'); n.value = (n.value ? n.value + '. ' : '') + q.dataset.q; }); } }); };
   act.more = function () {
-    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], ['phonelink', 'Phone view link / QR'], ['itexport', 'Export for ImageTrend (NERIS)' + (cadNoOf() ? ' · CAD ' + cadNoOf() : '')], ['backup', 'Save board to a file (backup or hand-off to another tablet)'], ['cadtoggle', cadPref() ? 'Turn CAD off on this tablet (run by hand)' : 'Turn CAD on'], ['tocp', 'Move to Command Post (full ICS)'], [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list']].map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], (app() ? ['guestcode', 'Incident code for mutual aid (view only)'] : ['phonelink', 'Phone view link / QR']), (app() ? ['handoff', 'Hand off to another iPad'] : null), ['itexport', 'Export for ImageTrend (NERIS)' + (cadNoOf() ? ' · CAD ' + cadNoOf() : '')], ['backup', 'Save board to a file (backup or hand-off to another tablet)'], ['cadtoggle', cadPref() ? 'Turn CAD off on this tablet (run by hand)' : 'Turn CAD on'], (app() ? null : ['tocp', 'Move to Command Post (full ICS)']), [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list'], (app() ? ['signout', 'Sign out on this device'] : null)].filter(Boolean).map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-mo]'); if (!b) return; e.preventDefault(); var k = b.dataset.mo; U.closeModal();
       if (k === 'ic') setTimeout(act.xfer, 30);
@@ -1106,6 +1117,7 @@
       if (/^(staff|sizeup|r360|pov|iso|gas|peac)$/.test(k)) setTimeout(act[k], 30);
       if (k === 'upgrade') upgrade();
       if (k === 'phonelink') phoneLink();
+      if (/^(guestcode|handoff|signout)$/.test(k)) setTimeout(act[k], 30);
       if (/^(itexport|backup|cadtoggle)$/.test(k)) setTimeout(act[k], 30);
       if (k === 'tocp') toCP();
       if (k === 'close') sure('Terminate command?', 'Releases every unit and closes the incident. The incident report opens next.', 'Terminate command', function () { var all = units(); all.forEach(function (r) { r.status = 'Released'; r.released = CP.now(); r.u = CP.now(); }); CP.touch(inc(), 'resources'); log('Command terminated. ' + all.length + ' unit(s) released. Incident closed after ' + since(inc().start) + '.', 'Decision'); CP.setPath(inc(), 'status', 'Closed'); CP.setPath(inc(), 'closed', CP.now()); commit(null); setTimeout(report, 300); });
@@ -1452,7 +1464,7 @@
   }
   function autosave(why) {
     var i = inc(); if (!i) return;
-    CP.store.put(i); snapshot();
+    CP.store.put(i); snapshot(); nativeSave(i);
     if (A.status === 'on' && !CB.saving && CB.pushedU !== i.updated) push();
     else if (A.signedIn() && A.status !== 'on' && CP.sync) CP.sync.markIncident(i.id);
     paintSync();
@@ -1479,6 +1491,45 @@
     if (A.signedIn()) return 'Offline · saved on iPad · sends when back online';
     return 'On this iPad only · sign in to share';
   }
+
+
+  // =================== app (iPhone / iPad) extras ===================
+  // A copy of the open board goes to the app's own storage on every autosave: it survives the browser data being cleared
+  // and is what "Recover" offers if the iPad's page storage is ever lost.
+  function nativeSave(i) { if (!CP.native || !i) return; try { if (CB.natU === i.updated) return; CB.natU = i.updated; var c = CP.clone(i); delete c.arc; CP.native({ type: 'backup', id: i.id, name: i.name, updated: i.updated, status: i.status, json: JSON.stringify(c) }); } catch (e) {} }
+  // alarms the iPad raises even when it is locked or another app is open: PAR due, and elapsed-time marks
+  function alarms() {
+    if (!CP.native) return; var i = inc(), out = [];
+    if (i && i.status !== 'Closed' && !phone()) {
+      var parDue = new Date(kv('parT', i.start)).getTime() + (+kv('parEvery', 20)) * 60000, st = new Date(i.start).getTime(), nm = i.location.desc || i.name;
+      if (parDue > Date.now()) out.push({ id: 'par', at: parDue, title: 'PAR due', body: nm + ': ' + ppl(onScene()) + ' on scene. Record PAR.', sound: 'alert' });
+      for (var m = 10; m <= 120; m += 10) { var t = st + m * 60000; if (t > Date.now()) { out.push({ id: 'el' + m, at: t, title: m + ' minutes on scene', body: nm, sound: 'soft' }); if (out.length > 6) break; } }
+    }
+    var sig = JSON.stringify(out.map(function (a) { return a.id + a.at; })); if (sig === CB.alarmSig) return; CB.alarmSig = sig;
+    CP.native({ type: 'alarms', items: out });
+  }
+  act.guestcode = async function () {
+    if (!CP.gate.can('Command')) { U.toast('Only Command can hand out incident codes.', 'err'); return; }
+    try {
+      var r = await fetch(CP.gate.url.replace(/\/$/, '') + '/guest-code?incident=' + encodeURIComponent(inc().id), { headers: { Authorization: 'Bearer ' + CP.gate.token } }).then(function (x) { return x.json(); });
+      if (!r.code) throw new Error((r.error && r.error.message) || 'No code');
+      var qr = ''; try { if (window.qrcode) { var q = qrcode(0, 'M'); q.addData('beacon-incident:' + r.code); q.make(); qr = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } } catch (e) {}
+      U.modal('Incident code', '<p>Mutual-aid officers sign in to the Command Board app with <b>"I have an incident code"</b>, their name and this code. They see this incident only, view-only, until it closes.</p><div class="cbgcode">' + E(r.code) + '</div>' + (qr ? '<div class="cbgqr">' + qr + '</div>' : ''), [{ label: 'Done', cls: 'pri' }]);
+      log('Incident code given out for mutual-aid viewing', 'Event'); commit(null, null, true);
+    } catch (e) { U.toast(e.offline || !navigator.onLine ? 'Needs a connection to make a code.' : E(e.message), 'err'); }
+  };
+  // Hand off: send everything now, confirm it is in ArcGIS, then the next iPad opens it from Running incidents
+  act.handoff = async function () {
+    var i = inc(); if (!i) return;
+    if (A.status !== 'on') { U.modal('Hand off', '<p><b>No connection.</b> The board can\'t be confirmed in ArcGIS right now.</p><p>Hand off with a file instead: Save board to a file, then AirDrop it to the other iPad and open it there.</p>', [{ label: 'Save board to a file', cls: 'pri', fn: function () { act.backup(); } }, { label: 'Close', cls: 'ghost' }]); return; }
+    U.toast('Sending everything…', 'ok');
+    CB.pushedU = null; await push();
+    if (CB.pushedU === inc().updated) U.modal('Ready to hand off', '<p>' + I('check') + ' <b>Saved to ArcGIS at ' + E(CP.fmtTime(new Date(CB.savedT).toISOString())) + '.</b></p><p>On the other iPad: open Command Board → Running incidents → <b>' + E(i.name) + '</b>. Transfer command there.</p>', [{ label: 'Done', cls: 'pri' }]);
+    else U.modal('Not confirmed yet', '<p>The last changes have not reached ArcGIS. Try again, or hand off with a file (Save board to a file → AirDrop).</p>', [{ label: 'Try again', cls: 'pri', fn: function () { setTimeout(act.handoff, 50); } }, { label: 'Save board to a file', cls: 'ghost', fn: function () { act.backup(); } }]);
+  };
+  act.signout = function () { sure('Sign out on this device?', 'Boards stay saved on this device. You will need an email code to sign back in.', 'Sign out', function () { autosave('signout'); CP.native({ type: 'signout' }); }); };
+  // the app hands back a board kept in its own storage
+  window.__beaconRestore = function (json) { try { var i = JSON.parse(json), have = CP.store.get(i.id), m = have ? CP.merge(have, i) : i; m.arc = (have && have.arc) || { auto: { incident: false, facilities: false } }; CP.store.put(m); openBoard(m.id); } catch (e) { U.toast('Could not open that saved board', 'err'); } };
 
   // =================== ImageTrend export (NERIS-shaped) ===================
   // ImageTrend Elite builds the fire report from CAD (incident number, dispatch and unit times). The board adds what CAD
@@ -1591,6 +1642,7 @@
   function canShareFiles() { try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.txt', { type: 'text/plain' })] })); } catch (e) { return false; } }
   // Installed on an iPad, a plain download has nowhere to go; the share sheet (Save to Files, AirDrop, Mail) does.
   function saveFile(name, content, type) {
+    if (CP.native) { CP.native({ type: 'share', name: name, mime: type, text: content }); return; }
     if (standalone() && canShareFiles()) { var f = new File([content], name, { type: type }); navigator.share({ files: [f], title: name }).catch(function (e) { if (e && e.name !== 'AbortError') U.download(name, content, type); }); return; }
     U.download(name, content, type);
   }
@@ -1622,6 +1674,7 @@
   window.addEventListener('cp-store-full', storeFull);
   // keep the screen on while a board is open (iPadOS 16.4+; ignored where not supported)
   async function wake() {
+    if (CP.native) { CP.native({ type: 'awake', on: !!(inc() && inc().status !== 'Closed') }); alarms(); return; }
     try { if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return; if (inc() && inc().status !== 'Closed') { if (!CB.wl) { CB.wl = await navigator.wakeLock.request('screen'); CB.wl.addEventListener('release', function () { CB.wl = null; }); } } else if (CB.wl) { CB.wl.release(); CB.wl = null; } } catch (e) {}
   }
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { CB.wl = null; wake(); } });
@@ -1738,7 +1791,7 @@
     document.getElementById('app').innerHTML = '<header class="cbfire cbh2"><div class="cbbadge"><img class="cbpatch" src="' + PATCH + '" alt="Botetourt County Fire &amp; EMS patch" onerror="this.onerror=null;this.src=\'seal.png\'"></div><div class="cblock"><div class="k">Botetourt County <i>·</i> BEACON</div><div class="t">Fire <i>&amp;</i> EMS <span>Command Board</span></div></div><span class="sp" style="flex:1"></span><nav id="cbTabSlot" class="cbhtabs"></nav><span class="sp" style="flex:1"></span><div class="cbhclock"><b id="cbClock">' + new Date().toTimeString().slice(0, 5) + '</b><span id="cbDate">' + new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + '</span></div><button class="btn cbhome" data-cb="home" title="Command Board home: all open incidents">' + I('home') + '<span>Home</span></button></header><main id="cbmain" class="cbwrap"></main>';
     setInterval(function () { var c = document.getElementById('cbClock'); if (c) c.textContent = new Date().toTimeString().slice(0, 5); }, 5000);
     try { if (await A.handleRedirect() === 'away') return; } catch (e) {}
-    var qs = new URLSearchParams(location.search), want = qs.get('incident');
+    var qs = new URLSearchParams(location.search), want = qs.get('incident') || (A.gate && CP.gate.incident) || null;
     // reopened from the home screen (iPadOS often closes web apps in the background): go straight back to the board in use
     if (!want) { var cur = CP.store.prefs().cbCur, li = cur && Date.now() - cur.t < 12 * 3600e3 && CP.store.get(cur.key); if (li && li.status !== 'Closed') want = cur.key; }
     if (CP.store.prefs().cbLocal) CB.localOk = true;
