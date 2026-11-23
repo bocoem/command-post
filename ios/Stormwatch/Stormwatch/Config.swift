@@ -9,6 +9,8 @@ enum Config {
 
     /// "Storm Reports - Public Map", the web map behind the web app's Map and Reports pages.
     static let webMapItem = "565be72ebd21458b83e678e9dbec50e2"
+    /// The Stormwatch Responder web app (Experience Builder). Its header pictures are read from this item.
+    static let webAppItem = "0f7a1564b1db45c2adcb469b56973330"
     static let responderWeb = URL(string: "https://experience.arcgis.com/experience/0f7a1564b1db45c2adcb469b56973330")!
 }
 

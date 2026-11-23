@@ -60,6 +60,19 @@ enum ArcGIS {
         return j["features"] as? [[String: Any]] ?? []
     }
 
+    /// Every photo in a layer, by report: objectId → attachment IDs (one request, like the web list).
+    static func photoIndex(_ layer: URL) async throws -> [Int: [Int]] {
+        let j = try await call(layer.appendingPathComponent("queryAttachments"), ["definitionExpression": "1=1"], post: false)
+        var out: [Int: [Int]] = [:]
+        for g in j["attachmentGroups"] as? [[String: Any]] ?? [] {
+            guard let p = g["parentObjectId"] as? Int else { continue }
+            out[p] = (g["attachmentInfos"] as? [[String: Any]] ?? [])
+                .filter { ($0["contentType"] as? String ?? "image").hasPrefix("image") }
+                .compactMap { $0["id"] as? Int }
+        }
+        return out
+    }
+
     /// Public URLs of a report's photos.
     static func photoURLs(_ layer: URL, objectId: Int) async throws -> [URL] {
         let j = try await call(layer.appendingPathComponent("\(objectId)/attachments"), [:], post: false)

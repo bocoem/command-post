@@ -13,10 +13,15 @@ struct StormReport: Identifiable, Codable, Hashable {
     let created: Date
     let lat: Double
     let lng: Double
-    let hasPhotos: Bool
+    /// Attachment IDs of the report's photos, newest list from queryAttachments.
+    var photoIds: [Int] = []
 
     var id: String { "\(source.rawValue)-\(objectId)" }
     var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lng) }
+    /// Photo addresses, resized by ArcGIS to the width asked for (the same photos the web app shows).
+    func photoURLs(width: Int) -> [URL] {
+        photoIds.map { source.url.appendingPathComponent("\(objectId)/attachments/\($0)").appending(queryItems: [URLQueryItem(name: "w", value: "\(width)")]) }
+    }
     /// The web map's symbol key: Lower(Replace(Trim(DefaultValue($feature.type,'other')),' ','_'))
     var symbolKey: String {
         let t = typeCode.trimmingCharacters(in: .whitespaces)
@@ -43,6 +48,9 @@ final class Feed: ObservableObject {
     @Published private(set) var updated: Date?
     @Published private(set) var loading = false
     @Published private(set) var error: String?
+    /// The web app's header pictures: banner art, the BCEM seal and the "Stormwatch Responder" lockup.
+    @Published private(set) var header: [String: UIImage] = [:]
+    static let headerFiles = ["banner": "images/header/banner_phone_v2.jpg", "lockup": "images/header/sr_lockup.png", "seal": "images/widget_1/bcem_seal.png"]
 
     private let dir: URL
     private var imageCache: [String: UIImage] = [:]
@@ -57,6 +65,24 @@ final class Feed: ObservableObject {
         if let d = try? Data(contentsOf: dir.appendingPathComponent("symbols.json")),
            let s = try? JSONDecoder().decode([Symbol].self, from: d) { symbols = s }
         updated = UserDefaults.standard.object(forKey: "feed.updated") as? Date
+        for k in Self.headerFiles.keys {
+            if let d = try? Data(contentsOf: dir.appendingPathComponent("header-\(k)")), let i = UIImage(data: d) { header[k] = i }
+        }
+    }
+
+    /// Downloads the header pictures from the web app's own files (public item resources), once a day.
+    func loadHeader() async {
+        let stale = (UserDefaults.standard.object(forKey: "header.updated") as? Date ?? .distantPast) < Date().addingTimeInterval(-86400)
+        guard header.count < Self.headerFiles.count || stale else { return }
+        let base = Config.portal.appendingPathComponent("sharing/rest/content/items/\(Config.webAppItem)/resources")
+        for (k, f) in Self.headerFiles {
+            if let (d, r) = try? await URLSession.shared.data(from: base.appendingPathComponent(f)),
+               (r as? HTTPURLResponse)?.statusCode == 200, let i = UIImage(data: d) {
+                header[k] = i
+                try? d.write(to: dir.appendingPathComponent("header-\(k)"))
+            }
+        }
+        UserDefaults.standard.set(Date(), forKey: "header.updated")
     }
 
     var all: [StormReport] { StormSource.allCases.flatMap { reports[$0] ?? [] } }
@@ -78,11 +104,17 @@ final class Feed: ObservableObject {
         if symbols.isEmpty || (updated ?? .distantPast) < Date().addingTimeInterval(-86400) {
             do { try await loadSymbols() } catch { errs.append("Map symbols: \(error.localizedDescription)") }
         }
+        await loadHeader()
         for s in StormSource.allCases {
             do {
                 let labels = try await domainLabels(s)
                 let feats = try await ArcGIS.query(s.url)
-                reports[s] = feats.compactMap { report(from: $0, source: s, labels: labels) }
+                let photos = (try? await ArcGIS.photoIndex(s.url)) ?? [:]
+                reports[s] = feats.compactMap { f -> StormReport? in
+                    guard var r = report(from: f, source: s, labels: labels) else { return nil }
+                    r.photoIds = photos[r.objectId] ?? []
+                    return r
+                }
             } catch {
                 errs.append("\(s.title): \(error.localizedDescription)")
             }
@@ -125,7 +157,7 @@ final class Feed: ObservableObject {
         if title.isEmpty { title = "Storm report" }
         let ms = a.first { $0.key.lowercased() == "creationdate" }?.value as? Double ?? 0
         return StormReport(source: source, objectId: oid, typeCode: code, title: title, comments: s("comments"),
-                           created: Date(timeIntervalSince1970: ms / 1000), lat: y, lng: x, hasPhotos: true)
+                           created: Date(timeIntervalSince1970: ms / 1000), lat: y, lng: x)
     }
 
     /// Symbols and their labels from the web map's renderer (picture markers stored in the map itself).

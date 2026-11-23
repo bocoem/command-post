@@ -10,7 +10,7 @@ struct SurveyTab: View {
     @StateObject private var web = SurveyWeb()
 
     var body: some View {
-        NavigationStack {
+        Group {
             SurveyWebView(web: web, url: url)
                 .ignoresSafeArea(edges: .bottom)
                 .overlay {
@@ -34,16 +34,16 @@ struct SurveyTab: View {
                     }
                 }
                 .background(Theme.page)
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button { web.reload(url) } label: { Label("Start a new form", systemImage: "arrow.counterclockwise") }
-                            Link(destination: url) { Label("Open in Safari", systemImage: "safari") }
-                        } label: { Image(systemName: "ellipsis.circle") }
-                        .accessibilityLabel("Form options")
+                .overlay(alignment: .bottomTrailing) {
+                    Menu {
+                        Button { web.reload(url) } label: { Label("Start a new form", systemImage: "arrow.counterclockwise") }
+                        Link(destination: url) { Label("Open in Safari", systemImage: "safari") }
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 16, weight: .bold)).frame(width: 40, height: 40)
+                            .background(.thinMaterial, in: Circle())
                     }
+                    .accessibilityLabel("\(title) options")
+                    .padding(12)
                 }
         }
     }

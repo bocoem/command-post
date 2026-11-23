@@ -20,7 +20,7 @@ struct MapTab: View {
                                            span: .init(latitudeDelta: 0.75, longitudeDelta: 0.6))
 
     var body: some View {
-        NavigationStack {
+        Group {
             Map(position: $position) {
                 UserAnnotation()
                 ForEach(feed.all.filter { !hidden.contains($0.source) }) { r in
@@ -50,17 +50,9 @@ struct MapTab: View {
                     mapButton("Layers", "square.3.layers.3d") { showLayers = true }
                     mapButton("Legend", "list.bullet.rectangle") { showLegend = true }
                     mapButton("Search", "magnifyingglass") { searching = true }
+                    mapButton("Refresh", feed.loading ? "hourglass" : "arrow.clockwise") { Task { await feed.refresh() } }
                 }
                 .padding(10)
-            }
-            .navigationTitle("Map")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if feed.loading { ProgressView() } else {
-                        Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Refresh")
-                    }
-                }
             }
             .sheet(item: $selected) { r in ReportDetail(report: r).presentationDetents([.medium, .large]) }
             .onAppear { Location.shared.requestPermission() }
@@ -145,8 +137,6 @@ struct LegendList: View {
 /// The web map's pop-up: title, who reported it, when, comments, and photos.
 struct ReportDetail: View {
     let report: StormReport
-    @State private var photos: [URL] = []
-    @State private var loadingPhotos = true
 
     var body: some View {
         NavigationStack {
@@ -162,12 +152,10 @@ struct ReportDetail: View {
                     }
                     if !report.comments.isEmpty { Text(report.comments) }
                     Text("Photos").font(.headline).padding(.top, 4)
-                    if loadingPhotos {
-                        ProgressView()
-                    } else if photos.isEmpty {
+                    if report.photoIds.isEmpty {
                         Text("No photos.").foregroundStyle(.secondary)
                     } else {
-                        ForEach(photos, id: \.self) { u in
+                        ForEach(report.photoURLs(width: 1200), id: \.self) { u in
                             AsyncImage(url: u) { img in img.resizable().scaledToFit() } placeholder: { ProgressView().frame(height: 160) }
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
@@ -184,10 +172,6 @@ struct ReportDetail: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                photos = (try? await ArcGIS.photoURLs(report.source.url, objectId: report.objectId)) ?? []
-                loadingPhotos = false
-            }
         }
     }
 }

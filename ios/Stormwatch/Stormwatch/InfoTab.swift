@@ -6,7 +6,7 @@ struct InfoTab: View {
     @Binding var tab: AppTab
 
     var body: some View {
-        NavigationStack {
+        Group {
             ScrollView {
                 VStack(spacing: 12) {
                     header
@@ -57,8 +57,6 @@ struct InfoTab: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Theme.page)
-            .navigationTitle("Info")
-            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
