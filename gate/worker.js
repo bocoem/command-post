@@ -2,11 +2,11 @@
  *
  * Who gets in is decided by one ArcGIS table ("Command Board Users"): one row per email with a level per app.
  * People sign in with their email and a 6-digit code (no password, no ArcGIS login).
- * The county's ArcGIS key lives only here (secret ARC_KEY). The apps never see it.
+ * The county's ArcGIS app credentials live only here (ARC_CLIENT_ID + secret ARC_CLIENT_SECRET). The apps never see them.
  * The apps reach ArcGIS through /arc/<host>/<path>; only the services in layersFor() are allowed,
  * and what each level may do with each layer is decided here, not in the app.
  *
- * Secrets (wrangler secret put):  ARC_KEY  SIGNING_KEY  MAIL_FLOW_URL
+ * Secrets (wrangler secret put):  ARC_CLIENT_SECRET  MAIL_FLOW_URL   (optional: SIGNING_KEY; or ARC_KEY instead of the client credentials)
  * Vars (wrangler.toml):           SERVICES (JSON from EM Ops)  AUTO_VIEWER_DOMAIN (optional)  USERS_TABLE (optional)
  */
 
@@ -58,8 +58,12 @@ const DEL_OPS = /^deleteFeatures$/;
 const enc = new TextEncoder();
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+// Sessions and codes are signed with SIGNING_KEY, or (if that is not set) a key derived from the ArcGIS client secret.
+// Changing either one signs everybody out, which is what you want if a secret is ever exposed.
 async function hmac(env, msg) {
-  const k = await crypto.subtle.importKey('raw', enc.encode(env.SIGNING_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const raw = env.SIGNING_KEY || ('beacon-gate.' + (env.ARC_CLIENT_SECRET || env.ARC_KEY || ''));
+  if (raw.length < 20) throw new Error('The gate is not set up yet (no ArcGIS client secret).');
+  const k = await crypto.subtle.importKey('raw', enc.encode(raw), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(msg)));
 }
 async function sign(env, obj) { const body = b64u(enc.encode(JSON.stringify(obj))); return body + '.' + b64u(await hmac(env, 'tok.' + body)); }
@@ -74,6 +78,21 @@ const win = (t) => Math.floor((t || Date.now()) / (CODE_MIN * 60000));
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 const okEmail = (e) => /^[^@\s'"]+@[^@\s'"]+\.[a-z]{2,}$/.test(e);
 
+// ---------- ArcGIS token: app credentials (client id + secret) held here; the token is cached until shortly before it expires ----------
+let TOK = null;
+async function arcToken(env) {
+  if (env.ARC_KEY) return env.ARC_KEY;
+  if (TOK && TOK.exp > Date.now() + 10 * 60000) return TOK.t;
+  const key = new Request('https://gate.cache/arc-token');
+  const hit = await caches.default.match(key); if (hit) { const o = await hit.json(); if (o.exp > Date.now() + 10 * 60000) { TOK = o; return o.t; } }
+  const portal = (env.ARC_PORTAL || 'https://botetourt.maps.arcgis.com').replace(/\/$/, '');
+  const r = await fetch(portal + '/sharing/rest/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.ARC_CLIENT_ID || '', client_secret: env.ARC_CLIENT_SECRET || '', grant_type: 'client_credentials', expiration: '1440' }) }).then((x) => x.json());
+  if (!r.access_token) throw new Error('ArcGIS sign-in for the gate failed: ' + ((r.error && (r.error.message || r.error.error_description)) || 'check ARC_CLIENT_ID and ARC_CLIENT_SECRET'));
+  TOK = { t: r.access_token, exp: Date.now() + (r.expires_in || 86400) * 1000 };
+  await caches.default.put(key, new Response(JSON.stringify(TOK), { headers: { 'Cache-Control': 'max-age=' + Math.max(60, (r.expires_in || 86400) - 900) } }));
+  return TOK.t;
+}
+
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Max-Age': '86400' };
 const json = (o, s = 200, h = {}) => new Response(JSON.stringify(o), { status: s, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...CORS, ...h } });
 const err = (m, s = 400) => json({ error: { message: m, code: s } }, s);
@@ -82,7 +101,7 @@ const err = (m, s = 400) => json({ error: { message: m, code: s } }, s);
 async function roster(env, ctx, email) {
   const key = new Request('https://gate.cache/roster/' + encodeURIComponent(email));
   const cache = caches.default; const hit = await cache.match(key); if (hit) return hit.json();
-  const p = new URLSearchParams({ f: 'json', where: "LOWER(email) = '" + email.replace(/'/g, "''") + "'", outFields: '*', resultRecordCount: '1', token: env.ARC_KEY });
+  const p = new URLSearchParams({ f: 'json', where: "LOWER(email) = '" + email.replace(/'/g, "''") + "'", outFields: '*', resultRecordCount: '1', token: await arcToken(env) });
   const r = await fetch('https://' + (env.USERS_TABLE || services(env).users + '/0') + '/query?' + p).then((x) => x.json());
   if (r.error) throw new Error('Users table: ' + r.error.message);
   const a = (r.features && r.features[0] && r.features[0].attributes) || null;
@@ -196,7 +215,7 @@ export default {
 
 async function findIncidentForGuest(env, code) {
   const cp = services(env).cp;
-  const p = new URLSearchParams({ f: 'json', where: "closed_time IS NULL", outFields: 'incident_key', resultRecordCount: '200', orderByFields: 'start_time DESC', token: env.ARC_KEY });
+  const p = new URLSearchParams({ f: 'json', where: "closed_time IS NULL", outFields: 'incident_key', resultRecordCount: '200', orderByFields: 'start_time DESC', token: await arcToken(env) });
   const r = await fetch('https://' + cp + '/0/query?' + p).then((x) => x.json());
   for (const f of r.features || []) { const k = f.attributes.incident_key; if (k && (await guestCode(env, k)) === code) return { key: k }; }
   return null;
@@ -224,7 +243,7 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
     if (L.guestScope && /query/.test(op)) { p.set('where', L.guestScope + " = '" + String(s.g).replace(/'/g, "''") + "'"); ['objectIds', 'geometry', 'text', 'relationshipParam'].forEach((k) => p.delete(k)); }
     else if (!L.guestScope && op) return err('Guests can only view their incident.', 403);
   }
-  p.set('token', env.ARC_KEY); if (!p.get('f')) p.set('f', 'json');
+  p.set('token', await arcToken(env)); if (!p.get('f')) p.set('f', 'json');
   const target = 'https://' + L.svc + (tail ? '/' + tail : '');
   const isBin = /attachments\/\d+$/.test(op);
   const r = (isWrite || isDel || req.method === 'POST')
