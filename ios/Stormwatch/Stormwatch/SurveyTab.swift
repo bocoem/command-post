@@ -106,18 +106,16 @@ final class SurveyWeb: NSObject, ObservableObject, WKNavigationDelegate, WKUIDel
     }
 
     /// Links that open a new window (help links, map attributions) open in Safari, not over the form.
-    nonisolated func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
-                             for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let u = navigationAction.request.url {
-            Task { @MainActor in UIApplication.shared.open(u) }
-        }
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let u = navigationAction.request.url { UIApplication.shared.open(u) }
         return nil
     }
 
     /// Camera for photo questions: allowed for the Survey123 site (iOS still asks the person the first time).
-    nonisolated func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-                             initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
-                             decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         decisionHandler(origin.host.hasSuffix("arcgis.com") ? .grant : .prompt)
     }
 }
