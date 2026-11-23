@@ -11,7 +11,10 @@ AUTO_VIEWER_DOMAIN = ""
 # ArcGIS services the apps may use, as JSON (paste from EM Ops -> Setup -> "Command Board & MCI apps" -> Copy gate settings).
 SERVICES = ""
 
-# Secrets (set with: npx wrangler secret put NAME)
-#   ARC_KEY        ArcGIS API key (developer credentials scoped to the layers in worker.js)
-#   SIGNING_KEY    long random string that signs sign-in sessions
-#   MAIL_FLOW_URL  Power Automate "BEACON sign-in code" flow (HTTP trigger) that emails the code
+# ArcGIS OAuth 2.0 app credentials item "BEACON gate (Command Board and MCI apps)" (its Client ID is not secret).
+ARC_CLIENT_ID = ""
+ARC_PORTAL = "https://botetourt.maps.arcgis.com"
+
+# Secrets (Cloudflare dashboard → the worker → Settings → Variables and Secrets → Add → type Secret):
+#   ARC_CLIENT_SECRET  the Client Secret from that ArcGIS item
+#   MAIL_FLOW_URL      Power Automate "BEACON sign-in code" flow (HTTP trigger URL) that emails the code
