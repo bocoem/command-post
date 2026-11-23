@@ -11,7 +11,6 @@ enum Config {
     static let webMapItem = "565be72ebd21458b83e678e9dbec50e2"
     static let responderWeb = URL(string: "https://experience.arcgis.com/experience/0f7a1564b1db45c2adcb469b56973330")!
 }
-}
 
 /// The two Survey123 forms the web app embeds on its Submit and House Check pages.
 /// Survey123 saves each report and starts the alert flows, so the app adds nothing of its own.
