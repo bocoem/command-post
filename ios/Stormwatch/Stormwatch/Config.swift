@@ -12,11 +12,11 @@ enum Config {
     static let callbackScheme = "bocostormwatch"
     static let redirectURI = "bocostormwatch://auth"
 
-    /// Public storm reports: read only here (the public keeps using the web form).
+    /// Other Stormwatch reports, shown read-only on the Recent map (signed in).
+    static let dispatchResults = layer("survey123_25c0b913f91447e88a85ccf562bdfcbb_results/FeatureServer/0")
     static let publicResults = layer("survey123_8249fcd3b5db4db3a982ab6f4e65acb2_results/FeatureServer/0")
 
     static let responderWeb = URL(string: "https://experience.arcgis.com/experience/0f7a1564b1db45c2adcb469b56973330")!
-    static let publicWeb = URL(string: "https://experience.arcgis.com/experience/c8f438b974da4e2b9d9fd01893687ec4")!
 
     /// Alert flow addresses come from Secrets.plist (kept on the Mac, not in GitHub).
     static func secret(_ key: String) -> URL? {
@@ -27,17 +27,18 @@ enum Config {
     }
 }
 
-/// Which Stormwatch report a person is sending.
+/// The report this app sends. Stormwatch Responder sends responder reports only; dispatch and the
+/// public keep their web forms. Another report type can be added here later.
 enum ReportKind: String, Codable, CaseIterable, Identifiable {
-    case responder, dispatch
+    case responder
     var id: String { rawValue }
-    var title: String { self == .responder ? "Responder" : "Dispatch" }
+    var title: String { "Responder" }
 
     /// Survey123 form item.
-    var formItem: String { self == .responder ? "87946e73db344d4da8e41655a205e6e7" : "25c0b913f91447e88a85ccf562bdfcbb" }
-    var formTitle: String { self == .responder ? "Responder Storm Situation Reports" : "Storm Situation Updates-Dispatch" }
+    var formItem: String { "87946e73db344d4da8e41655a205e6e7" }
+    var formTitle: String { "Responder Storm Situation Reports" }
     /// Feature service item behind the form.
-    var serviceItem: String { self == .responder ? "dfd41d9ce5c444d8927d1c548998e87d" : "d685959bde42432e88008ccd5f40ea5c" }
+    var serviceItem: String { "dfd41d9ce5c444d8927d1c548998e87d" }
     /// The public, add-only layer the Survey123 web form submits to. No sign-in needed.
     var submitLayer: URL { Config.layer("survey123_\(formItem)_form/FeatureServer/0") }
     /// The full layer (for the webhook message, which names the main service like Survey123 does).
@@ -45,5 +46,5 @@ enum ReportKind: String, Codable, CaseIterable, Identifiable {
     /// Read-only results view (signed in).
     var resultsLayer: URL { Config.layer("survey123_\(formItem)_results/FeatureServer/0") }
     /// Secrets.plist key for this report's alert flow.
-    var flowKey: String { self == .responder ? "ResponderFlowURL" : "DispatchFlowURL" }
+    var flowKey: String { "ResponderFlowURL" }
 }

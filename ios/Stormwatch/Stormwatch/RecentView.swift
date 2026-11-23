@@ -99,7 +99,7 @@ struct RecentView: View {
         let clause = "CreationDate >= TIMESTAMP '\(df.string(from: since))'"
         let sources: [(String, URL, [FormSchema.Choice])] = [
             ("Responder", ReportKind.responder.resultsLayer, Schemas.shared.form(.responder).questions.first { $0.name == "type" }?.choices ?? []),
-            ("Dispatch", ReportKind.dispatch.resultsLayer, Schemas.shared.form(.dispatch).questions.first { $0.name == "type" }?.choices ?? []),
+            ("Dispatch", Config.dispatchResults, Schemas.shared.form(.responder).questions.first { $0.name == "type" }?.choices ?? []),
             ("Public", Config.publicResults, [])
         ]
         var all: [Report] = []

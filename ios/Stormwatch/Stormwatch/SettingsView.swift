@@ -32,9 +32,8 @@ struct SettingsView: View {
                         LabeledContent(k.title, value: Config.secret(k.flowKey) == nil ? "Not set up" : "Power Automate flow")
                     }
                 }
-                Section("Web versions") {
+                Section("Web version") {
                     Link("Stormwatch Responder (web)", destination: Config.responderWeb)
-                    Link("Public storm report (web)", destination: Config.publicWeb)
                 }
                 Section {
                     LabeledContent("Version", value: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") + " (" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") + ")")

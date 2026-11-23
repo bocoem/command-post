@@ -6,7 +6,6 @@ struct ReportFormView: View {
     @EnvironmentObject var schemas: Schemas
     @EnvironmentObject var outbox: Outbox
     @StateObject private var loc = Location.shared
-    @AppStorage("kind") private var kindRaw = ReportKind.responder.rawValue
 
     @State private var answers: [String: String] = [:]   // question name → value
     @State private var pin: CLLocationCoordinate2D?
@@ -18,7 +17,7 @@ struct ReportFormView: View {
     @State private var banner: String?
     @State private var showMissing = false
 
-    private var kind: ReportKind { ReportKind(rawValue: kindRaw) ?? .responder }
+    private let kind = ReportKind.responder
     private var form: FormSchema { schemas.form(kind) }
     private var point: CLLocationCoordinate2D? { pin ?? loc.coordinate }
 
@@ -27,13 +26,6 @@ struct ReportFormView: View {
             Form {
                 if let b = banner {
                     Section { Label(b, systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
-                }
-                Section {
-                    Picker("Report as", selection: $kindRaw) {
-                        ForEach(ReportKind.allCases) { Text($0.title).tag($0.rawValue) }
-                    }
-                    .pickerStyle(.segmented)
-                    .onChange(of: kindRaw) { _, _ in answers = [:]; photos = []; prefill() }
                 }
                 locationSection
                 Section("Report") {
@@ -52,11 +44,11 @@ struct ReportFormView: View {
                     }
                 } footer: {
                     Text(outbox.online
-                         ? "Goes to Stormwatch \(kind.title) reports, the same place as the web form, and starts the \(kind.title.lowercased()) alert."
+                         ? "Goes to Stormwatch Responder reports, the same place as the web form, and starts the responder alert."
                          : "No connection. The report stays on this phone and is sent as soon as there is a connection, even if the app is closed.")
                 }
             }
-            .navigationTitle("\(kind.title) report")
+            .navigationTitle("Responder report")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Image(systemName: outbox.online ? "wifi" : "wifi.slash").foregroundStyle(outbox.online ? Color.secondary : Color.orange)
@@ -177,7 +169,7 @@ struct ReportFormView: View {
     private func prefill() {
         for q in form.questions where (q.remember || isNameOrPhone(q.name)) && (answers[q.name] ?? "").isEmpty {
             let key = q.name.lowercased()
-            // The name carries over between the two forms ("name" on Responder, "Name" on Dispatch).
+            // Name and phone are filled in from the last report.
             if let v = UserDefaults.standard.string(forKey: "remember.\(key)"), !v.isEmpty { answers[q.name] = v }
         }
     }
