@@ -12,7 +12,9 @@ enum Alerts {
 
     /// Returns a note when no alert was sent on purpose (no flow address in this copy), nil when it went out.
     static func send(_ r: PendingReport) async throws -> String? {
-        guard let url = Config.secret(r.kind.flowKey) else {
+        // House checks have no alert flow (same as the web form).
+        guard let key = r.kind.flowKey else { return nil }
+        guard let url = Config.secret(key) else {
             return "Saved. This copy of the app has no alert address (Secrets.plist), so no alert was sent."
         }
         var req = URLRequest(url: url, timeoutInterval: 30)

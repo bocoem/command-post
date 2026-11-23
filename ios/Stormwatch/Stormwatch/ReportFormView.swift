@@ -3,6 +3,7 @@ import MapKit
 import PhotosUI
 
 struct ReportFormView: View {
+    let kind: ReportKind
     @EnvironmentObject var schemas: Schemas
     @EnvironmentObject var outbox: Outbox
     @StateObject private var loc = Location.shared
@@ -16,8 +17,8 @@ struct ReportFormView: View {
     @State private var showMap = false
     @State private var banner: String?
     @State private var showMissing = false
+    @State private var showSent = false
 
-    private let kind = ReportKind.responder
     private var form: FormSchema { schemas.form(kind) }
     private var point: CLLocationCoordinate2D? { pin ?? loc.coordinate }
 
@@ -44,18 +45,28 @@ struct ReportFormView: View {
                     }
                 } footer: {
                     Text(outbox.online
-                         ? "Goes to Stormwatch Responder reports, the same place as the web form, and starts the responder alert."
+                         ? (kind == .responder
+                            ? "Goes to Stormwatch Responder reports, the same place as the web form, and starts the responder alert."
+                            : "Goes to Responder House Checks, the same place as the web form.")
                          : "No connection. The report stays on this phone and is sent as soon as there is a connection, even if the app is closed.")
                 }
             }
-            .navigationTitle("Responder report")
+            .navigationTitle(kind.title)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Image(systemName: outbox.online ? "wifi" : "wifi.slash").foregroundStyle(outbox.online ? Color.secondary : Color.orange)
                         .accessibilityLabel(outbox.online ? "Connected" : "No connection")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSent = true } label: {
+                        let n = outbox.waiting.count + outbox.problems.count
+                        Label(n > 0 ? "Sent (\(n) waiting)" : "Sent", systemImage: "tray.full")
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
             }
             .onAppear { loc.start(); prefill() }
+            .sheet(isPresented: $showSent) { OutboxView() }
             .onChange(of: pickerItems) { _, items in Task { await loadPicked(items) } }
             .sheet(isPresented: $showCamera) { CameraView { img in if let img { photos.append(img) } }.ignoresSafeArea() }
             .sheet(isPresented: $showMap) {
@@ -157,17 +168,19 @@ struct ReportFormView: View {
     private func binding(_ name: String, remember: Bool = true) -> Binding<String> {
         Binding(get: { answers[name] ?? "" }, set: { v in
             answers[name] = v
-            if remember, form.questions.first(where: { $0.name == name })?.remember == true || isNameOrPhone(name) {
+            if remember, !isResident(name), form.questions.first(where: { $0.name == name })?.remember == true || isNameOrPhone(name) {
                 UserDefaults.standard.set(v, forKey: "remember.\(name.lowercased())")
             }
         })
     }
 
-    /// Name and phone are filled in for the next report, on both forms.
-    private func isNameOrPhone(_ n: String) -> Bool { ["name", "phone_contact", "phone"].contains(n.lowercased()) }
+    /// Your own name, team and phone are filled in for the next report. Resident details never are,
+    /// even where the Survey123 form remembers them, so one household's details can't land on the next.
+    private func isNameOrPhone(_ n: String) -> Bool { ["name", "phone_contact", "phone", "responderteam_name"].contains(n.lowercased()) }
+    private func isResident(_ n: String) -> Bool { n.lowercased().hasPrefix("resident") || n.lowercased().hasPrefix("number_of_residents") }
 
     private func prefill() {
-        for q in form.questions where (q.remember || isNameOrPhone(q.name)) && (answers[q.name] ?? "").isEmpty {
+        for q in form.questions where (q.remember || isNameOrPhone(q.name)) && !isResident(q.name) && (answers[q.name] ?? "").isEmpty {
             let key = q.name.lowercased()
             // Name and phone are filled in from the last report.
             if let v = UserDefaults.standard.string(forKey: "remember.\(key)"), !v.isEmpty { answers[q.name] = v }
@@ -198,7 +211,7 @@ struct ReportFormView: View {
             }
         }
         let typeQ = form.questions.first { $0.kind == .choice }
-        var summary = "\(kind.title) report"
+        var summary = kind.title
         if let tq = typeQ, let code = values[tq.field] {
             summary = code == "other" ? (values[tq.otherField ?? ""] ?? "Other") : (tq.choices.first { $0.value == code }?.label ?? code)
         }

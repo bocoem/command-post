@@ -1,6 +1,7 @@
 import Foundation
 
-/// Minimal ArcGIS REST client.
+/// Minimal ArcGIS REST client. Everything here is anonymous: the app reads public views and sends to
+/// the public, add-only Survey123 layers, the same as the web app.
 enum ArcGIS {
     struct Failure: LocalizedError {
         let message: String
@@ -23,18 +24,20 @@ enum ArcGIS {
 
     // MARK: Requests
 
-    /// POST with form fields. Adds the sign-in token only when `signedIn` is true.
-    static func call(_ url: URL, _ params: [String: String], signedIn: Bool = false) async throws -> [String: Any] {
+    static func call(_ url: URL, _ params: [String: String], post: Bool = true) async throws -> [String: Any] {
         var p = params
         p["f"] = "json"
-        if signedIn {
-            guard let token = await Auth.shared.validToken() else { throw Failure(message: "Sign in with ArcGIS to see recent reports.", retryable: true) }
-            p["token"] = token
+        var req: URLRequest
+        if post {
+            req = URLRequest(url: url, timeoutInterval: 60)
+            req.httpMethod = "POST"
+            req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            req.httpBody = formBody(p)
+        } else {
+            var c = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+            c.queryItems = p.map { URLQueryItem(name: $0.key, value: $0.value) }
+            req = URLRequest(url: c.url!, timeoutInterval: 30)
         }
-        var req = URLRequest(url: url, timeoutInterval: 60)
-        req.httpMethod = "POST"
-        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        req.httpBody = formBody(p)
         let data: Data
         let resp: URLResponse
         do { (data, resp) = try await URLSession.shared.data(for: req) }
@@ -48,7 +51,7 @@ enum ArcGIS {
         if let e = j["error"] as? [String: Any] {
             let code = e["code"] as? Int ?? 0
             let msg = (e["message"] as? String ?? "ArcGIS error") + ((e["details"] as? [String])?.first.map { " (\($0))" } ?? "")
-            throw Failure(message: msg, retryable: code == 498 || code == 499 || code >= 500 || code == 0)
+            throw Failure(message: msg, retryable: code >= 500 || code == 0)
         }
         return j
     }
@@ -95,18 +98,28 @@ enum ArcGIS {
         let err = r["error"] as? [String: Any] ?? (atts.first { $0["success"] as? Bool == false }?["error"] as? [String: Any]) ?? [:]
         let desc = err["description"] as? String ?? "ArcGIS refused the report."
         let code = err["code"] as? Int ?? 0
-        // A GlobalID that's already there means an earlier try was saved and only its answer was lost.
         // ArcGIS says: "Cannot insert duplicate key row ... unique index '..._globalid'" (code 1000).
+        // That means an earlier try was saved and only its answer was lost.
         if desc.localizedCaseInsensitiveContains("globalid") && (desc.localizedCaseInsensitiveContains("duplicate") || desc.localizedCaseInsensitiveContains("exist")) {
             return AddResult(objectId: nil, globalId: gid(globalId), attachments: [])
         }
         throw Failure(message: "\(desc) (code \(code))", retryable: code >= 500)
     }
 
-    static func query(_ layer: URL, where clause: String, outFields: String = "*", order: String? = nil, max: Int = 300) async throws -> [[String: Any]] {
-        var p = ["where": clause, "outFields": outFields, "returnGeometry": "true", "outSR": "4326", "resultRecordCount": "\(max)"]
-        if let order { p["orderByFields"] = order }
-        let j = try await call(layer.appendingPathComponent("query"), p, signedIn: true)
+    /// Reads a public layer, newest first.
+    static func query(_ layer: URL, where clause: String = "1=1", order: String = "CreationDate DESC", max: Int = 200) async throws -> [[String: Any]] {
+        let p = ["where": clause, "outFields": "*", "returnGeometry": "true", "outSR": "4326",
+                 "orderByFields": order, "resultRecordCount": "\(max)"]
+        let j = try await call(layer.appendingPathComponent("query"), p, post: false)
         return j["features"] as? [[String: Any]] ?? []
+    }
+
+    /// Public URLs of a report's photos.
+    static func photoURLs(_ layer: URL, objectId: Int) async throws -> [URL] {
+        let j = try await call(layer.appendingPathComponent("\(objectId)/attachments"), [:], post: false)
+        let infos = j["attachmentInfos"] as? [[String: Any]] ?? []
+        return infos.filter { ($0["contentType"] as? String ?? "image").hasPrefix("image") }
+            .compactMap { $0["id"] as? Int }
+            .map { layer.appendingPathComponent("\(objectId)/attachments/\($0)") }
     }
 }

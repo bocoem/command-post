@@ -25,7 +25,8 @@ struct OutboxView: View {
                     ForEach(sent) { Row(r: $0) }
                 }
             }
-            .navigationTitle("Sent")
+            .navigationTitle("Sent from this phone")
+            .navigationBarTitleDisplayMode(.inline)
             .refreshable { await outbox.sendAll() }
         }
     }
@@ -40,7 +41,7 @@ struct OutboxView: View {
                     icon
                     Text(r.summary).font(.headline).lineLimit(2)
                     Spacer()
-                    Text(r.kind.title).font(.caption).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary, in: Capsule())
+                    Text(r.kind == .responder ? "Report" : "House check").font(.caption).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary, in: Capsule())
                 }
                 Text(r.address ?? String(format: "%.5f, %.5f", r.lat, r.lng)).font(.subheadline).foregroundStyle(.secondary)
                 Text(status).font(.caption).foregroundStyle(color)
@@ -72,10 +73,11 @@ struct OutboxView: View {
             let t = r.created.formatted(date: .omitted, time: .shortened)
             switch r.stage {
             case .saving: return "Made \(t). Waiting to save" + (r.photos.isEmpty ? "" : " with \(r.photos.count) photo\(r.photos.count == 1 ? "" : "s")") + "."
-            case .alert: return "Saved. Waiting to start the alert."
+            case .alert: return r.kind.flowKey == nil ? "Saved." : "Saved. Waiting to start the alert."
             case .failed: return "ArcGIS refused this report. Check the message below, then try again or delete it."
             case .done:
                 let when = (r.sentAt ?? r.created).formatted(date: .abbreviated, time: .shortened)
+                if r.kind.flowKey == nil { return "Saved \(when)." }
                 return r.alertNote ?? "Saved and alert sent \(when)."
             }
         }
