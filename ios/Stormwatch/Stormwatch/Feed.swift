@@ -63,7 +63,6 @@ final class Feed: ObservableObject {
            let s = try? JSONDecoder().decode([Symbol].self, from: d) { symbols = s }
         updated = UserDefaults.standard.object(forKey: "feed.updated") as? Date
     }
-    }
 
     var all: [StormReport] { StormSource.allCases.flatMap { reports[$0] ?? [] } }
 
