@@ -21,7 +21,8 @@ enum Config {
     /// Alert flow addresses come from Secrets.plist (kept on the Mac, not in GitHub).
     static func secret(_ key: String) -> URL? {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
-              let d = NSDictionary(contentsOf: url), let s = d[key] as? String, !s.isEmpty else { return nil }
+              let d = NSDictionary(contentsOf: url), let s = (d[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              s.hasPrefix("https://") else { return nil }
         return URL(string: s)
     }
 }

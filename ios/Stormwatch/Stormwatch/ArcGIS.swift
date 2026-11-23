@@ -96,7 +96,8 @@ enum ArcGIS {
         let desc = err["description"] as? String ?? "ArcGIS refused the report."
         let code = err["code"] as? Int ?? 0
         // A GlobalID that's already there means an earlier try was saved and only its answer was lost.
-        if desc.localizedCaseInsensitiveContains("globalid") && (desc.localizedCaseInsensitiveContains("exist") || desc.localizedCaseInsensitiveContains("duplicate") || desc.localizedCaseInsensitiveContains("unique")) {
+        // ArcGIS says: "Cannot insert duplicate key row ... unique index '..._globalid'" (code 1000).
+        if desc.localizedCaseInsensitiveContains("globalid") && (desc.localizedCaseInsensitiveContains("duplicate") || desc.localizedCaseInsensitiveContains("exist")) {
             return AddResult(objectId: nil, globalId: gid(globalId), attachments: [])
         }
         throw Failure(message: "\(desc) (code \(code))", retryable: code >= 500)

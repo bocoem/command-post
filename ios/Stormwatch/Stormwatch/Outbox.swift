@@ -137,8 +137,10 @@ final class Outbox: ObservableObject {
                 let res = try await ArcGIS.submit(layer: r.kind.submitLayer, globalId: r.id, attributes: r.values,
                                                   lat: r.lat, lng: r.lng, photos: photos, keyword: r.photoKeyword)
                 r.objectId = res.objectId
-                for a in res.attachments {
-                    if let i = r.photos.firstIndex(where: { ArcGIS.gid($0.id) == a.globalId.uppercased() }) { r.photos[i].objectId = a.objectId }
+                for (n, a) in res.attachments.enumerated() {
+                    // Match by photo ID; fall back to order if ArcGIS returns its own IDs.
+                    let i = r.photos.firstIndex { ArcGIS.gid($0.id) == a.globalId.uppercased() } ?? (n < r.photos.count ? n : nil)
+                    if let i { r.photos[i].objectId = a.objectId }
                 }
                 r.stage = .alert
                 r.lastError = nil
