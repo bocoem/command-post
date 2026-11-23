@@ -1,48 +1,59 @@
 import SwiftUI
 
-/// The web app's header, on every page: banner art, the BCEM seal, the "Stormwatch Responder" lockup,
-/// and the red / gold / indigo bar. The pictures are the web app's own files, downloaded and kept on the phone.
+/// The header on every page, styled like the EOP Field Guide app's bar (BCEM Brand Standards, Edition 1.0):
+/// Blue Ridge Navy, the seal (unaltered, on navy), the tri-bar, and BOTETOURT COUNTY / EMERGENCY MANAGEMENT
+/// in Barlow Condensed on the left; the app's name, STORMWATCH / RESPONDER, on the right.
+/// Tapping it goes to Info, like the seal and title on the web app.
 struct AppHeader: View {
-    @EnvironmentObject var feed: Feed
     @Binding var tab: AppTab
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .leading) {
-                if let b = feed.header["banner"] {
-                    Image(uiImage: b).resizable().scaledToFill()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                        .clipped()
-                } else {
-                    Theme.card
+            HStack(alignment: .center, spacing: 7) {
+                Image("Seal")
+                    .resizable()
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(width: 32, height: 32)
+                TriBar().frame(width: 3, height: 28)
+                VStack(alignment: .leading, spacing: -3) {
+                    Text("BOTETOURT COUNTY")
+                        .font(.custom("BarlowCondensed-SemiBold", fixedSize: 10.5)).tracking(1.1)
+                        .foregroundStyle(Theme.gold)
+                    Text("EMERGENCY MANAGEMENT")
+                        .font(.custom("BarlowCondensed-ExtraBold", fixedSize: 17))
+                        .foregroundStyle(.white)
                 }
-                HStack(spacing: 10) {
-                    if let s = feed.header["seal"] {
-                        Image(uiImage: s).resizable().scaledToFit().frame(width: 50, height: 50)
-                    } else {
-                        Circle().fill(Theme.card).frame(width: 50, height: 50)
-                    }
-                    if let l = feed.header["lockup"] {
-                        Image(uiImage: l).resizable().scaledToFit().frame(height: 42)
-                    } else {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("BOTETOURT COUNTY EMERGENCY MANAGEMENT").font(.system(size: 7, weight: .heavy)).foregroundStyle(Theme.gold)
-                            Text("STORMWATCH").font(.system(size: 26, weight: .black))
-                            Text("R E S P O N D E R").font(.system(size: 9, weight: .heavy)).foregroundStyle(Theme.gold)
-                        }
-                    }
-                    Spacer(minLength: 0)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: -2) {
+                    Text("STORMWATCH")
+                        .font(.custom("BarlowCondensed-ExtraBold", fixedSize: 19))
+                        .foregroundStyle(.white)
+                    Text("RESPONDER")
+                        .font(.custom("IBMPlexMono-Medium", fixedSize: 9.5)).tracking(1.5)
+                        .foregroundStyle(Theme.gold)
                 }
-                .padding(.horizontal, 12)
+                .lineLimit(1)
             }
-            .frame(height: 70)
-            .contentShape(Rectangle())
-            .onTapGesture { tab = .info } // same as the web: the seal and title go to Info
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Stormwatch Responder. Botetourt County Emergency Management")
-            .accessibilityAddTraits(.isButton)
-            HStack(spacing: 0) { Theme.red; Theme.gold; Theme.blue }.frame(height: 3)
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(Theme.navy)
+            Rectangle().fill(Theme.slate).frame(height: 0.5)
         }
-        .background(Theme.card)
+        .contentShape(Rectangle())
+        .onTapGesture { tab = .info }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Botetourt County Emergency Management, Stormwatch Responder")
+        .accessibilityHint("Opens Info")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// The tri-bar: the one place all three program colors appear together (red, gold, indigo).
+struct TriBar: View {
+    var body: some View {
+        VStack(spacing: 0) { Theme.red; Theme.gold; Theme.blue }
+            .accessibilityHidden(true)
     }
 }

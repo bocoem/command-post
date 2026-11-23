@@ -48,9 +48,6 @@ final class Feed: ObservableObject {
     @Published private(set) var updated: Date?
     @Published private(set) var loading = false
     @Published private(set) var error: String?
-    /// The web app's header pictures: banner art, the BCEM seal and the "Stormwatch Responder" lockup.
-    @Published private(set) var header: [String: UIImage] = [:]
-    static let headerFiles = ["banner": "images/header/banner_phone_v2.jpg", "lockup": "images/header/sr_lockup.png", "seal": "images/widget_1/bcem_seal.png"]
 
     private let dir: URL
     private var imageCache: [String: UIImage] = [:]
@@ -65,24 +62,7 @@ final class Feed: ObservableObject {
         if let d = try? Data(contentsOf: dir.appendingPathComponent("symbols.json")),
            let s = try? JSONDecoder().decode([Symbol].self, from: d) { symbols = s }
         updated = UserDefaults.standard.object(forKey: "feed.updated") as? Date
-        for k in Self.headerFiles.keys {
-            if let d = try? Data(contentsOf: dir.appendingPathComponent("header-\(k)")), let i = UIImage(data: d) { header[k] = i }
-        }
     }
-
-    /// Downloads the header pictures from the web app's own files (public item resources), once a day.
-    func loadHeader() async {
-        let stale = (UserDefaults.standard.object(forKey: "header.updated") as? Date ?? .distantPast) < Date().addingTimeInterval(-86400)
-        guard header.count < Self.headerFiles.count || stale else { return }
-        let base = Config.portal.appendingPathComponent("sharing/rest/content/items/\(Config.webAppItem)/resources")
-        for (k, f) in Self.headerFiles {
-            if let (d, r) = try? await URLSession.shared.data(from: base.appendingPathComponent(f)),
-               (r as? HTTPURLResponse)?.statusCode == 200, let i = UIImage(data: d) {
-                header[k] = i
-                try? d.write(to: dir.appendingPathComponent("header-\(k)"))
-            }
-        }
-        UserDefaults.standard.set(Date(), forKey: "header.updated")
     }
 
     var all: [StormReport] { StormSource.allCases.flatMap { reports[$0] ?? [] } }
@@ -104,7 +84,6 @@ final class Feed: ObservableObject {
         if symbols.isEmpty || (updated ?? .distantPast) < Date().addingTimeInterval(-86400) {
             do { try await loadSymbols() } catch { errs.append("Map symbols: \(error.localizedDescription)") }
         }
-        await loadHeader()
         for s in StormSource.allCases {
             do {
                 let labels = try await domainLabels(s)
@@ -195,4 +174,6 @@ enum Theme {
     static let muted = Color(red: 0xA9 / 255, green: 0xB8 / 255, blue: 0xC8 / 255)   // #A9B8C8
     static let soft = Color(red: 0xC9 / 255, green: 0xD3 / 255, blue: 0xDE / 255)    // #C9D3DE
     static let accent = gold
+    static let navy = Color(red: 0x0E / 255, green: 0x20 / 255, blue: 0x33 / 255)   // Blue Ridge Navy, #0E2033
+    static let slate = Color(red: 0x33 / 255, green: 0x44 / 255, blue: 0x5A / 255)  // Ridge Slate, #33445A
 }

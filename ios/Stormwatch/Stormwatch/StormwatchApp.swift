@@ -49,6 +49,6 @@ struct RootView: View {
                     .tabItem { Label("House Check", systemImage: "house") }.tag(AppTab.housecheck)
             }
         }
-        .background(Theme.card.ignoresSafeArea(edges: .top))
+        .background(Theme.navy.ignoresSafeArea(edges: .top))
     }
 }

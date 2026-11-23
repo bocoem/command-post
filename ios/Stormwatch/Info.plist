@@ -5,5 +5,12 @@
 	<!-- Only standard HTTPS: no export-compliance paperwork. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- BCEM brand fonts (Google Fonts, SIL Open Font License), the same files as the Field Guide app. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>BarlowCondensed-ExtraBold.ttf</string>
+		<string>BarlowCondensed-SemiBold.ttf</string>
+		<string>IBMPlexMono-Medium.ttf</string>
+	</array>
 </dict>
 </plist>
