@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Only standard HTTPS: no export-compliance paperwork. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- BCEM brand fonts (Google Fonts, SIL Open Font License): Barlow Condensed, Barlow, IBM Plex Mono. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>BarlowCondensed-ExtraBold.ttf</string>
+		<string>BarlowCondensed-SemiBold.ttf</string>
+		<string>Barlow-Regular.ttf</string>
+		<string>Barlow-Medium.ttf</string>
+		<string>Barlow-SemiBold.ttf</string>
+		<string>Barlow-Bold.ttf</string>
+		<string>Barlow-ExtraBold.ttf</string>
+		<string>IBMPlexMono-Medium.ttf</string>
+	</array>
+	<!-- Blue Ridge Navy launch screen, so opening the app never flashes white. -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchNavy</string>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,72 @@
+# EOP Field Guide health check.
+# Checks what the iPhone app depends on (published EM Field Guide, its pages and links,
+# the Update my lifeline form, the Lifeline Status feed) twice a day.
+# Problems open a GitHub issue (you get an email); it is updated while the problem lasts
+# and closed automatically once the check passes again.
+name: Field Guide health
+
+on:
+  schedule:
+    - cron: "17 11,23 * * *"   # 6:17 / 7:17 local, morning and evening (UTC times)
+  workflow_dispatch:            # Actions tab › Field Guide health › Run workflow
+  push:
+    paths:
+      - "ios/FieldGuide/health/**"
+      - ".github/workflows/field-guide-health.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: field-guide-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ios/FieldGuide/health
+
+      - name: Check the Field Guide and its feeds
+        id: check
+        run: |
+          set +e
+          python3 ios/FieldGuide/health/check_field_guide.py > report.md
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat report.md
+          exit 0
+
+      - name: Open or update the problem issue
+        if: steps.check.outputs.status != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Field Guide health check failing"
+          number=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          body="$(cat report.md)
+
+          Run: $RUN_URL"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+          exit 1
+
+      - name: Close the problem issue once healthy
+        if: steps.check.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="Field Guide health check failing"
+          number=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "Healthy again: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi

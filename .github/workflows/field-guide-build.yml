@@ -1,0 +1,52 @@
+# Builds the EOP Field Guide iPhone app whenever its code changes, so a change that
+# would not compile is caught before anyone archives it for TestFlight.
+# Simulator build, no signing; uploads still happen from Xcode on Daniel's Mac.
+name: Field Guide build
+
+on:
+  push:
+    paths:
+      - "ios/FieldGuide/**"
+      - "!ios/FieldGuide/health/**"
+      - ".github/workflows/field-guide-build.yml"
+  pull_request:
+    paths:
+      - "ios/FieldGuide/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ios/FieldGuide
+
+      - name: Use the newest Xcode (the app needs the iOS 26 SDK)
+        run: |
+          latest=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Build
+        working-directory: ios/FieldGuide
+        run: |
+          xcodebuild -project FieldGuide.xcodeproj -target FieldGuide \
+            -sdk iphonesimulator -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build | tail -40
+          exit ${PIPESTATUS[0]}
+
+      - name: Check the built-in guide copy parses
+        run: |
+          python3 - <<'EOF'
+          import json
+          c = json.load(open("ios/FieldGuide/FieldGuide/GuideSeed.json"))
+          assert c.get("pages") and c.get("views") and c.get("widgets"), "GuideSeed.json is not an Experience Builder config"
+          print("GuideSeed.json OK:", len(c["views"]), "views")
+          EOF
