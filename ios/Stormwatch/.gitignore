@@ -1,0 +1,5 @@
+# Alert flow addresses (they work like passwords). Kept on the Mac only.
+Stormwatch/Secrets.plist
+xcuserdata/
+*.xcuserstate
+DerivedData/

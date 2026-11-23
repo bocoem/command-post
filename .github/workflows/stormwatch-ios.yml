@@ -1,0 +1,30 @@
+# Builds the Stormwatch iPhone app to check that it compiles. Runs only when ios/ changes.
+name: Stormwatch iOS build
+on:
+  push:
+    paths: ['ios/**', '.github/workflows/stormwatch-ios.yml']
+  pull_request:
+    paths: ['ios/**']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version
+      - name: Build for the iPhone simulator (no signing)
+        working-directory: ios/Stormwatch
+        run: |
+          set -o pipefail
+          xcodebuild -project Stormwatch.xcodeproj -target Stormwatch -configuration Debug \
+            -sdk iphonesimulator -arch arm64 CODE_SIGNING_ALLOWED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO build 2>&1 | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ios/Stormwatch/build.log
