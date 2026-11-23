@@ -3,11 +3,11 @@
  * Who gets in is decided by one ArcGIS table ("Command Board Users"): one row per email with a level per app.
  * People sign in with their email and a 6-digit code (no password, no ArcGIS login).
  * The county's ArcGIS key lives only here (secret ARC_KEY). The apps never see it.
- * The apps reach ArcGIS through /arc/<host>/<path>; only the layers listed in LAYERS are allowed,
+ * The apps reach ArcGIS through /arc/<host>/<path>; only the services in layersFor() are allowed,
  * and what each level may do with each layer is decided here, not in the app.
  *
  * Secrets (wrangler secret put):  ARC_KEY  SIGNING_KEY  MAIL_FLOW_URL
- * Vars (wrangler.toml):           USERS_TABLE  AUTO_VIEWER_DOMAIN (optional)  LAYERS_JSON (optional override)
+ * Vars (wrangler.toml):           SERVICES (JSON from EM Ops)  AUTO_VIEWER_DOMAIN (optional)  USERS_TABLE (optional)
  */
 
 const ORDER = ['None', 'Guest', 'Viewer', 'Officer', 'Command', 'Admin'];
@@ -16,23 +16,40 @@ const SESSION_DAYS = 30, CODE_MIN = 10, ROSTER_TTL = 120, MAX_TRIES = 8;
 const S6 = 'services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/';
 
 // Every ArcGIS service the apps may touch. Anything else is refused.
-//  read: lowest level that may query.  write: lowest level that may edit (null = never).
+// The addresses come from the SERVICES var (EM Ops → Setup → "Command Board & MCI apps" → Copy gate settings);
+// the defaults below are only used until it is set.
+//  read: lowest level that may query.  write: lowest level that may edit (null = never).  del: lowest level that may delete.
 //  strip: fields removed unless the level is at least `stripBelow`.  guestScope: guests only see their incident's rows.
-const LAYERS = {
-  cb: [
-    { svc: S6 + 'BOCO_Command_Post/FeatureServer', read: 'Guest', write: 'Officer', del: 'Command', guestScope: 'incident_key' },
-    { svc: S6 + 'CAD_Calls_For_Service_Active_Fire_EMS/FeatureServer', read: 'Officer', strip: [/caller/i], stripBelow: 'Command', health: true },
-    { svc: S6 + 'CAD_Units_Fire_EMS/FeatureServer', read: 'Officer', health: true },
-    { svc: S6 + 'Hydrants/FeatureServer', read: 'Viewer' },
-    { svc: S6 + 'BOCO_Preplans_Tactical/FeatureServer', read: 'Officer' },
-    { svc: S6 + 'BOCO_Preplans_Protected/FeatureServer', read: 'Command' }
-  ],
-  mci: [ // planned: the MCI Board app uses the same gate
-    { svc: S6 + 'BOCO_Command_Post/FeatureServer', read: 'Viewer', write: null },
-    { svc: S6 + 'BOCO_EMS_PatientCare/FeatureServer', read: 'Officer', write: 'Officer', del: null, guestScope: 'incident_key' },
-    { svc: S6 + 'Hydrants/FeatureServer', read: 'Viewer' }
-  ]
+const DEFAULT_SERVICES = {
+  users: S6 + 'BEACON_App_Access/FeatureServer', cp: S6 + 'BOCO_Command_Post/FeatureServer',
+  cadCalls: S6 + 'CAD_Calls_For_Service_Active_Fire_EMS/FeatureServer', cadUnits: S6 + 'CAD_Units_Fire_EMS/FeatureServer',
+  hydrants: S6 + 'Hydrants/FeatureServer', ppTac: S6 + 'BOCO_Preplans_Tactical/FeatureServer', ppProt: S6 + 'BOCO_Preplans_Protected/FeatureServer',
+  patients: S6 + 'BOCO_EMS_PatientCare/FeatureServer'
 };
+function services(env) {
+  let o = {}; try { o = env.SERVICES ? JSON.parse(env.SERVICES) : {}; } catch (e) {}
+  const out = { ...DEFAULT_SERVICES };
+  Object.keys(o).forEach((k) => { if (o[k]) out[k] = String(o[k]).replace(/^https:\/\//, '').replace(/\/(\d+)?$/, '').replace(/\/$/, ''); });
+  return out;
+}
+function layersFor(env) {
+  const S = services(env);
+  return {
+    cb: [
+      { svc: S.cp, read: 'Guest', write: 'Officer', del: 'Command', guestScope: 'incident_key' },
+      { svc: S.cadCalls, read: 'Officer', strip: [/caller/i], stripBelow: 'Command' },
+      { svc: S.cadUnits, read: 'Officer' },
+      { svc: S.hydrants, read: 'Viewer' },
+      { svc: S.ppTac, read: 'Officer' },
+      { svc: S.ppProt, read: 'Command' }
+    ],
+    mci: [ // planned: the MCI Board app uses the same gate
+      { svc: S.cp, read: 'Viewer', write: null },
+      { svc: S.patients, read: 'Officer', write: 'Officer', del: null, guestScope: 'incident_key' },
+      { svc: S.hydrants, read: 'Viewer' }
+    ]
+  };
+}
 const APPS = { cb: 'cb_level', mci: 'mci_level' };
 const READ_OPS = /^(query|queryRelatedRecords|queryAttachments|attachments\/\d+|\d+\/attachments\/\d+)?$/;
 const WRITE_OPS = /^(applyEdits|addFeatures|updateFeatures)$/;
@@ -66,7 +83,7 @@ async function roster(env, ctx, email) {
   const key = new Request('https://gate.cache/roster/' + encodeURIComponent(email));
   const cache = caches.default; const hit = await cache.match(key); if (hit) return hit.json();
   const p = new URLSearchParams({ f: 'json', where: "LOWER(email) = '" + email.replace(/'/g, "''") + "'", outFields: '*', resultRecordCount: '1', token: env.ARC_KEY });
-  const r = await fetch('https://' + env.USERS_TABLE + '/query?' + p).then((x) => x.json());
+  const r = await fetch('https://' + (env.USERS_TABLE || services(env).users + '/0') + '/query?' + p).then((x) => x.json());
   if (r.error) throw new Error('Users table: ' + r.error.message);
   const a = (r.features && r.features[0] && r.features[0].attributes) || null;
   let row = null;
@@ -157,7 +174,7 @@ export default {
       if (path === '/me') {
         const row = s.g ? null : await roster(env, ctx, s.e);
         const fresh = s.g ? s : { ...s, n: (row && row.name) || s.n, iat: Date.now(), exp: Date.now() + SESSION_DAYS * 864e5 };
-        return json({ token: s.g ? null : await sign(env, fresh), ...sessionOut(fresh, lvl, row), layers: (LAYERS[s.a] || []).filter((L) => rank(lvl) >= rank(L.read)).map((L) => ({ url: 'https://' + L.svc, write: !!(L.write && rank(lvl) >= rank(L.write)) })) });
+        return json({ token: s.g ? null : await sign(env, fresh), ...sessionOut(fresh, lvl, row), layers: (layersFor(env)[s.a] || []).filter((L) => rank(lvl) >= rank(L.read)).map((L) => ({ url: 'https://' + L.svc, write: !!(L.write && rank(lvl) >= rank(L.write)) })) });
       }
 
       // 4) guest code for an incident (Command only)
@@ -178,7 +195,7 @@ export default {
 };
 
 async function findIncidentForGuest(env, code) {
-  const cp = LAYERS.cb[0].svc;
+  const cp = services(env).cp;
   const p = new URLSearchParams({ f: 'json', where: "closed_time IS NULL", outFields: 'incident_key', resultRecordCount: '200', orderByFields: 'start_time DESC', token: env.ARC_KEY });
   const r = await fetch('https://' + cp + '/0/query?' + p).then((x) => x.json());
   for (const f of r.features || []) { const k = f.attributes.incident_key; if (k && (await guestCode(env, k)) === code) return { key: k }; }
@@ -188,7 +205,7 @@ async function findIncidentForGuest(env, code) {
 async function arcProxy(req, env, ctx, s, lvl, url) {
   const rest = url.pathname.slice(5); // host/arcgis/rest/services/...
   if (/\.\.|%2e|%2f|\/\/|\\/i.test(rest)) return err('That request is not allowed.', 403);
-  const L = (LAYERS[s.a] || []).find((x) => rest === x.svc || rest.startsWith(x.svc + '/'));
+  const L = (layersFor(env)[s.a] || []).find((x) => rest === x.svc || rest.startsWith(x.svc + '/'));
   if (!L) return err('That layer is not available in this app.', 403);
   if (rank(lvl) < rank(L.read)) return err('Your access level cannot see this layer.', 403);
   const tail = rest.slice(L.svc.length).replace(/^\//, ''); // e.g. "0/query", "applyEdits", ""

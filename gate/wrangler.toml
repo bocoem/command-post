@@ -4,10 +4,12 @@ compatibility_date = "2026-11-01"
 workers_dev = true
 
 [vars]
-# ArcGIS table that lists who may sign in (layer URL without https://). Set after the table is created.
-USERS_TABLE = "services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/BEACON_App_Users/FeatureServer/0"
+# Optional: users table layer URL without https://. Empty = layer 0 of SERVICES.users.
+USERS_TABLE = ""
 # Optional: anyone with an email at this domain who is not on the list gets Viewer in the Command Board. Leave empty to require the list.
 AUTO_VIEWER_DOMAIN = ""
+# ArcGIS services the apps may use, as JSON (paste from EM Ops -> Setup -> "Command Board & MCI apps" -> Copy gate settings).
+SERVICES = ""
 
 # Secrets (set with: npx wrangler secret put NAME)
 #   ARC_KEY        ArcGIS API key (developer credentials scoped to the layers in worker.js)

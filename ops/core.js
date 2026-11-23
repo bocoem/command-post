@@ -16,13 +16,13 @@
   OPS.isAdmin = function () { var u = A.user || {}; return u.role === 'org_admin' || (u.canPublish && (u.groups || []).some(function (g) { return /^BOCO Access 1/.test(g); })) || OPS.SVC_KEYS.some(function (k) { return OPS.svc[k] && OPS.svc[k].owner === u.username; }); };
   OPS.canUse = function (k) {
     if (!A.signedIn() || !A.user || k === 'home') return true;
-    if (k === 'setup') return OPS.isAdmin();
+    if (k === 'setup' || k === 'appaccess') return OPS.isAdmin();
     var need = OPS.NEEDS[k]; if (!need) return true;
     if (!OPS.SVC_KEYS.some(function (s) { return OPS.svc[s]; })) return true; // services not loaded yet
     return need.every(function (l) { return OPS.LAYERS[l] && OPS.ready(l); });
   };
   OPS.noAccess = function (t) { return '<div class="hero" style="max-width:640px"><h2>' + E(t.n) + '</h2><p>Your ArcGIS account doesn\'t have access to ' + E(t.n) + '. If you need it for your role, ask Emergency Management (BOCO Access 1) to add you to the right ArcGIS group.</p><button class="btn" data-act="go" data-a="home">' + I('home') + 'Back to your tools</button></div>'; };
-  OPS.GROUPS = [['Operations', ['home', 'resources', 'checkin', 'pods', 'infra', 'flood']], ['People', ['hotline', 'mci', 'reunify', 'afn', 'volunteers']], ['Finance & Readiness', ['costs', 'training', 'plans']], ['Setup', ['setup']]];
+  OPS.GROUPS = [['Operations', ['home', 'resources', 'checkin', 'pods', 'infra', 'flood']], ['People', ['hotline', 'mci', 'reunify', 'afn', 'volunteers']], ['Finance & Readiness', ['costs', 'training', 'plans']], ['Setup', ['setup', 'appaccess']]];
 
   // ---------- small helpers ----------
   OPS.arr = function (v) { return Array.isArray(v) ? v : []; };
