@@ -45,7 +45,7 @@ lifeline form needs signal to send, the same as on the web.
 - `HomeView.swift`, `PageView.swift`, `FormView.swift` – screens
 
 ## Ship a TestFlight build
-1. Raise the build number (target › General › Build). Uploaded so far: 1, 2. Next: 3.
+1. Raise the build number (target › General › Build). Uploaded so far: 1, 2, 3. Next: 4.
 2. Optional: refresh the built-in copy with the latest published config
    (`www.arcgis.com/sharing/rest/content/items/c7e098280d1c497c9b387ea3fe85a90e/resources/config/config.json` → `FieldGuide/GuideSeed.json`).
 3. Product › Archive › Distribute App › TestFlight Internal Only.
