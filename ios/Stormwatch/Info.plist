@@ -5,14 +5,5 @@
 	<!-- Only standard HTTPS: no export-compliance paperwork. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>processing</string>
-	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>org.bocoem.stormwatch.send</string>
-	</array>
 </dict>
 </plist>

@@ -3,8 +3,6 @@ import SwiftUI
 /// The web app's Info page (its home page): "About this app", same wording and colors.
 struct InfoTab: View {
     @EnvironmentObject var feed: Feed
-    @EnvironmentObject var outbox: Outbox
-    @EnvironmentObject var schemas: Schemas
     @Binding var tab: AppTab
 
     var body: some View {
@@ -48,7 +46,9 @@ struct InfoTab: View {
                             .foregroundStyle(.black)
                             .background(Theme.gold, in: RoundedRectangle(cornerRadius: 4))
                     }
-                    appStatus
+                    Link("Open the web version", destination: Config.responderWeb).font(.footnote)
+                    Text("Version " + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") + " (" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") + ")")
+                        .font(.caption2).foregroundStyle(Theme.muted)
                     Text("Reports go to Botetourt County Emergency Management and the Storm Reports channel.\n© Botetourt County Emergency Management · Fire & EMS · Sheriff's Office")
                         .font(.caption).foregroundStyle(Theme.muted).multilineTextAlignment(.center).padding(.top, 4)
                 }
@@ -119,30 +119,6 @@ struct InfoTab: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title).bold()
             Text(text).font(.subheadline).foregroundStyle(Theme.muted)
-        }
-    }
-
-    /// App-only: what this phone is waiting to send and whether the forms are current.
-    private var appStatus: some View {
-        card("This phone", "Sending and forms") {
-            HStack {
-                Image(systemName: outbox.online ? "wifi" : "wifi.slash").foregroundStyle(outbox.online ? Theme.muted : .orange)
-                Text(outbox.online ? "Online" : "Offline. Reports are kept on this phone and sent when the connection is back.")
-            }
-            if !outbox.waiting.isEmpty || !outbox.problems.isEmpty {
-                Text("\(outbox.waiting.count) waiting to send, \(outbox.problems.count) need attention. See Sent on the Submit page.")
-                    .foregroundStyle(.orange)
-            }
-            ForEach(ReportKind.allCases) { k in
-                let f = schemas.form(k)
-                Text("\(k.title) form: " + (f.fetched == .distantPast ? "built-in copy" : "checked " + f.fetched.formatted(date: .abbreviated, time: .shortened)))
-                    .font(.footnote).foregroundStyle(Theme.muted)
-            }
-            Text("Responder alert: " + (Config.secret("ResponderFlowURL") == nil ? "not set up in this copy" : "on"))
-                .font(.footnote).foregroundStyle(Config.secret("ResponderFlowURL") == nil ? .orange : Theme.muted)
-            Link("Open the web version", destination: Config.responderWeb).font(.footnote)
-            Text("Version " + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") + " (" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") + ")")
-                .font(.caption2).foregroundStyle(Theme.muted)
         }
     }
 }

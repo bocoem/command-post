@@ -30,6 +30,11 @@ final class Location: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func stop() { manager.stopUpdatingLocation() }
 
+    /// Asks once, so the Map can show where you are and the Survey123 form can place your report.
+    func requestPermission() {
+        if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
+    }
+
     nonisolated func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) {
         guard let l = locs.last else { return }
         Task { @MainActor in

@@ -63,6 +63,7 @@ struct MapTab: View {
                 }
             }
             .sheet(item: $selected) { r in ReportDetail(report: r).presentationDetents([.medium, .large]) }
+            .onAppear { Location.shared.requestPermission() }
             .sheet(isPresented: $showLayers) { layers.presentationDetents([.medium]) }
             .sheet(isPresented: $showLegend) { LegendList().presentationDetents([.medium, .large]) }
             .alert("Find a place", isPresented: $searching) {
