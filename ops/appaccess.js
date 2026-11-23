@@ -8,8 +8,8 @@
   var OPS = CP.ops, A = CP.arc, U = CP.ui, E = CP.esc, I = U.icon;
   var AX = OPS.appaccess = {};
   var NAME = 'BEACON_App_Access', TABLE = 'APP_Users';
-  var LEVELS = ['None', 'Viewer', 'Officer', 'Command', 'Admin'];
-  var LEVEL_HELP = { None: 'No access to this app', Viewer: 'Read only: board, map, whiteboard', Officer: 'Full board view, update their own unit, acknowledge assignments', Command: 'Start and run boards, transfer command, close, export, incident codes for mutual aid', Admin: 'Everything Command can do' };
+  var LEVELS = ['None', 'Viewer', 'Officer', 'Command', 'Chief', 'Admin'];
+  var LEVEL_HELP = { None: 'No access to this app', Viewer: 'Read only: board, map, whiteboard', Officer: 'Full board view, update their own unit, acknowledge assignments', Command: 'Start and run boards, transfer command, close, export, incident codes for mutual aid', Chief: 'Everything Command can do, plus manage users up to Command inside the app (More → Users)', Admin: 'Everything, including managing Chiefs and Admins inside the app' };
   function P(path) { return A.portal + '/sharing/rest' + path; }
   function svcBase() { return (A.L && A.L.cad ? A.L.cad.replace(/CAD%20Calls.*$/, '') : 'https://services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/'); }
   var FIELDS = [['email', 'String', 200, 'Email'], ['full_name', 'String', 150, 'Name'], ['agency', 'String', 150, 'Agency'], ['cb_level', 'String', 20, 'Command Board level'], ['mci_level', 'String', 20, 'MCI Board level'],
@@ -26,6 +26,17 @@
     if (AX.svc) return AX.svc;
     try { var j = await A.req(svcBase() + NAME + '/FeatureServer', { _: Date.now() }); var t = (j.tables || []).find(function (x) { return x.name === TABLE; }); if (t) return (AX.svc = { url: svcBase() + NAME + '/FeatureServer', table: svcBase() + NAME + '/FeatureServer/' + t.id, itemId: j.serviceItemId }); } catch (e) {}
     return null;
+  };
+  AX.ensureLevels = async function () {
+    if (AX.lvOk) return; AX.lvOk = true;
+    try {
+      var s = await AX.find(); if (!s) return;
+      var t = await A.req(s.table, { _: Date.now() }), f = (t.fields || []).find(function (x) { return x.name === 'cb_level'; });
+      var have = f && f.domain && (f.domain.codedValues || []).map(function (c) { return c.code; }) || [];
+      if (have.indexOf('Chief') >= 0) return;
+      var admin = s.table.replace('/rest/services/', '/rest/admin/services/');
+      await A.req(admin + '/updateDefinition', { updateDefinition: { fields: ['cb_level', 'mci_level'].map(function (n) { return { name: n, domain: { type: 'codedValue', name: 'APP_' + n, codedValues: LEVELS.map(function (l) { return { name: l, code: l }; }) } }; }) } }, true);
+    } catch (e) { AX.lvOk = false; }
   };
   AX.create = async function (log) {
     var u = A.user.username;
@@ -86,7 +97,7 @@
   };
 
   // ---------- the list ----------
-  function rows() { return OPS.load('appaccess:rows', async function () { var s = await AX.find(); if (!s) return { _none: 1 }; var f = await A.query(s.table, '1=1', { order: 'full_name', n: 5000 }); return f.map(function (x) { return x.attributes; }); }); }
+  function rows() { return OPS.load('appaccess:rows', async function () { var s = await AX.find(); if (!s) return { _none: 1 }; AX.ensureLevels(); var f = await A.query(s.table, '1=1', { order: 'full_name', n: 5000 }); return f.map(function (x) { return x.attributes; }); }); }
   OPS.tool('appaccess', {
     n: 'App access', sub: 'Command Board & MCI apps', icon: 'shield', d: 'Who can sign in to the Command Board and MCI Board iPhone/iPad apps, and at what level. People sign in with their email; no ArcGIS login needed.',
     render: function () {
@@ -96,7 +107,7 @@
       if (OPS.bad(d)) return h + OPS.wait(d, 'app access list');
       var q = (u.q_ax || '').toLowerCase(), list = d.filter(function (r) { return !q || [r.email, r.full_name, r.agency].join(' ').toLowerCase().indexOf(q) >= 0; });
       var now = Date.now(), on = function (r) { return r.active !== 'No' && !(r.expires && r.expires < now); };
-      h += '<div class="grid g4" style="margin-bottom:12px">' + OPS.stat(d.filter(on).length, 'Active') + OPS.stat(d.filter(function (r) { return on(r) && /Command|Admin/.test(r.cb_level); }).length, 'Command Board: Command', 'gold') + OPS.stat(d.filter(function (r) { return on(r) && r.mci_level && r.mci_level !== 'None'; }).length, 'MCI Board') + OPS.stat(d.filter(function (r) { return !on(r); }).length, 'Off / expired') + '</div>';
+      h += '<div class="grid g4" style="margin-bottom:12px">' + OPS.stat(d.filter(on).length, 'Active') + OPS.stat(d.filter(function (r) { return on(r) && /Command|Chief|Admin/.test(r.cb_level); }).length, 'Command Board: Command+', 'gold') + OPS.stat(d.filter(function (r) { return on(r) && r.mci_level && r.mci_level !== 'None'; }).length, 'MCI Board') + OPS.stat(d.filter(function (r) { return !on(r); }).length, 'Off / expired') + '</div>';
       h += '<div class="toolbar">' + OPS.searchBox('ax', 'Search name, email, agency') + '</div>';
       h += '<table class="t"><thead><tr><th>Name</th><th>Email</th><th>Agency</th><th>Command Board</th><th>MCI Board</th><th>Status</th><th></th></tr></thead><tbody>' + list.map(function (r) {
         return '<tr class="' + (on(r) ? '' : 'row-warn') + '"><td><b>' + E(r.full_name || '') + '</b></td><td class="mono" style="font-size:12.5px">' + E(r.email || '') + '</td><td>' + E(r.agency || '') + '</td><td>' + E(r.cb_level || 'None') + '</td><td>' + E(r.mci_level || 'None') + '</td><td>' + (on(r) ? (r.expires ? 'Until ' + E(OPS.dt(r.expires)) : 'Active') : '<span class="warn-t">' + (r.active === 'No' ? 'Off' : 'Expired') + '</span>') + '</td><td><button class="btn xs" data-act="axEdit" data-a="' + r.OBJECTID + '">Edit</button></td></tr>';
