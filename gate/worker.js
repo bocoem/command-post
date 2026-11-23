@@ -10,7 +10,7 @@
  * Vars (wrangler.toml):           SERVICES (JSON from EM Ops)  AUTO_VIEWER_DOMAIN (optional)  USERS_TABLE (optional)
  */
 
-const ORDER = ['None', 'Guest', 'Viewer', 'Officer', 'Command', 'Admin'];
+const ORDER = ['None', 'Guest', 'Viewer', 'Officer', 'Command', 'Chief', 'Admin'];
 const rank = (l) => Math.max(0, ORDER.indexOf(l || 'None'));
 const SESSION_DAYS = 30, CODE_MIN = 10, ROSTER_TTL = 120, MAX_TRIES = 8;
 const S6 = 'services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/';
@@ -204,7 +204,8 @@ export default {
       }
 
       // 5) ArcGIS through the gate
-      if (path.startsWith('/arc/')) return arcProxy(req, env, ctx, s, lvl, url);
+      if (path === '/admin/users') return await adminUsers(req, env, s, lvl);
+      if (path.startsWith('/arc/')) return await arcProxy(req, env, ctx, s, lvl, url);
 
       return err('Not found', 404);
     } catch (e) {
@@ -260,4 +261,73 @@ function stripFields(j, pats) {
   if (Array.isArray(j.fields)) j.fields = j.fields.filter((f) => !bad(f.name) && !bad(f.alias || ''));
   (j.features || []).forEach((f) => { Object.keys(f.attributes || {}).forEach((k) => { if (bad(k)) delete f.attributes[k]; }); });
   return j;
+}
+
+// ---------- user management inside the apps (Chief and Admin) ----------
+// Chief: add, change and turn off people up to Command; cannot touch Chiefs or Admins.
+// Admin: everything. Nobody can change their own levels, turn themselves off or remove themselves.
+const UF = ['email', 'full_name', 'agency', 'cb_level', 'mci_level', 'active', 'expires', 'notes'];
+const usersUrl = (env) => 'https://' + (env.USERS_TABLE || services(env).users + '/0');
+const capOf = (lvl) => (rank(lvl) >= rank('Admin') ? 'Admin' : 'Command');
+const canTouch = (lvl, row) => rank(lvl) >= rank('Admin') || (rank(row.cb_level) < rank('Chief') && rank(row.mci_level) < rank('Chief'));
+async function usersQuery(env, where) {
+  const p = new URLSearchParams({ f: 'json', where, outFields: 'OBJECTID,' + UF.join(','), orderByFields: 'full_name', resultRecordCount: '2000', token: await arcToken(env) });
+  const r = await fetch(usersUrl(env) + '/query?' + p).then((x) => x.json());
+  if (r.error) throw new Error('Users table: ' + r.error.message);
+  return (r.features || []).map((f) => f.attributes);
+}
+function cleanUser(u, cap) {
+  const o = {}, str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+  o.email = normEmail(u.email); if (!okEmail(o.email)) throw new Error('Enter a full email address.');
+  o.full_name = str(u.full_name, 150); o.agency = str(u.agency, 150); o.notes = str(u.notes, 500);
+  ['cb_level', 'mci_level'].forEach((k) => {
+    const v = u[k] || 'None'; if (!ORDER.includes(v) || v === 'Guest') throw new Error('Unknown level ' + v + '.');
+    if (rank(v) > rank(cap)) throw new Error('You can give levels up to ' + cap + '.'); o[k] = v;
+  });
+  o.active = u.active === 'No' ? 'No' : 'Yes';
+  o.expires = u.expires ? Number(u.expires) || null : null;
+  return o;
+}
+async function adminUsers(req, env, s, lvl) {
+  if (s.g || rank(lvl) < rank('Chief')) return err('Only Chiefs and Admins can manage users.', 403);
+  const cap = capOf(lvl);
+  if (req.method === 'GET') {
+    const rows = await usersQuery(env, '1=1');
+    return json({ me: s.e, level: lvl, cap, levels: ORDER.filter((l) => l !== 'Guest' && rank(l) <= rank(cap)), users: rows.map((r) => ({ ...r, locked: !canTouch(lvl, r), self: normEmail(r.email) === s.e })) });
+  }
+  if (req.method !== 'POST') return err('Not allowed', 405);
+  const b = await req.json(), op = b.op;
+  let old = null, edits = {};
+  if (op === 'update' || op === 'remove') {
+    const id = parseInt(b.id, 10); if (!id) return err('No user.');
+    old = (await usersQuery(env, 'OBJECTID = ' + id))[0]; if (!old) return err('That person is no longer on the list.', 404);
+    if (!canTouch(lvl, old)) return err('Only an Admin can change a Chief or an Admin.', 403);
+  }
+  const self = old && normEmail(old.email) === s.e;
+  if (op === 'remove') {
+    if (self) return err('You cannot remove yourself. Ask another Admin.', 403);
+    edits = { deletes: [old.OBJECTID] };
+  } else if (op === 'add' || op === 'update') {
+    let u; try { u = cleanUser(b.user || {}, cap); } catch (e) { return err(e.message, 400); }
+    if (self && (u.cb_level !== old.cb_level || u.mci_level !== old.mci_level || u.active !== (old.active === 'No' ? 'No' : 'Yes') || normEmail(u.email) !== s.e || (u.expires || null) !== (old.expires || null)))
+      return err('You cannot change your own access. Ask another Admin.', 403);
+    if (!old || normEmail(old.email) !== u.email) {
+      const dup = await usersQuery(env, "LOWER(email) = '" + u.email.replace(/'/g, "''") + "'");
+      if (dup.length) return err('That email is already on the list.', 409);
+    }
+    edits = old ? { updates: [{ attributes: { OBJECTID: old.OBJECTID, ...u } }] } : { adds: [{ attributes: u }] };
+  } else return err('Unknown request.');
+  const p = new URLSearchParams({ f: 'json', token: await arcToken(env) });
+  Object.keys(edits).forEach((k) => p.set(k, JSON.stringify(edits[k])));
+  const op2 = edits.deletes ? 'deleteFeatures' : edits.adds ? 'addFeatures' : 'updateFeatures';
+  if (edits.deletes) { p.delete('deletes'); p.set('objectIds', edits.deletes.join(',')); }
+  if (edits.adds) { p.delete('adds'); p.set('features', JSON.stringify(edits.adds)); }
+  if (edits.updates) { p.delete('updates'); p.set('features', JSON.stringify(edits.updates)); }
+  const r = await fetch(usersUrl(env) + '/' + op2, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p }).then((x) => x.json());
+  const res = r.error ? r : ((r.addResults || r.updateResults || r.deleteResults || [])[0] || {});
+  if (r.error || !res.success) return err('ArcGIS did not save the change: ' + ((r.error && r.error.message) || (res.error && res.error.description) || 'unknown'), 502);
+  const emails = [old && old.email, b.user && b.user.email].filter(Boolean).map(normEmail);
+  for (const e of emails) await caches.default.delete(new Request('https://gate.cache/roster/' + encodeURIComponent(e)));
+  console.log(JSON.stringify({ users: op, by: s.e, target: emails, at: new Date().toISOString() }));
+  return json({ ok: true, id: res.objectId || (old && old.OBJECTID) });
 }

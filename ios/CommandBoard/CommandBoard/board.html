@@ -1842,6 +1842,13 @@ html,body.cbbody{overscroll-behavior:none;-webkit-tap-highlight-color:transparen
 /* app: incident code for mutual aid */
 .cbgcode{font:800 44px/1.1 var(--mono,'JetBrains Mono',monospace);letter-spacing:6px;text-align:center;padding:14px;margin:10px 0;border-radius:12px;background:#FDB833;color:#111}
 .cbgqr{max-width:220px;margin:6px auto;background:#fff;border-radius:10px;padding:6px}.cbgqr svg{width:100%;height:auto;display:block}
+/* Users (app, Chief and Admin) */
+.cbusers { display: grid; gap: 6px; max-height: 60vh; overflow: auto; }
+.cbuser { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line, #333); background: var(--card2, rgba(255,255,255,.03)); color: inherit; font: inherit; cursor: pointer; }
+.cbuser b { font-size: 15px; } .cbuser b i { font-weight: 400; opacity: .7; }
+.cbuser span { grid-column: 1; opacity: .75; font-size: 13px; word-break: break-all; }
+.cbuser em { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-style: normal; font-weight: 600; font-size: 13px; }
+.cbuser.off { opacity: .55; } .cbuser:disabled { cursor: default; opacity: .6; }
 </style>
 </head>
 <body class="cbbody">
@@ -5811,7 +5818,7 @@ window.CP = window.CP || {};
   var A = CP.arc, N = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.beacon;
   CP.gate = G; A.gate = true;
   CP.native = function (msg) { try { if (N) N.postMessage(msg); } catch (e) {} };
-  var lvlRank = { None: 0, Guest: 1, Viewer: 2, Officer: 3, Command: 4, Admin: 5 };
+  var lvlRank = { None: 0, Guest: 1, Viewer: 2, Officer: 3, Command: 4, Chief: 5, Admin: 6 };
   CP.gate.can = function (lvl) { return (lvlRank[G.level] || 0) >= (lvlRank[lvl] || 99); };
 
   // layers this person may use, from the gate (/me). Map the board's CAD layers to the Fire & EMS views.
@@ -5862,6 +5869,65 @@ window.CP = window.CP || {};
       A.status = e.offline || !navigator.onLine || /fetch|network|load/i.test(e.message) ? 'offline' : 'err'; A.err = e.message;
     }
     return A.status === 'on';
+  };
+
+  // ---------- Users (Chief and Admin): who can sign in to the apps, and at what level ----------
+  // The gate does the checking and the saving; this is only the screen.
+  var LV_HELP = { None: 'No access', Viewer: 'Read only', Officer: 'Board view, own unit, assignments', Command: 'Runs boards, incident codes, close, export', Chief: 'Command, plus manages users up to Command', Admin: 'Everything, including Chiefs and Admins' };
+  function gate(path, body) {
+    return fetch(G.url.replace(/\/$/, '') + path, body ? { method: 'POST', headers: { Authorization: 'Bearer ' + G.token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { headers: { Authorization: 'Bearer ' + G.token } })
+      .then(function (r) { return r.json().then(function (j) { if (j.error) { var e = new Error(j.error.message); e.code = r.status; throw e; } return j; }); }, function () { var e = new Error('Needs a connection.'); e.offline = true; throw e; });
+  }
+  CP.gate.users = async function (q) {
+    var U = CP.ui, E = CP.esc;
+    if (!CP.gate.can('Chief')) { U.toast('Only Chiefs and Admins can manage users.', 'err'); return; }
+    var d;
+    try { d = await gate('/admin/users'); } catch (e) { U.toast(E(e.message), 'err'); return; }
+    var now = Date.now(), on = function (r) { return r.active !== 'No' && !(r.expires && r.expires < now); };
+    function list(q) {
+      q = (q || '').toLowerCase();
+      var rows = d.users.filter(function (r) { return !q || [r.email, r.full_name, r.agency, r.cb_level].join(' ').toLowerCase().indexOf(q) >= 0; });
+      return rows.length ? rows.map(function (r) {
+        return '<button class="cbuser' + (on(r) ? '' : ' off') + '" data-uid="' + r.OBJECTID + '"' + (r.locked ? ' disabled' : '') + '><b>' + E(r.full_name || r.email) + (r.self ? ' <i>(you)</i>' : '') + '</b><span>' + E(r.email) + (r.agency ? ' · ' + E(r.agency) : '') + '</span><em>' + E(r.cb_level || 'None') + (r.mci_level && r.mci_level !== 'None' ? ' · MCI ' + E(r.mci_level) : '') + (on(r) ? '' : r.active === 'No' ? ' · OFF' : ' · EXPIRED') + (r.locked ? ' · Admin only' : '') + '</em></button>';
+      }).join('') : '<div class="empty">Nobody matches.</div>';
+    }
+    var bg = U.modal('Users', '<p class="dim" style="margin-top:0">People on this list sign in to the Command Board app with their email and a 6-digit code. You can give levels up to <b>' + E(d.cap) + '</b>. Changes take effect at their next screen refresh.</p>' +
+      '<div class="row" style="gap:8px;margin-bottom:10px"><input class="in" id="cbUq" placeholder="Search name, email, agency" autocapitalize="off" value="' + E(q || '') + '" style="flex:1"><button class="btn pri" data-uadd>Add person</button></div>' +
+      '<div class="cbusers" id="cbUl">' + list(q) + '</div>', [{ label: 'Close', cls: 'ghost' }], { wide: true, nofocus: true, onOpen: function (b) {
+        b.querySelector('#cbUq').addEventListener('input', function (e) { b.querySelector('#cbUl').innerHTML = list(e.target.value); });
+        b.addEventListener('click', function (e) {
+          var a = e.target.closest('[data-uadd]'), u = e.target.closest('[data-uid]');
+          if (a) { e.preventDefault(); edit(null); }
+          if (u && !u.disabled) { e.preventDefault(); edit(d.users.find(function (x) { return x.OBJECTID === +u.dataset.uid; })); }
+        });
+      } });
+    function edit(r) {
+      var x = r || { cb_level: 'Viewer', mci_level: 'None', active: 'Yes' }, self = r && r.self;
+      var sel = function (id, v) { return '<select class="in" id="' + id + '"' + (self ? ' disabled' : '') + '>' + d.levels.concat(d.levels.indexOf(v) < 0 && v ? [v] : []).map(function (l) { return '<option value="' + l + '"' + (l === (v || 'None') ? ' selected' : '') + '>' + l + ' · ' + E(LV_HELP[l] || '') + '</option>'; }).join('') + '</select>'; };
+      var exp = x.expires ? new Date(x.expires).toISOString().slice(0, 10) : '';
+      var btns = [{ label: 'Cancel', cls: 'ghost', fn: function () { setTimeout(function () { CP.gate.users(q); }, 30); } }];
+      if (r && !self) btns.push({ label: 'Remove', cls: 'red', fn: function () { setTimeout(function () { U.confirm('Remove ' + (r.full_name || r.email) + '?', 'They are signed out at their next refresh and cannot sign back in. To pause access instead, set Active to No.', 'Remove', function () { save({ op: 'remove', id: r.OBJECTID }); }, true); }, 30); } });
+      btns.push({ label: r ? 'Save' : 'Add', cls: 'pri', fn: function (b) {
+        var v = function (id) { return (b.querySelector('#' + id).value || '').trim(); };
+        var u = { email: v('cbUe').toLowerCase(), full_name: v('cbUn'), agency: v('cbUa'), cb_level: v('cbUcb'), mci_level: v('cbUmci'), active: v('cbUon'), expires: v('cbUx') ? new Date(v('cbUx') + 'T23:59:00').getTime() : null, notes: v('cbUno') };
+        if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(u.email)) { U.toast('Enter a full email address', 'err'); return false; }
+        if (!u.full_name) { U.toast('Enter their name', 'err'); return false; }
+        save(r ? { op: 'update', id: r.OBJECTID, user: u } : { op: 'add', user: u });
+      } });
+      U.modal(r ? (r.full_name || r.email) : 'Add person',
+        (self ? '<p class="dim" style="margin-top:0">This is you. You can fix your name and agency; another Admin has to change your level.</p>' : '') +
+        '<label class="f"><span>Email (what they sign in with)</span><input class="in" id="cbUe" type="email" autocapitalize="off" autocorrect="off" value="' + E(x.email || '') + '"' + (self ? ' disabled' : '') + '></label>' +
+        '<div class="grid g2"><label class="f"><span>Name</span><input class="in" id="cbUn" value="' + E(x.full_name || '') + '"></label><label class="f"><span>Agency</span><input class="in" id="cbUa" value="' + E(x.agency || '') + '" placeholder="e.g. Botetourt Fire & EMS"></label></div>' +
+        '<div class="grid g2"><label class="f"><span>Command Board</span>' + sel('cbUcb', x.cb_level) + '</label><label class="f"><span>MCI Board</span>' + sel('cbUmci', x.mci_level) + '</label></div>' +
+        '<div class="grid g2"><label class="f"><span>Active</span><select class="in" id="cbUon"' + (self ? ' disabled' : '') + '><option' + (x.active !== 'No' ? ' selected' : '') + '>Yes</option><option' + (x.active === 'No' ? ' selected' : '') + '>No</option></select></label><label class="f"><span>Access ends (optional)</span><input class="in" id="cbUx" type="date" value="' + exp + '"' + (self ? ' disabled' : '') + '></label></div>' +
+        '<label class="f"><span>Notes</span><input class="in" id="cbUno" value="' + E(x.notes || '') + '"></label>' +
+        (r ? '' : '<p class="dim" style="font-size:12.5px">They also need the app: add their Apple ID email as a tester in TestFlight (App Store Connect → BEACON Command Board → TestFlight → BEACON Command).</p>'),
+        btns, { nofocus: true });
+    }
+    async function save(body) {
+      try { await gate('/admin/users', body); U.toast(body.op === 'remove' ? 'Removed' : 'Saved', 'ok'); } catch (e) { U.toast(E(e.message), 'err', 6000); }
+      setTimeout(function () { CP.gate.users(q); }, 30);
+    }
   };
   // the app tells the page when the connection comes back
   window.addEventListener('online', function () { A.connect(); });
@@ -6570,7 +6636,7 @@ window.CP = window.CP || {};
     if (app() && !CP.gate.can('Command')) return viewerStart();
     var l = CB.list, cad = CB.cad;
     var nCad = Array.isArray(cad) ? cad.length : '–', nInc = Array.isArray(l) ? l.length : '–';
-    var h = '<div class="cbstart"><div class="cbstrip"><span class="lead">Start a board, pick up a CAD call, or rejoin a running incident.</span>' +
+    var h = '<div class="cbstart"><div class="cbstrip"><span class="lead">Start a board, pick up a CAD call, or rejoin a running incident.</span>' + (app() && CP.gate.can('Chief') ? '<button class="btn sm" data-cb="users" style="margin-left:8px">' + I('users') + 'Users</button>' : '') +
       '<div class="hs"><button data-cb="htab" data-a="map"><b>' + nCad + '</b><span>Active fire &amp; EMS calls</span></button><div><b>' + nInc + '</b><span>Running incidents</span></div>' + (CB.wx && CB.wx.ok ? '<div class="w"><b>' + (CB.wx.f != null ? Math.round(CB.wx.f) + '°' : '–') + '</b><span>' + E(CB.wx.dir != null ? compass(CB.wx.dir) + ' ' + Math.round(CB.wx.mph || 0) + ' mph' : 'Wind calm') + '</span></div>' : '') + '</div></div>';
     h += '<div class="cbcols"><section class="card"><h3>' + I('plus') + 'New board</h3><div class="cbtypes">' + Object.keys(TEMPLATES).map(function (k) { return '<button class="cbtype t-' + k + (CB.tpl === k ? ' on' : '') + '" data-cb="tpl" data-a="' + k + '">' + svg(TEMPLATES[k].icon || 'flag') + E(TEMPLATES[k].n) + '</button>'; }).join('') + '</div>' +
       '<label class="f"><span>Call type (county response plan)</span><select class="in big" id="cbCall" data-cbchg="call"><option value="">Pick a call type, or tap a type above</option>' +
@@ -7502,7 +7568,7 @@ window.CP = window.CP || {};
   act.umenu = function (id) { unitMenu(id); };
   act.note = function () { U.modal('Log entry', '<textarea class="in" id="cbNote" style="min-height:90px"></textarea><div class="cbmenu grid" style="margin-top:8px">' + quickFor().map(function (q) { return '<button data-q="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log', cls: 'pri', fn: function (b) { var t = b.querySelector('#cbNote').value.trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); } }], { onOpen: function (b) { b.addEventListener('click', function (e) { var q = e.target.closest('[data-q]'); if (!q) return; e.preventDefault(); var n = b.querySelector('#cbNote'); n.value = (n.value ? n.value + '. ' : '') + q.dataset.q; }); } }); };
   act.more = function () {
-    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], (app() ? ['guestcode', 'Incident code for mutual aid (view only)'] : ['phonelink', 'Phone view link / QR']), (app() ? ['handoff', 'Hand off to another iPad'] : null), ['itexport', 'Export for ImageTrend (NERIS)' + (cadNoOf() ? ' · CAD ' + cadNoOf() : '')], ['backup', 'Save board to a file (backup or hand-off to another tablet)'], ['cadtoggle', cadPref() ? 'Turn CAD off on this tablet (run by hand)' : 'Turn CAD on'], (app() ? null : ['tocp', 'Move to Command Post (full ICS)']), [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list'], (app() ? ['signout', 'Sign out on this device'] : null)].filter(Boolean).map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], (app() ? ['guestcode', 'Incident code for mutual aid (view only)'] : ['phonelink', 'Phone view link / QR']), (app() ? ['handoff', 'Hand off to another iPad'] : null), ['itexport', 'Export for ImageTrend (NERIS)' + (cadNoOf() ? ' · CAD ' + cadNoOf() : '')], ['backup', 'Save board to a file (backup or hand-off to another tablet)'], ['cadtoggle', cadPref() ? 'Turn CAD off on this tablet (run by hand)' : 'Turn CAD on'], (app() ? null : ['tocp', 'Move to Command Post (full ICS)']), [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list'], (app() && CP.gate.can('Chief') ? ['users', 'Users (who can sign in)'] : null), (app() ? ['signout', 'Sign out on this device'] : null)].filter(Boolean).map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-mo]'); if (!b) return; e.preventDefault(); var k = b.dataset.mo; U.closeModal();
       if (k === 'ic') setTimeout(act.xfer, 30);
@@ -7510,7 +7576,7 @@ window.CP = window.CP || {};
       if (/^(staff|sizeup|r360|pov|iso|gas|peac)$/.test(k)) setTimeout(act[k], 30);
       if (k === 'upgrade') upgrade();
       if (k === 'phonelink') phoneLink();
-      if (/^(guestcode|handoff|signout)$/.test(k)) setTimeout(act[k], 30);
+      if (/^(guestcode|handoff|signout|users)$/.test(k)) setTimeout(act[k], 30);
       if (/^(itexport|backup|cadtoggle)$/.test(k)) setTimeout(act[k], 30);
       if (k === 'tocp') toCP();
       if (k === 'close') sure('Terminate command?', 'Releases every unit and closes the incident. The incident report opens next.', 'Terminate command', function () { var all = units(); all.forEach(function (r) { r.status = 'Released'; r.released = CP.now(); r.u = CP.now(); }); CP.touch(inc(), 'resources'); log('Command terminated. ' + all.length + ' unit(s) released. Incident closed after ' + since(inc().start) + '.', 'Decision'); CP.setPath(inc(), 'status', 'Closed'); CP.setPath(inc(), 'closed', CP.now()); commit(null); setTimeout(report, 300); });
@@ -7920,6 +7986,7 @@ window.CP = window.CP || {};
     if (CB.pushedU === inc().updated) U.modal('Ready to hand off', '<p>' + I('check') + ' <b>Saved to ArcGIS at ' + E(CP.fmtTime(new Date(CB.savedT).toISOString())) + '.</b></p><p>On the other iPad: open Command Board → Running incidents → <b>' + E(i.name) + '</b>. Transfer command there.</p>', [{ label: 'Done', cls: 'pri' }]);
     else U.modal('Not confirmed yet', '<p>The last changes have not reached ArcGIS. Try again, or hand off with a file (Save board to a file → AirDrop).</p>', [{ label: 'Try again', cls: 'pri', fn: function () { setTimeout(act.handoff, 50); } }, { label: 'Save board to a file', cls: 'ghost', fn: function () { act.backup(); } }]);
   };
+  act.users = function () { if (CP.gate && CP.gate.users) CP.gate.users(); };
   act.signout = function () { sure('Sign out on this device?', 'Boards stay saved on this device. You will need an email code to sign back in.', 'Sign out', function () { autosave('signout'); CP.native({ type: 'signout' }); }); };
   // the app hands back a board kept in its own storage
   window.__beaconRestore = function (json) { try { var i = JSON.parse(json), have = CP.store.get(i.id), m = have ? CP.merge(have, i) : i; m.arc = (have && have.arc) || { auto: { incident: false, facilities: false } }; CP.store.put(m); openBoard(m.id); } catch (e) { U.toast('Could not open that saved board', 'err'); } };
