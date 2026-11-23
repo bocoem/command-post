@@ -188,6 +188,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Stormwatch Responder";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of storm damage for your report.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Places your report where you are standing.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Attach photos of storm damage to your report.";
@@ -220,6 +221,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Stormwatch Responder";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of storm damage for your report.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Places your report where you are standing.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Attach photos of storm damage to your report.";
