@@ -41,6 +41,20 @@ enum BoardVault {
         return nil
     }
 
+    /// Remove copies of boards not saved for 30 days (they are in ArcGIS and the page's own storage).
+    static func prune(olderThan days: Double = 30) {
+        let cut = Date().addingTimeInterval(-days * 86400)
+        var idx = index(), keep: [Entry] = []
+        for e in idx {
+            if e.saved < cut {
+                let base = dir.appendingPathComponent(safe(e.id))
+                try? FileManager.default.removeItem(at: base.appendingPathExtension("json"))
+                try? FileManager.default.removeItem(at: base.appendingPathExtension("prev.json"))
+            } else { keep.append(e) }
+        }
+        if keep.count != idx.count { idx = keep; if let d = try? JSONEncoder().encode(idx) { try? d.write(to: dir.appendingPathComponent("index.json"), options: .atomic) } }
+    }
+
     /// Open boards from the last 3 days, for the page to compare with its own copies at launch.
     static func recent() -> [(Entry, String)] {
         let cut = Date().addingTimeInterval(-3 * 86400)

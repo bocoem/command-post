@@ -128,6 +128,13 @@ async function tries(email, add) {
 }
 
 // ---------- guest codes: the IC hands a code to a mutual-aid company for one incident ----------
+const MAX_SENDS = 3;
+async function sends(email, add) {
+  const key = new Request('https://gate.cache/sends/' + encodeURIComponent(email) + '/' + win());
+  const hit = await caches.default.match(key); let n = hit ? +(await hit.text()) : 0;
+  if (add) { n++; await caches.default.put(key, new Response(String(n), { headers: { 'Cache-Control': 'max-age=' + CODE_MIN * 60 } })); }
+  return n;
+}
 async function guestCode(env, incKey) { const h = await hmac(env, 'guest.' + incKey); return 'G' + b64u(h).replace(/[-_]/g, '').slice(0, 7).toUpperCase(); }
 
 async function session(env, req) {
@@ -153,7 +160,8 @@ export default {
         if (!okEmail(email)) return err('Enter a full email address.');
         const row = await roster(env, ctx, email);
         // same answer whether or not the email is on the list, so the list can't be fished
-        if (levelOf(row, app) !== 'None') {
+        if (levelOf(row, app) !== 'None' && (await sends(email)) < MAX_SENDS) {
+          await sends(email, true);
           const code = await codeFor(env, email, win());
           const r = await fetch(env.MAIL_FLOW_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: email, name: row.name, code, app: app === 'mci' ? 'MCI Board' : 'Command Board', minutes: CODE_MIN }) });
           if (!r.ok) return err('The sign-in email could not be sent. Try again in a minute.', 502);
@@ -244,6 +252,12 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
     if (L.guestScope && /query/.test(op)) { p.set('where', L.guestScope + " = '" + String(s.g).replace(/'/g, "''") + "'"); ['objectIds', 'geometry', 'text', 'relationshipParam'].forEach((k) => p.delete(k)); }
     else if (!L.guestScope && op) return err('Guests can only view their incident.', 403);
   }
+  if (L.strip && rank(lvl) < rank(L.stripBelow)) {
+    // fields this level may not see: never in a filter, sort or statistic (that would reveal them a letter at a time),
+    // and answers always come back as JSON so they can be removed (GeoJSON or PBF would carry them through)
+    for (const [k, v] of p) if (k !== 'f' && L.strip.some((re) => re.test(v))) return err('That request is not allowed.', 403);
+    if (!/attachments\/\d+$/.test(op)) p.set('f', 'json');
+  }
   p.set('token', await arcToken(env)); if (!p.get('f')) p.set('f', 'json');
   const target = 'https://' + L.svc + (tail ? '/' + tail : '');
   const isBin = /attachments\/\d+$/.test(op);
@@ -259,7 +273,7 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
 function stripFields(j, pats) {
   const bad = (n) => pats.some((re) => re.test(n));
   if (Array.isArray(j.fields)) j.fields = j.fields.filter((f) => !bad(f.name) && !bad(f.alias || ''));
-  (j.features || []).forEach((f) => { Object.keys(f.attributes || {}).forEach((k) => { if (bad(k)) delete f.attributes[k]; }); });
+  (j.features || []).forEach((f) => { ['attributes', 'properties'].forEach((g) => Object.keys(f[g] || {}).forEach((k) => { if (bad(k)) delete f[g][k]; })); });
   return j;
 }
 
