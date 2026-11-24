@@ -8368,15 +8368,17 @@ window.CP = window.CP || {};
   async function loadMci() {
     if (!inc() || !kv('mci') || A.status !== 'on') return;
     try {
-      if (!CB.ptUrl) {
+      // in the iPad app the gate lists the patient layer (counts only); on the web, find it by name
+      if (!CB.ptUrl && CP.gate) { var gl = (CP.gate.layers || []).find(function (x) { return /PatientCare\/FeatureServer\/?$/.test(x.url); }); if (gl) CB.ptUrl = gl.url.replace(/\/$/, '') + '/0'; }
+      if (!CB.ptUrl && !CP.gate) {
         for (var nm of ['BOCO_EMS_PatientCare', 'BOCO_EMS_PatientCare_Field']) {
           var r = await A.req(A.portal + '/sharing/rest/search', { q: 'title:"' + nm + '" AND orgid:' + A.user.orgId, num: 2 }); var it = (r.results || []).find(function (x) { return x.title === nm; }); if (!it) continue;
           var info = await A.req(it.url, {}); var l = (info.layers || []).concat(info.tables || []).find(function (x) { return x.name === 'PROT_MCI_Patients'; }); if (l) { CB.ptUrl = it.url.replace(/\/$/, '') + '/' + l.id; break; }
         }
         if (!CB.ptUrl) { CB.mciLive = { ok: false }; return; }
       }
-      var st = await A.stats(CB.ptUrl, 'incident_key=' + A.sq(inc().id), [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], 'triage');
-      var c = { red: 0, yellow: 0, green: 0, black: 0 }; st.forEach(function (x) { var t = x.triage || ''; if (/Red/.test(t)) c.red += x.n; else if (/Yellow/.test(t)) c.yellow += x.n; else if (/Green/.test(t)) c.green += x.n; else if (/Black|Gray/.test(t)) c.black += x.n; });
+      var st = await A.stats(CB.ptUrl, 'incident_key=' + A.sq(inc().id), [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], 'triage,status');
+      var c = { red: 0, yellow: 0, green: 0, black: 0 }; st.forEach(function (x) { var t = x.triage || ''; if (x.status === 'Entered in error') return; if (/Red/.test(t)) c.red += x.n; else if (/Yellow/.test(t)) c.yellow += x.n; else if (/Green/.test(t)) c.green += x.n; else if (/Black|Gray/.test(t)) c.black += x.n; });
       CB.mciLive = { ok: true, c: c, t: Date.now() };
     } catch (e) { CB.mciLive = { ok: false }; }
   }
@@ -8387,7 +8389,7 @@ window.CP = window.CP || {};
     return '<div class="cbmci"><div class="cbh" style="color:#ffb3b8">' + svg('mci') + 'MCI · LEVEL ' + lv + '<span class="ct">' + c.total + (m.est && !c.total ? ' est ' + m.est : '') + '</span></div>' +
       '<div class="cbtris">' + cell('red', 'Red', 'r') + cell('yellow', 'Yellow', 'y') + cell('green', 'Green', 'g') + cell('black', 'Deceased', 'k') + '</div>' +
       (lv <= 2 ? '<div class="cbrhcc">' + I('phone') + ' Level ' + lv + ': call RHCC <b>1-866-679-7422</b></div>' : '') +
-      '<div class="row" style="gap:6px;margin-top:8px"><a class="btn sm pri" href="mci.html?incident=' + encodeURIComponent(inc().id) + '" target="_blank" rel="noopener">' + I('med') + 'MCI patient tracking</a></div>' +
+      '<div class="row" style="gap:6px;margin-top:8px"><a class="btn sm pri" href="' + (CP.gate ? 'beaconmci://open?incident=' : 'mci.html?incident=') + encodeURIComponent(inc().id) + '" target="_blank" rel="noopener">' + I('med') + (CP.gate ? 'Open MCI Board app' : 'MCI patient tracking') + '</a></div>' +
       '<div class="dim" style="font-size:11.5px;margin-top:4px">' + (live ? 'Live from MCI patient tracking.' : 'Tap +/− to keep a tally here; triage in the MCI app for full tracking.') + '</div></div>';
   }
   act.tally = function (a) { var p = a.split('|'), t = Object.assign({}, kv('mciTally', {}) || {}); t[p[0]] = Math.max(0, (t[p[0]] || 0) + (+p[1])); setKV('mciTally', t); var c = mciCounts(); var was = kv('mciLv', 4), now = mciLevel(c.total); if (now !== was) { setKV('mciLv', now); return commit('MCI now Level ' + now + ' (' + c.total + ' patients)', 'Event'); } commit(null, null, true); render(); };
