@@ -76,8 +76,12 @@ final class LocationOnce: NSObject, CLLocationManagerDelegate {
         Task { @MainActor in self.last = l }
     }
     nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {}
+    /// After the person answers the prompt (asked only once the board needs a location, never at launch).
     nonisolated func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
-        Task { @MainActor in self.warm() }
+        Task { @MainActor in
+            let s = self.manager.authorizationStatus
+            if s == .authorizedWhenInUse || s == .authorizedAlways { self.manager.requestLocation() }
+        }
     }
 }
 

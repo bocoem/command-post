@@ -167,15 +167,25 @@ enum Haptic {
     static func warn() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
 }
 
-/// Big filled button in the app's style.
+/// Big filled button in the app's style (dimmed when it can't be used yet).
 struct BigButtonStyle: ButtonStyle {
     var color: Color = Theme.gold
     var ink: Color = .black
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.heavy(20)).tracking(0.6).foregroundStyle(ink)
-            .frame(maxWidth: .infinity).padding(.vertical, 14)
-            .background(color.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+        BigButtonBody(configuration: configuration, color: color, ink: ink)
+    }
+    private struct BigButtonBody: View {
+        let configuration: ButtonStyleConfiguration
+        let color: Color
+        let ink: Color
+        @Environment(\.isEnabled) private var enabled
+        var body: some View {
+            configuration.label.font(.heavy(20)).tracking(0.6).foregroundStyle(ink)
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .background(color.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .opacity(enabled ? 1 : 0.4)
+                .scaleEffect(configuration.isPressed ? 0.98 : 1)
+        }
     }
 }
 

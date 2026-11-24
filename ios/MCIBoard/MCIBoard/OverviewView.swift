@@ -153,9 +153,25 @@ struct OverviewView: View {
 
     private struct Bar: Identifiable { let id = UUID(); let hospital: String; let triage: Triage; let n: Int }
 
+    private func chartHeight(_ bars: [Bar]) -> CGFloat {
+        let n = Set(bars.map { $0.hospital }).count
+        return CGFloat(max(120, n * 56))
+    }
+
+    private static func bars(_ s: Summary) -> [Bar] {
+        var out: [Bar] = []
+        for (h, m) in s.byHospital {
+            for (t, n) in m { out.append(Bar(hospital: h, triage: t, n: n)) }
+        }
+        out.sort { (a: Bar, b: Bar) -> Bool in
+            if a.hospital != b.hospital { return a.hospital < b.hospital }
+            return a.triage.order < b.triage.order
+        }
+        return out
+    }
+
     @ViewBuilder private func destinations(_ s: Summary) -> some View {
-        let bars = s.byHospital.flatMap { h, m in m.map { Bar(hospital: h, triage: $0.key, n: $0.value) } }
-            .sorted { $0.hospital == $1.hospital ? $0.triage.order < $1.triage.order : $0.hospital < $1.hospital }
+        let bars = Self.bars(s)
         VStack(alignment: .leading, spacing: 12) {
             Text("WHERE PATIENTS WENT").font(.heavy(18)).tracking(1.2).foregroundStyle(Theme.gold)
             if bars.isEmpty {
@@ -167,7 +183,7 @@ struct OverviewView: View {
                 }
                 .chartForegroundStyleScale(domain: Triage.allCases.map(\.short), range: Triage.allCases.map(\.color))
                 .chartLegend(position: .bottom)
-                .frame(height: CGFloat(max(120, Set(bars.map(\.hospital)).count * 56)))
+                .frame(height: chartHeight(bars))
             }
         }.card(18)
     }

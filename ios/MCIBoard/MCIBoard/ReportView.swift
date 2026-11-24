@@ -64,6 +64,12 @@ struct ReportView: View {
 struct ShareFile: Identifiable { let url: URL; var id: String { url.path } }
 
 enum Report {
+    /// Text into the PDF page (runs inside the PDF renderer, off the main actor).
+    nonisolated static func draw(_ t: String, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat, size: CGFloat = 9, bold: Bool = false, color: UIColor = .black) {
+        let a: [NSAttributedString.Key: Any] = [.font: bold ? UIFont.boldSystemFont(ofSize: size) : UIFont.systemFont(ofSize: size), .foregroundColor: color]
+        (t as NSString).draw(with: CGRect(x: x, y: y, width: w, height: size * 2.6), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: a, context: nil)
+    }
+
     @MainActor
     static func pdf(store: MCIStore, names: Bool) -> URL? {
         guard let inc = store.incident else { return nil }
@@ -75,11 +81,8 @@ enum Report {
         let fmt = UIGraphicsPDFRendererFormat()
         fmt.documentInfo = [kCGPDFContextTitle as String: "MCI patient tracking (RESTRICTED)", kCGPDFContextCreator as String: "BEACON MCI Board"]
         let r = UIGraphicsPDFRenderer(bounds: page, format: fmt)
-
-        func draw(_ t: String, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat, size: CGFloat = 9, bold: Bool = false, color: UIColor = .black) {
-            let a: [NSAttributedString.Key: Any] = [.font: bold ? UIFont.boldSystemFont(ofSize: size) : UIFont.systemFont(ofSize: size), .foregroundColor: color]
-            (t as NSString).draw(with: CGRect(x: x, y: y, width: w, height: size * 2.6), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: a, context: nil)
-        }
+        let who = store.me
+        let fills = Dictionary(uniqueKeysWithValues: Triage.allCases.map { ($0, UIColor($0.color)) })
         let cols: [(String, CGFloat)] = [("Tag", 50), ("Triage", 50), ("Name", names ? 120 : 0), ("Age / sex", 80), ("Injuries", names ? 150 : 230), ("Status", 82), ("Unit", 56), ("Hospital", 110), ("Triaged", 42), ("Moved", 42)]
         let shown = cols.filter { $0.1 > 0 }
         let stamp = Date().formatted(date: .abbreviated, time: .shortened)
@@ -91,13 +94,13 @@ enum Report {
                 func header() {
                     ctx.beginPage(); pageNo += 1
                     UIColor(red: 0.82, green: 0.13, blue: 0.16, alpha: 1).setFill(); UIRectFill(CGRect(x: 0, y: 0, width: page.width, height: 22))
-                    draw("RESTRICTED · PROTECTED HEALTH INFORMATION · share only as needed for care, family notification or the incident record", 24, 6, 744, size: 8, bold: true, color: .white)
-                    draw("MCI Patient Tracking · \(inc.name)" + (inc.exercise ? " (PRACTICE)" : ""), 24, 32, 600, size: 15, bold: true)
-                    draw("\(inc.number ?? inc.key) · \(s.total) patients · MCI Level \(s.level) · red \(s.by[.red] ?? 0), yellow \(s.by[.yellow] ?? 0), green \(s.by[.green] ?? 0), gray \(s.by[.gray] ?? 0), black \(s.by[.black] ?? 0) · \(s.transported) transported", 24, 54, 744, size: 9)
-                    draw("Printed \(stamp) by \(store.me) · page \(pageNo)", 560, 34, 208, size: 8, color: .darkGray)
+                    Report.draw("RESTRICTED · PROTECTED HEALTH INFORMATION · share only as needed for care, family notification or the incident record", 24, 6, 744, size: 8, bold: true, color: .white)
+                    Report.draw("MCI Patient Tracking · \(inc.name)" + (inc.exercise ? " (PRACTICE)" : ""), 24, 32, 600, size: 15, bold: true)
+                    Report.draw("\(inc.number ?? inc.key) · \(s.total) patients · MCI Level \(s.level) · red \(s.by[.red] ?? 0), yellow \(s.by[.yellow] ?? 0), green \(s.by[.green] ?? 0), gray \(s.by[.gray] ?? 0), black \(s.by[.black] ?? 0) · \(s.transported) transported", 24, 54, 744, size: 9)
+                    Report.draw("Printed \(stamp) by \(who) · page \(pageNo)", 560, 34, 208, size: 8, color: .darkGray)
                     y = 76
                     var x: CGFloat = 24
-                    for c in shown { draw(c.0.uppercased(), x, y, c.1 - 4, size: 8, bold: true, color: .darkGray); x += c.1 }
+                    for c in shown { Report.draw(c.0.uppercased(), x, y, c.1 - 4, size: 8, bold: true, color: .darkGray); x += c.1 }
                     y += 14
                     UIColor.lightGray.setFill(); UIRectFill(CGRect(x: 24, y: y - 2, width: 744, height: 0.6))
                 }
@@ -115,16 +118,16 @@ enum Report {
                     var x: CGFloat = 24
                     for c in shown {
                         if c.0 == "Triage", let t = tri {
-                            UIColor(t.color).setFill(); UIRectFill(CGRect(x: x, y: y - 1, width: 42, height: 13))
-                            draw(t.short, x + 3, y, 40, size: 8, bold: true, color: t == .yellow ? .black : .white)
+                            (fills[t] ?? UIColor.gray).setFill(); UIRectFill(CGRect(x: x, y: y - 1, width: 42, height: 13))
+                            Report.draw(t.short, x + 3, y, 40, size: 8, bold: true, color: t == .yellow ? .black : .white)
                         } else {
-                            draw(values[c.0] ?? "", x, y, c.1 - 6, size: 9, bold: c.0 == "Tag")
+                            Report.draw(values[c.0] ?? "", x, y, c.1 - 6, size: 9, bold: c.0 == "Tag")
                         }
                         x += c.1
                     }
                     y += 18
                 }
-                if rows.isEmpty { draw("No patients.", 24, y + 6, 300, size: 11) }
+                if rows.isEmpty { Report.draw("No patients.", 24, y + 6, 300, size: 11) }
             }
         } catch { return nil }
         // the PDF is PHI: protect it like the rest of the app's files until it's shared and removed
