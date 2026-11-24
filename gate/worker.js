@@ -19,13 +19,21 @@ const S6 = 'services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/';
 // The addresses come from the SERVICES var (EM Ops → Setup → "Command Board & MCI apps" → Copy gate settings);
 // the defaults below are only used until it is set.
 //  read: lowest level that may query.  write: lowest level that may edit (null = never).  del: lowest level that may delete.
-//  strip: fields removed unless the level is at least `stripBelow`.  guestScope: guests only see their incident's rows.
+//  strip: fields removed unless the level is at least `stripBelow`. Below that level these fields also can't be searched,
+//         sorted or grouped on (so a filter can't be used to guess them), and with noWrite they can't be written either.
+//  guestScope: guests only see their incident's rows.
+//  layers: only these layer numbers inside the service (the service's own summary is refused).
+//  only: the only operations allowed on this service (for example add-only).
+//  statsBelow: levels below this may only ask for counts (by triage, status, hospital), never rows.  countsOnly: everyone.
 const DEFAULT_SERVICES = {
   users: S6 + 'BEACON_App_Access/FeatureServer', cp: S6 + 'BOCO_Command_Post/FeatureServer',
   cadCalls: S6 + 'CAD_Calls_For_Service_Active_Fire_EMS/FeatureServer', cadUnits: S6 + 'CAD_Units_Fire_EMS/FeatureServer',
   hydrants: S6 + 'Hydrants/FeatureServer', ppTac: S6 + 'BOCO_Preplans_Tactical/FeatureServer', ppProt: S6 + 'BOCO_Preplans_Protected/FeatureServer',
-  patients: S6 + 'BOCO_EMS_PatientCare/FeatureServer'
+  patients: S6 + 'BOCO_EMS_PatientCare/FeatureServer',
+  ops: S6 + 'BOCO_EM_Operations/FeatureServer', prot: S6 + 'BOCO_EM_Protected/FeatureServer'
 };
+// Layer numbers inside shared services (EM Ops schema: OPS_Hospitals = 15, PROT_Reunification = 2, PROT_MCI_Patients = 0).
+const HOSP_LAYER = 15, REUN_LAYER = 2, PT_LAYER = 0;
 function services(env) {
   let o = {}; try { o = env.SERVICES ? JSON.parse(env.SERVICES) : {}; } catch (e) {}
   const out = { ...DEFAULT_SERVICES };
@@ -41,18 +49,25 @@ function layersFor(env) {
       { svc: S.cadUnits, read: 'Officer' },
       { svc: S.hydrants, read: 'Viewer' },
       { svc: S.ppTac, read: 'Officer' },
-      { svc: S.ppProt, read: 'Command' }
+      { svc: S.ppProt, read: 'Command' },
+      // live MCI count on the board: counts by triage and status only, never patient rows
+      { svc: S.patients, read: 'Officer', write: null, layers: [PT_LAYER], countsOnly: true }
     ],
-    mci: [ // planned: the MCI Board app uses the same gate
-      { svc: S.cp, read: 'Viewer', write: null },
-      { svc: S.patients, read: 'Officer', write: 'Officer', del: null, guestScope: 'incident_key' },
-      { svc: S.hydrants, read: 'Viewer' }
+    mci: [ // the MCI Board iPad/iPhone app (no guests: patient records)
+      { svc: S.cp, read: 'Viewer', write: null, layers: [0] },
+      // patients: Officers triage, treat and transport; names only for Command and up; Viewers get counts only; nothing is ever deleted
+      { svc: S.patients, read: 'Viewer', write: 'Officer', del: null, layers: [PT_LAYER], strip: [/first_name/i, /last_name/i], stripBelow: 'Command', noWrite: true, statsBelow: 'Officer' },
+      { svc: S.ops, read: 'Viewer', write: 'Officer', del: null, layers: [HOSP_LAYER] },            // hospital board only
+      { svc: S.prot, read: 'Command', write: 'Command', del: null, layers: [REUN_LAYER], only: /^addFeatures$/ }, // send a found person to Reunification; can't read it back
+      { svc: S.cadUnits, read: 'Officer' }
     ]
   };
 }
 const APPS = { cb: 'cb_level', mci: 'mci_level' };
 const READ_OPS = /^(query|queryRelatedRecords|queryAttachments|attachments\/\d+|\d+\/attachments\/\d+)?$/;
 const WRITE_OPS = /^(applyEdits|addFeatures|updateFeatures)$/;
+const STAT_FIELDS = ['OBJECTID', 'triage', 'status', 'hospital', 'incident_key'];
+const SEARCH_PARAMS = ['where', 'orderByFields', 'groupByFieldsForStatistics', 'outStatistics', 'having', 'text', 'sqlFormat'];
 const DEL_OPS = /^deleteFeatures$/;
 
 const enc = new TextEncoder();
@@ -177,6 +192,7 @@ export default {
       // 2b) guest: an incident code from the IC (view only, that incident only, until it closes)
       if (path === '/auth/guest' && req.method === 'POST') {
         const b = await req.json(), code = String(b.code || '').trim().toUpperCase(), name = String(b.name || '').trim().slice(0, 60), app = APPS[b.app] ? b.app : 'cb';
+        if (app === 'mci') return err('The MCI Board has no guest access (patient records).', 403);
         if (!/^G[A-Z0-9]{7}$/.test(code) || !name) return err('Enter your name and the incident code.');
         const inc = await findIncidentForGuest(env, code);
         if (!inc) return err('That incident code is not valid or the incident is closed.', 403);
@@ -193,7 +209,7 @@ export default {
       if (path === '/me') {
         const row = s.g ? null : await roster(env, ctx, s.e);
         const fresh = s.g ? s : { ...s, n: (row && row.name) || s.n, iat: Date.now(), exp: Date.now() + SESSION_DAYS * 864e5 };
-        return json({ token: s.g ? null : await sign(env, fresh), ...sessionOut(fresh, lvl, row), layers: (layersFor(env)[s.a] || []).filter((L) => rank(lvl) >= rank(L.read)).map((L) => ({ url: 'https://' + L.svc, write: !!(L.write && rank(lvl) >= rank(L.write)) })) });
+        return json({ token: s.g ? null : await sign(env, fresh), ...sessionOut(fresh, lvl, row), layers: (layersFor(env)[s.a] || []).filter((L) => L.read && rank(lvl) >= rank(L.read)).map((L) => ({ url: 'https://' + L.svc, write: !!(L.write && rank(lvl) >= rank(L.write)), ids: L.layers || null, only: L.only ? String(L.only.source) : null, counts: !!(L.countsOnly || (L.statsBelow && rank(lvl) < rank(L.statsBelow))), hidden: L.strip && rank(lvl) < rank(L.stripBelow) ? L.strip.map((re) => re.source) : [] })) });
       }
 
       // 4) guest code for an incident (Command only)
@@ -227,17 +243,39 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
   if (/\.\.|%2e|%2f|\/\/|\\/i.test(rest)) return err('That request is not allowed.', 403);
   const L = (layersFor(env)[s.a] || []).find((x) => rest === x.svc || rest.startsWith(x.svc + '/'));
   if (!L) return err('That layer is not available in this app.', 403);
-  if (rank(lvl) < rank(L.read)) return err('Your access level cannot see this layer.', 403);
+  if (!L.read || rank(lvl) < rank(L.read)) return err('Your access level cannot see this layer.', 403);
   const tail = rest.slice(L.svc.length).replace(/^\//, ''); // e.g. "0/query", "applyEdits", ""
   const op = tail.replace(/^\d+\/?/, '');
+  if (L.layers) { const m = tail.match(/^(\d+)(\/|$)/); if (!m || !L.layers.includes(+m[1])) return err('That layer is not available in this app.', 403); }
+  if (L.only && !L.only.test(op)) return err('That request is not allowed.', 403);
   // read params from query string and (for POST) the form body
   const p = new URLSearchParams(url.search);
   if (req.method === 'POST') { const body = new URLSearchParams(await req.text()); for (const [k, v] of body) p.set(k, v); }
   p.delete('token'); p.delete('gt');
-  const isWrite = WRITE_OPS.test(op), isDel = DEL_OPS.test(op);
+  const isWrite = WRITE_OPS.test(op), isDel = DEL_OPS.test(op) || (op === 'applyEdits' && !!(p.get('deletes') || '').replace(/[\s\[\]]/g, ''));
   if (isWrite && !(L.write && rank(lvl) >= rank(L.write))) return err('Your access level cannot change this.', 403);
   if (isDel && !(L.del && rank(lvl) >= rank(L.del))) return err('Your access level cannot delete this.', 403);
   if (!isWrite && !isDel && !READ_OPS.test(op)) return err('That request is not allowed.', 403);
+  const hides = L.strip && rank(lvl) < rank(L.stripBelow);
+  if (hides) {
+    // hidden fields can't be used to filter, sort or group either (that would let someone guess them one letter at a time)
+    if (SEARCH_PARAMS.some((k) => p.has(k) && L.strip.some((re) => re.test(p.get(k))))) return err('Your access level cannot search on that field.', 403);
+    if (L.noWrite && isWrite && ['features', 'adds', 'updates'].some((k) => p.has(k) && L.strip.some((re) => re.test(p.get(k))))) return err('Your access level cannot change that field.', 403);
+  }
+  if ((L.countsOnly || (L.statsBelow && rank(lvl) < rank(L.statsBelow))) && !isWrite && !isDel) {
+    // counts only: by incident, and grouped by triage / status / hospital
+    if (op !== 'query') return err('Your access level can only see counts.', 403);
+    const w = (p.get('where') || '1=1').trim();
+    if (!/^(1\s*=\s*1|incident_key\s*=\s*'[\w-]{1,40}')$/i.test(w)) return err('Your access level can only see counts for one incident.', 403);
+    if (p.get('returnCountOnly') !== 'true') {
+      let st; try { st = JSON.parse(p.get('outStatistics') || 'null'); } catch (e) { st = null; }
+      const grp = (p.get('groupByFieldsForStatistics') || '').split(',').map((x) => x.trim()).filter(Boolean);
+      if (!Array.isArray(st) || !st.length || st.some((x) => !x || String(x.statisticType).toLowerCase() !== 'count' || !STAT_FIELDS.includes(x.onStatisticField)) || grp.some((g) => !STAT_FIELDS.includes(g)))
+        return err('Your access level can only see counts.', 403);
+    }
+    ['outFields', 'orderByFields', 'objectIds', 'geometry', 'text', 'having', 'returnDistinctValues', 'relationshipParam'].forEach((k) => p.delete(k));
+    p.set('returnGeometry', 'false');
+  }
   if (lvl === 'Guest') {
     if (isWrite || isDel) return err('Guests can only view.', 403);
     // guests: the filter is replaced, not added to, so no where clause can widen it
@@ -252,7 +290,7 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
     : await fetch(target + '?' + p);
   if (isBin) return new Response(r.body, { status: r.status, headers: { 'Content-Type': r.headers.get('Content-Type') || 'application/octet-stream', 'Cache-Control': 'private, max-age=3600', ...CORS } });
   let j = await r.json();
-  if (L.strip && rank(lvl) < rank(L.stripBelow)) j = stripFields(j, L.strip);
+  if (hides) j = stripFields(j, L.strip);
   if (j && typeof j === 'object' && !Array.isArray(j)) { delete j.serviceItemId; } // nothing that helps find the source item
   return json(j, r.status === 200 ? 200 : r.status);
 }

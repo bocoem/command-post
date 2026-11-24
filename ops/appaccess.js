@@ -77,7 +77,9 @@
     add('hydrants', 'Hydrants', await itemFor('Hydrants'), 'Read');
     add('ppTac', 'Preplans (Tactical)', await itemFor('BOCO_Preplans_Tactical'), 'Read: approved preplans');
     add('ppProt', 'Preplans (Protected)', await itemFor('BOCO_Preplans_Protected'), 'Read: Command only');
-    add('patients', 'EMS Patient Care (MCI Board, later)', await itemFor('BOCO_EMS_PatientCare'), 'Read and edit (MCI app)');
+    add('patients', 'EMS Patient Care (MCI Board)', await itemFor('BOCO_EMS_PatientCare'), 'MCI app: patients (layer 0). Names for Command and up only; nothing deleted');
+    add('ops', 'EM Operations (MCI hospital board)', await itemFor('BOCO_EM_Operations'), 'MCI app: hospital board only (layer 15)');
+    add('prot', 'EM Protected (Reunification hand-off)', await itemFor('BOCO_EM_Protected'), 'MCI app: add a found person to Reunification only (layer 2); cannot read it');
     return out;
   };
   AX.panel = function () {
