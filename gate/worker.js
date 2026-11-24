@@ -3,8 +3,8 @@
  * Who gets in is decided by one ArcGIS table (BEACON_App_Access / APP_Users): one row per person or truck iPad, a level per app.
  * On the list you're in; turned off, you're out. Each row is identified by its uid.
  * Sign-in is a one-time setup code (or its QR) that a Chief, User manager or Admin issues from the Users page or an app.
- *   People stay signed in 30 days while they use the app. Devices (truck iPads, shared email) stay signed in until turned off.
- * Email sign-in was retired Nov 24, 2026. Older email sessions keep working until they lapse (30 days unused).
+ *   People stay signed in a year while they use the app (renewed on each use; was 30 days until Nov 24). Devices (truck iPads, shared email) stay signed in until turned off.
+ * Email sign-in was retired Nov 24, 2026. Older email sessions keep working until they lapse (a year unused).
  * The Users page for the Teams tab is served at /users.
  * The county's ArcGIS app credentials live only here (ARC_CLIENT_ID + secret ARC_CLIENT_SECRET). The apps never see them.
  * The apps reach ArcGIS through /arc/<host>/<path>; only the services in layersFor() are allowed,
@@ -17,7 +17,7 @@ import USERS_PAGE from './users-page.js';
 
 const ORDER = ['None', 'Guest', 'Viewer', 'Officer', 'Command', 'Chief', 'Admin'];
 const rank = (l) => Math.max(0, ORDER.indexOf(l || 'None'));
-const SESSION_DAYS = 30, DEVICE_DAYS = 3650, CODE_MIN = 10, ROSTER_TTL = 120, MAX_TRIES = 8, SETUP_HOURS = 24;
+const SESSION_DAYS = 365, DEVICE_DAYS = 3650, CODE_MIN = 10, ROSTER_TTL = 120, MAX_TRIES = 8, SETUP_HOURS = 24;
 const SETUP_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const S6 = 'services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/';
 

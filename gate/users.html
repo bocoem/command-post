@@ -115,7 +115,7 @@ td.t{white-space:nowrap;color:var(--dim)}
 
   function signIn(note) {
     $('#who').textContent = '';
-    $('#main').innerHTML = '<form class="signin" id="si"><h2>Sign in</h2><p class="dim">Enter the setup code you were given. Ask an Admin or a User manager for one. You stay signed in on this computer for 30 days.</p>' +
+    $('#main').innerHTML = '<form class="signin" id="si"><h2>Sign in</h2><p class="dim">Enter the setup code you were given. Ask an Admin or a User manager for one. You stay signed in on this computer for a year while you use it.</p>' +
       (note ? '<div class="msg err">' + esc(note) + '</div>' : '') +
       '<label class="f"><span>Setup code</span><input class="in" id="sc" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX" maxlength="13"></label>' +
       '<button class="btn pri" style="width:100%">Sign in</button><p class="dim" style="font-size:14px;margin-bottom:0">Chiefs, User managers and Admins only. Everyone else signs in inside the Command Board or MCI Board app.</p></form>';
@@ -249,7 +249,7 @@ td.t{white-space:nowrap;color:var(--dim)}
     open('<div class="dh"><h2>' + (justAdded ? 'Added. ' : '') + 'Setup code for ' + esc(u.full_name || u.email) + '</h2></div><div class="db"><div class="code" id="cd">' + esc(r.code) + '</div>' + qr +
       '<p class="dim" style="text-align:center">Good until ' + esc(until) + '. Works once in each app. Issuing a new code cancels this one.</p>' +
       '<ol class="steps">' + (dev ? '<li>On the truck iPad, open the Command Board app (and the MCI Board app).</li><li>Tap <b>Scan setup code</b> and point it at this QR, or type the code.</li><li>The iPad stays signed in until someone turns it off here.</li>'
-        : '<li>Send them the code by text, radio or in person. Don\'t email it with their name.</li><li>They open the app and enter it, or scan the QR.</li><li>They stay signed in for 30 days while they use the app.</li>') + '</ol></div>' +
+        : '<li>Send them the code by text, radio or in person. Don\'t email it with their name.</li><li>They open the app and enter it, or scan the QR.</li><li>They stay signed in for a year while they use the app.</li>') + '</ol></div>' +
       '<div class="df"><button class="btn" data-act="copy">Copy code</button><button class="btn pri" data-act="done">Done</button></div>', (d) => {
       d.querySelector('[data-act=copy]').onclick = async (e) => { try { await navigator.clipboard.writeText(r.code); e.target.textContent = 'Copied'; } catch (er) { e.target.textContent = 'Select the code to copy'; } };
       d.querySelector('[data-act=done]').onclick = () => { close(); load(); };
