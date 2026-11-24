@@ -805,3 +805,11 @@ html.cbapp .netpill{top:calc(18px + env(safe-area-inset-top));bottom:auto;left:a
   .cbbody .cbfire .cbpatch{height:40px}.cbbody .cblock .k{display:none}.cbbody .cblock .t{font-size:20px}
   .cbptop{top:0}
 }
+/* phone: modal buttons wrap instead of running off the screen; wide report tables scroll */
+@media (max-width:560px){
+  .modal .mf{flex-wrap:wrap;justify-content:stretch}
+  .modal .mf .btn{flex:1 1 calc(50% - 8px);min-height:44px}
+  .modal .mf .btn.pri,.modal .mf .btn.red{order:-1;flex-basis:100%}
+  .cbreport{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .cbmayck{grid-template-columns:1fr!important}
+}
