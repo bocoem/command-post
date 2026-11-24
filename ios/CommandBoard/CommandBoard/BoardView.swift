@@ -27,11 +27,11 @@ struct BoardScreen: View {
                 default: break
                 }
             }
-            .sheet(item: $web.shareItem) { item in ShareSheet(url: item.url) }
+            .sheet(item: $web.shareItem) { item in ShareSheet(urls: item.urls) }
     }
 }
 
-struct ShareItem: Identifiable { let id = UUID(); let url: URL }
+struct ShareItem: Identifiable { let id = UUID(); let urls: [URL] }
 
 @MainActor
 final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
@@ -86,6 +86,7 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
     static func bootScript(_ s: GateSession) -> String {
         let gate: [String: Any] = ["url": AppConfig.gateURL.absoluteString, "token": s.token, "email": s.email, "name": s.name, "agency": s.agency,
                                    "level": s.level, "app": AppConfig.appKey, "incident": s.incident ?? NSNull(), "layers": s.layers.map { ["url": $0] }]
+        BoardVault.prune()
         let saved = BoardVault.recent().map { ["id": $0.0.id, "updated": $0.0.updated, "json": $0.1] }
         let g = String(data: try! JSONSerialization.data(withJSONObject: gate), encoding: .utf8)!
         let v = String(data: (try? JSONSerialization.data(withJSONObject: saved)) ?? Data("[]".utf8), encoding: .utf8) ?? "[]"
@@ -111,10 +112,18 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
         case "awake": UIApplication.shared.isIdleTimerDisabled = (b["on"] as? Bool) ?? false
         case "token": store?.refresh(token: b["token"] as? String, level: b["level"] as? String, name: b["name"] as? String)
         case "share":
-            let name = (b["name"] as? String ?? "board.txt").replacingOccurrences(of: "/", with: "-")
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-            try? Data((b["text"] as? String ?? "").utf8).write(to: url, options: .atomic)
-            shareItem = ShareItem(url: url)
+            // one file (name + text) or several (files: [{name, text}])
+            var list = (b["files"] as? [[String: Any]]) ?? []
+            if list.isEmpty { list = [["name": b["name"] as? String ?? "board.txt", "text": b["text"] as? String ?? ""]] }
+            let urls: [URL] = list.compactMap { f in
+                let name = (f["name"] as? String ?? "board.txt").replacingOccurrences(of: "/", with: "-")
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+                guard (try? Data((f["text"] as? String ?? "").utf8).write(to: url, options: .atomic)) != nil else { return nil }
+                return url
+            }
+            if !urls.isEmpty { shareItem = ShareItem(urls: urls) }
+        case "print":
+            printHTML(b["html"] as? String ?? "", name: b["name"] as? String ?? "Incident report")
         case "signin":
             // the gate no longer accepts this session (expired or access removed)
             if (b["reason"] as? String) != nil { store?.signOut() }
@@ -147,6 +156,7 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
             }
             return .allow
         }
+        if let sc = u.scheme?.lowercased(), ["mailto", "sms", "tel", "maps", "facetime"].contains(sc) { await UIApplication.shared.open(u); return .cancel }
         if u.scheme == "blob" || u.scheme == "data" || u.scheme == "about" { return .allow }
         if a.navigationType == .linkActivated || a.targetFrame == nil { await UIApplication.shared.open(u); return .cancel }
         return .allow
@@ -155,9 +165,44 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
         if let u = a.request.url, !u.isFileURL, u.scheme != "about", u.scheme != "blob" { UIApplication.shared.open(u) }
         return nil
     }
-    // page dialogs (the board avoids them, but answer them if one appears)
-    func webView(_ w: WKWebView, runJavaScriptAlertPanelWithMessage msg: String, initiatedByFrame f: WKFrameInfo) async { }
-    func webView(_ w: WKWebView, runJavaScriptConfirmPanelWithMessage msg: String, initiatedByFrame f: WKFrameInfo) async -> Bool { true }
+    // page dialogs: the board uses its own, but if a browser alert or confirm appears it must really be asked
+    // (e.g. "changes not sent yet, sign out anyway?"), never answered "yes" on the person's behalf.
+    func webView(_ w: WKWebView, runJavaScriptAlertPanelWithMessage msg: String, initiatedByFrame f: WKFrameInfo, completionHandler done: @escaping () -> Void) {
+        let a = UIAlertController(title: nil, message: msg, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "OK", style: .default) { _ in done() })
+        guard let vc = topController() else { done(); return }
+        vc.present(a, animated: true)
+    }
+    func webView(_ w: WKWebView, runJavaScriptConfirmPanelWithMessage msg: String, initiatedByFrame f: WKFrameInfo, completionHandler done: @escaping (Bool) -> Void) {
+        let a = UIAlertController(title: nil, message: msg, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in done(false) })
+        a.addAction(UIAlertAction(title: "OK", style: .destructive) { _ in done(true) })
+        guard let vc = topController() else { done(false); return }
+        vc.present(a, animated: true)
+    }
+    private func topController() -> UIViewController? {
+        var vc = view.window?.rootViewController
+        while let p = vc?.presentedViewController { vc = p }
+        return vc
+    }
+    /// Print or save the incident report as a PDF (AirPrint, or Share → Save to Files from the print preview).
+    private func printHTML(_ html: String, name: String) {
+        guard !html.isEmpty else { return }
+        let info = UIPrintInfo(dictionary: nil)
+        info.outputType = .general
+        info.jobName = name
+        let pc = UIPrintInteractionController.shared
+        pc.printInfo = info
+        let fmt = UIMarkupTextPrintFormatter(markupText: html)
+        fmt.perPageContentInsets = UIEdgeInsets(top: 36, left: 36, bottom: 36, right: 36)
+        pc.printFormatter = fmt
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            let r = CGRect(x: view.bounds.midX, y: view.bounds.maxY - 80, width: 1, height: 1)
+            pc.present(from: r, in: view, animated: true)
+        } else {
+            pc.present(animated: true)
+        }
+    }
     // if the web content process is ever killed by iPadOS, reload the board (it reopens the open incident)
     func webViewWebContentProcessDidTerminate(_ w: WKWebView) { w.reload() }
 }
@@ -169,7 +214,7 @@ struct BoardWebView: UIViewRepresentable {
 }
 
 struct ShareSheet: UIViewControllerRepresentable {
-    let url: URL
-    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: [url], applicationActivities: nil) }
+    let urls: [URL]
+    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: urls, applicationActivities: nil) }
     func updateUIViewController(_ c: UIActivityViewController, context: Context) {}
 }

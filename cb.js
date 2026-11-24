@@ -399,7 +399,7 @@
     var h = '<div class="cbpc">';
     h += '<div class="cbptop' + (may ? ' mayday' : '') + '"><div class="cbpwhere" data-cb="staff"><b>' + (kv('cmdName', '') ? E(kv('cmdName')) + ' · ' : '') + E(i.location.desc || i.name) + '</b><span>' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (kv('mode', '') ? ' · ' + E(kv('mode')) : '') + (kv('cond', '') ? ' · ' + E(kv('cond')) : '') + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
       '<div class="cbprow"><div class="cbpel"><span>Elapsed</span><b id="cbEl">' + since(i.start) + '</b></div><button class="cbpar' + (left <= 0 ? ' due' : left < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR · ' + ppl(onScene()) + ' on scene</span><b id="cbPar">' + (left <= 0 ? 'DUE' : Math.floor(left / 60) + ':' + CP.pad(left % 60)) + '</b></button><button class="cbpmay" data-cb="mayday">' + I('warn') + '<span>' + (may ? 'ACTIVE' : 'MAYDAY') + '</span></button></div></div>';
-    if (may) h += '<div class="cbmaybar">' + I('warn') + ' MAYDAY ' + E(since(may.t)) + ' · ' + E(may.who || '') + ' · ' + E(may.where || '') + ' <button class="btn sm" data-cb="mayclear">Clear</button></div>';
+    if (may) h += mayPanel();
     h += etBar();
     if (t === 'map') h += pmapView();
     else if (t === 'wb') h += '<div class="cbpwb">' + wbView() + '</div>';
@@ -750,7 +750,8 @@
     var i = inc(), subj = 'Incident report ' + i.number + ' · ' + (i.location.desc || i.name), out = [
       { label: I('msg') + 'Email', cls: 'ghost', fn: function () { var t = summaryText(false); if (t.length > 1800) t = t.slice(0, 1800) + '\n…'; location.href = 'mailto:?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(t); return false; } },
       { label: I('phone') + 'Text', cls: 'ghost', fn: function () { location.href = 'sms:?&body=' + encodeURIComponent(summaryText(true)); return false; } }];
-    try { var f = new File([html], fname, { type: 'text/html' }); if (navigator.canShare && navigator.canShare({ files: [f] })) out.push({ label: I('up') + 'Share file', cls: 'ghost', fn: function () { navigator.share({ files: [f], title: subj, text: summaryText(true) }).catch(function () {}); return false; } }); } catch (e) {}
+    if (CP.native) out.push({ label: I('up') + 'Share file', cls: 'ghost', fn: function () { CP.native({ type: 'share', name: fname, text: html }); return false; } });
+    else try { var f = new File([html], fname, { type: 'text/html' }); if (navigator.canShare && navigator.canShare({ files: [f] })) out.push({ label: I('up') + 'Share file', cls: 'ghost', fn: function () { navigator.share({ files: [f], title: subj, text: summaryText(true) }).catch(function () {}); return false; } }); } catch (e) {}
     return out;
   }
 
@@ -1229,17 +1230,6 @@
       } }], { nofocus: true });
     bg.addEventListener('click', function (e) { var p = e.target.closest('[data-pe]'); if (!p) return; e.preventDefault(); setKV('parEvery', +p.dataset.pe); bg.querySelectorAll('[data-pe]').forEach(function (x) { x.classList.toggle('pri', x === p); }); commit(null, null, true); });
   };
-  act.mayday = function () {
-    var may = kv('mayday', null); if (may) { U.toast('MAYDAY already active. Clear it from the red bar.', 'err'); return; }
-    var rit = asgs().find(function (a) { return /RIT/i.test(aName(a)); });
-    U.modal('MAYDAY', '<div class="warnbox" style="margin-bottom:10px">Clear the channel, acknowledge, get LUNAR, commit RIT, call a PAR.</div><div class="grid g2"><label class="f"><span>Who (unit / name)</span><input class="in big" name="who"></label><label class="f"><span>Location</span><input class="in big" name="where" placeholder="Floor, side, room"></label><label class="f"><span>Air remaining</span><input class="in" name="air"></label><label class="f"><span>Assignment</span><input class="in" name="asg"></label><label class="f spanall"><span>Needs</span><input class="in" name="needs"></label></div>',
-      [{ label: 'Cancel', cls: 'ghost' }, { label: 'Declare MAYDAY', cls: 'red', fn: function (b) {
-        var g = function (n) { return U.val(b, n); }, m = { t: CP.now(), who: g('who'), where: g('where'), air: g('air'), asg: g('asg'), rit: rit ? unitsIn(rit.id).map(function (r) { return r.name; }).join(', ') : '' };
-        setKV('mayday', m); commit('MAYDAY: ' + [m.who, m.where, m.air && 'air ' + m.air, m.asg, g('needs')].filter(Boolean).join(' · ') + (m.rit ? '. RIT committed: ' + m.rit : ''), 'Safety');
-        if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]);
-      } }]);
-  };
-  act.mayclear = function () { var m = kv('mayday', null); if (!m) return; sure('Clear the MAYDAY?', 'Only when the member is out and accounted for.', 'Clear MAYDAY', function () { setKV('mayday', null); commit('MAYDAY cleared after ' + since(m.t) + ': ' + (m.who || ''), 'Safety'); }); };
   function canReport(a) {
     U.modal('CAN report' + (a ? ' · ' + aName(a) : ''), '<label class="f"><span>Conditions</span><input class="in" name="c" placeholder="What you see"></label><label class="f"><span>Actions</span><input class="in" name="a" placeholder="What you are doing"></label><label class="f"><span>Needs</span><input class="in" name="n" placeholder="What you need"></label>',
       [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log it', cls: 'pri', fn: function (b) { var t = ['C: ' + U.val(b, 'c'), 'A: ' + U.val(b, 'a'), 'N: ' + U.val(b, 'n')].filter(function (x) { return x.length > 3; }).join(' · '); if (!t) return false; if (a) { a.cbCan = t; a.u = CP.now(); CP.touch(inc(), 'assignments'); } commit('CAN' + (a ? ' ' + aName(a) : '') + ': ' + t, 'Communication'); } }]);
@@ -1585,6 +1575,7 @@
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Incident report ' + E(i.number) + '</title>' + css + '</head><body>' + body + '</body></html>';
     var fname = 'Incident report ' + i.number + ' ' + (i.location.desc || '').replace(/[^\w ,-]+/g, '').slice(0, 40) + '.html';
     var bg = U.modal('Incident report', '<div class="cbreport">' + body + '</div>', [{ label: I('down') + 'Download', cls: 'ghost', fn: function () { saveFile(fname, html, 'text/html'); return false; } }, { label: I('print') + 'Print / save as PDF', cls: 'pri', fn: function () {
+      if (CP.native) { CP.native({ type: 'print', html: html, name: fname.replace(/\.html?$/i, '') }); return false; }
       var w = window.open('', '_blank'); if (w) { w.document.write(html + '<script>setTimeout(function(){print()},300)<\/script>'); w.document.close(); } else { U.download(fname, html, 'text/html'); U.toast('Downloaded. Open it and print to save a PDF.', 'ok', 6000); } return false; } }, { label: 'Close', cls: 'ghost' }].slice(0, 2).concat(sendBtns(html, fname)).concat([{ label: 'Close', cls: 'ghost' }]), { wide: true });
     return bg;
   }
@@ -1776,7 +1767,8 @@
       { label: I('down') + 'Times .csv', cls: 'ghost', fn: function (b) { var d = fresh(b); saveFile(exportName(d, ' times.csv'), exportCsvs(d).times, 'text/csv'); return false; } },
       { label: I('down') + 'Export .json', cls: 'pri', fn: function (b) { var d = fresh(b); saveFile(exportName(d, '.json'), JSON.stringify(d, null, 2), 'application/json'); log('Exported for ImageTrend' + (d.dispatch.incident_number ? ' (CAD ' + d.dispatch.incident_number + ')' : ''), 'Event'); commit(null, null, true); return false; } }
     ];
-    if (canShareFiles()) btns.push({ label: I('up') + 'Share all 3', cls: 'ghost', fn: function (b) { var d = fresh(b), c = exportCsvs(d); navigator.share({ files: [new File([JSON.stringify(d, null, 2)], exportName(d, '.json'), { type: 'application/json' }), new File([c.units], exportName(d, ' units.csv'), { type: 'text/csv' }), new File([c.times], exportName(d, ' times.csv'), { type: 'text/csv' })], title: 'ImageTrend export ' + (d.dispatch.incident_number || '') }).catch(function () {}); return false; } });
+    if (CP.native) btns.push({ label: I('up') + 'Share all 3', cls: 'ghost', fn: function (b) { var d = fresh(b), c = exportCsvs(d); CP.native({ type: 'share', files: [{ name: exportName(d, '.json'), text: JSON.stringify(d, null, 2) }, { name: exportName(d, ' units.csv'), text: c.units }, { name: exportName(d, ' times.csv'), text: c.times }] }); log('Exported for ImageTrend' + (d.dispatch.incident_number ? ' (CAD ' + d.dispatch.incident_number + ')' : ''), 'Event'); commit(null, null, true); return false; } });
+    else if (canShareFiles()) btns.push({ label: I('up') + 'Share all 3', cls: 'ghost', fn: function (b) { var d = fresh(b), c = exportCsvs(d); navigator.share({ files: [new File([JSON.stringify(d, null, 2)], exportName(d, '.json'), { type: 'application/json' }), new File([c.units], exportName(d, ' units.csv'), { type: 'text/csv' }), new File([c.times], exportName(d, ' times.csv'), { type: 'text/csv' })], title: 'ImageTrend export ' + (d.dispatch.incident_number || '') }).catch(function () {}); return false; } });
     btns.push({ label: 'Close', cls: 'ghost' });
     var mb = U.modal('Export for ImageTrend', body, btns, { nofocus: true, wide: true }), w = mb.querySelector('[data-w="nocad"]');
     mb.querySelector('#cbItNo').addEventListener('input', function (e) { if (w) w.style.display = e.target.value.trim() ? 'none' : ''; });
