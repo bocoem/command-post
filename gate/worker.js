@@ -171,7 +171,7 @@ async function currentLevel(env, ctx, s) {
   if (s.g) return 'Guest';
   const row = await roster(env, ctx, who(s)); return levelOf(row, s.a);
 }
-function sessionOut(s, lvl, row) { return { email: s.e, name: (row && row.name) || s.n, agency: (row && row.agency) || s.ag || '', kind: s.k || 'Person', uid: s.u || null, level: lvl, app: s.a, incident: s.g || null, exp: s.exp }; }
+function sessionOut(s, lvl, row) { return { email: s.e, name: (row && row.name) || s.n, agency: (row && row.agency) || s.ag || '', kind: s.k || (row && row.kind) || 'Person', role: (row && row.role) || '', uid: s.u || null, level: lvl, app: s.a, incident: s.g || null, exp: s.exp }; }
 const lifeDays = (s) => (s.k === 'Device' ? DEVICE_DAYS : SESSION_DAYS);
 async function sha256hex(t) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(t)))].map((b) => b.toString(16).padStart(2, '0')).join(''); }
 const normSetup = (c) => String(c || '').toUpperCase().replace(/^BEACON-SETUP:/, '').replace(/[^A-Z0-9]/g, '');
@@ -364,7 +364,7 @@ function canTouch(R, a) {
 function publicRow(a, R, meUid) {
   const o = {}; ['OBJECTID', 'uid', 'email', 'full_name', 'agency', 'cb_level', 'mci_level', 'active', 'expires', 'notes', 'user_role'].forEach((k) => { o[k] = a[k] == null ? (k === 'user_role' ? '' : null) : a[k]; });
   o.kind = isDev(a) ? 'Device' : 'Person'; o.setup_pending = a.setup_expires > Date.now(); o.setup_expires = o.setup_pending ? a.setup_expires : null;
-  o.locked = !canTouch(R, a); o.self = !!meUid && a.uid === meUid; return o;
+  o.self = !!meUid && a.uid === meUid; o.locked = !o.self && !canTouch(R, a); return o;
 }
 function cleanUser(u0, R, old) {
   // on a change, anything the request leaves out keeps its current value
@@ -379,7 +379,7 @@ function cleanUser(u0, R, old) {
   if (kind === 'Device') { if (o.email && !okEmail(o.email)) throw new Error('The contact email is not a valid address.'); if (!o.full_name) throw new Error('Give the device a name, like "Engine 51 iPad".'); }
   LEVEL_COLS.forEach((k) => {
     const v = u[k] || 'None'; if (!ORDER.includes(v) || v === 'Guest') throw new Error('Unknown level ' + v + '.');
-    if (rank(v) > rank(R.cap)) throw new Error('You can give levels up to ' + R.cap + '.');
+    if (rank(v) > rank(R.cap) && !(old && (old[k] || 'None') === v)) throw new Error('You can give levels up to ' + R.cap + '.');
     if (kind === 'Device' && rank(v) > rank('Officer') && !R.admin && !(old && old[k] === v)) throw new Error('Only an Admin can set a truck iPad above Officer.');
     o[k] = v;
   });
@@ -414,7 +414,8 @@ async function adminUsers(req, env, ctx, s) {
   if (op !== 'add') {
     const id = parseInt(b.id, 10); if (!id) return err('No user.');
     old = (await usersQuery(env, 'OBJECTID = ' + id))[0]; if (!old) return err('That person or device is no longer on the list.', 404);
-    if (!canTouch(R, old)) return err(R.chief && !sameAgency(R, old) ? 'Chiefs can only manage their own agency.' : 'Only an Admin can change a Chief, an Admin or a User manager.', 403);
+    const mine = (meUid && old.uid === meUid) || (!s.u && !isDev(old) && normEmail(old.email) === me.email);
+    if (!mine && !canTouch(R, old)) return err(R.chief && !sameAgency(R, old) ? 'Chiefs can only manage their own agency.' : 'Only an Admin can change a Chief, an Admin or a User manager.', 403);
   }
   const self = !!(old && meUid && old.uid === meUid) || !!(old && !isDev(old) && !old.uid && normEmail(old.email) === me.email && !s.u);
   const by = { uid: meUid, name: me.name }, label = (a) => ({ uid: a.uid, name: a.full_name || a.email, agency: a.agency });
@@ -445,6 +446,7 @@ async function adminUsers(req, env, ctx, s) {
       if (dup.length) return err('That email is already on the list.', 409);
     }
     if (old) {
+      if (self && u.agency !== (old.agency || '') && !R.admin) return err('Ask an Admin to change your agency.', 403);
       const changed = Object.keys(u).filter((k) => String(u[k] == null ? '' : u[k]) !== String(old[k] == null ? '' : old[k]));
       details = changed.map((k) => k + ': ' + (old[k] || '–') + ' → ' + (u[k] || '–')).join('; ');
       res = await arcEdit(env, usersUrl(env), 'updateFeatures', [{ attributes: { OBJECTID: old.OBJECTID, ...u } }]);

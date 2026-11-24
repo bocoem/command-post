@@ -123,7 +123,7 @@ td.t{white-space:nowrap;color:var(--dim)}
     $('#si').addEventListener('submit', async (e) => {
       e.preventDefault(); const b = e.target.querySelector('button'); b.disabled = true; b.textContent = 'Checking…';
       try {
-        const r = await fetch(API + '/auth/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#sc').value, app: 'admin', device: 'Users page' }) });
+        const r = await fetch(API + '/auth/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#sc').value, app: 'admin' }) });
         const j = await r.json(); if (j.error) throw new Error(j.error.message);
         tok = j.token; store.set('beaconUsersToken', tok); load();
       } catch (er) { signIn(er.message); }

@@ -19,7 +19,8 @@ r = await call('/admin/users', C, 'POST', { op: 'add', user: { email: 'New@X.gov
 r = await call('/admin/users', C, 'POST', { op: 'add', user: { email: 'New@X.gov', full_name: 'New', cb_level: 'Officer' } }); ok(r[0] === 200 && st.rows.find((x) => x.email === 'new@x.gov'), 'Chief adds Officer (email lowercased)');
 r = await call('/admin/users', C, 'POST', { op: 'add', user: { email: 'new@x.gov', full_name: 'Again', cb_level: 'Viewer' } }); ok(r[0] === 409, 'Duplicate email refused');
 r = await call('/admin/users', C, 'POST', { op: 'update', id: 1, user: { email: 'dmurray@botetourtva.gov', cb_level: 'None' } }); ok(r[0] === 403, 'Chief cannot touch Admin');
-r = await call('/admin/users', C, 'POST', { op: 'update', id: 2, user: { email: 'chief@x.gov', cb_level: 'Chief', full_name: 'Chief Renamed' } }); ok(r[0] === 403, 'Chief cannot edit own (Chief) row');
+r = await call('/admin/users', C, 'POST', { op: 'update', id: 2, user: { email: 'chief@x.gov', cb_level: 'Chief', full_name: 'Chief Renamed' } }); ok(r[0] === 200, 'Chief can fix own name');
+r = await call('/admin/users', C, 'POST', { op: 'update', id: 2, user: { cb_level: 'Admin' } }); ok(r[0] === 400 || r[0] === 403, 'Chief cannot raise own level');
 r = await call('/admin/users', A, 'POST', { op: 'update', id: 1, user: { email: 'dmurray@botetourtva.gov', cb_level: 'Viewer', mci_level: 'Admin' } }); ok(r[0] === 403, 'Admin cannot demote self (email session)');
 r = await call('/admin/users', A, 'POST', { op: 'update', id: 1, user: { full_name: 'Daniel Murray' } }); ok(r[0] === 200 && st.rows[0].full_name === 'Daniel Murray', 'Admin can rename self');
 r = await call('/admin/users', A, 'POST', { op: 'remove', id: 1 }); ok(r[0] === 403, 'Admin cannot remove self');

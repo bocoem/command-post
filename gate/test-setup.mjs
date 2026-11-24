@@ -82,3 +82,10 @@ r = await call('/arc/services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/
 // --- older table (before EM Ops adds the new fields): email sign-in still works
 const st2 = fakeArc([{ OBJECTID: 1, email: 'old@x.gov', full_name: 'Old', cb_level: 'Officer', mci_level: 'None', active: 'Yes' }], { noKind: true, noLog: true });
 r = await call('/auth/start', null, { email: 'old@x.gov', app: 'cb' }, { ...env, MAIL_FLOW_URL: 'https://mail' }); ok(r[0] === 200 && st2.mails.length === 1, 'Before the table upgrade, email sign-in still works');
+// a User manager can fix their own name, but not their own role or levels
+const st3 = fakeArc([{ OBJECTID: 1, uid: 'um1', kind: 'Person', email: 'um@x.gov', full_name: 'Um', agency: 'EM', cb_level: 'Viewer', mci_level: 'None', user_role: 'User manager', active: 'Yes' }]);
+const U3 = await tok({ u: 'um1', e: 'um@x.gov' });
+r = await call('/admin/users', U3); ok(r[0] === 200 && r[1].users[0].self && !r[1].users[0].locked, 'Own row is open to edit (name, notes)');
+r = await call('/admin/users', U3, { op: 'update', id: 1, user: { full_name: 'Uma M.' } }); ok(r[0] === 200 && st3.rows[0].full_name === 'Uma M.', 'User manager renames self');
+r = await call('/admin/users', U3, { op: 'update', id: 1, user: { cb_level: 'Command' } }); ok(r[0] === 403, 'User manager cannot raise own level');
+r = await call('/admin/users', U3, { op: 'update', id: 1, user: { user_role: '' } }); ok(r[0] === 200 && st3.rows[0].user_role === 'User manager', 'Role stays (only an Admin sets roles)');
