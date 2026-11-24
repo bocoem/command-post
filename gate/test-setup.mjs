@@ -16,7 +16,7 @@ const A = await tok({ u: 'adminuid0001', e: 'dmurray@botetourtva.gov' }), C = aw
 let r;
 
 // --- email sign-in is off without MAIL_FLOW_URL
-r = await call('/auth/start', null, { email: 'ff@x.gov' }); ok(r[0] === 410, 'Email sign-in refused when MAIL_FLOW_URL is not set');
+r = await call('/auth/start', null, { email: 'ff@x.gov' }); ok(r[0] === 410, 'Email sign-in is retired');
 
 // --- who can manage
 r = await call('/admin/users', F); ok(r[0] === 403, 'Officer cannot open Users');
@@ -79,9 +79,9 @@ r = await call('/admin/log', A); ok(r[0] === 200 && r[1].entries.some((x) => x.a
 r = await call('/users', null); ok(r[0] === 200 && /BEACON Users/.test(r[1]) && /qrcode/.test(r[1]), 'Users page is served by the gate with the QR maker built in');
 r = await call('/arc/services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/BEACON_App_Access/FeatureServer/0/query', F); ok(r[0] === 403, 'Users table still not reachable through /arc');
 
-// --- older table (before EM Ops adds the new fields): email sign-in still works
+// --- older table (before EM Ops adds the new fields): a signed-in email session from before Nov 24 keeps working
 const st2 = fakeArc([{ OBJECTID: 1, email: 'old@x.gov', full_name: 'Old', cb_level: 'Officer', mci_level: 'None', active: 'Yes' }], { noKind: true, noLog: true });
-r = await call('/auth/start', null, { email: 'old@x.gov', app: 'cb' }, { ...env, MAIL_FLOW_URL: 'https://mail' }); ok(r[0] === 200 && st2.mails.length === 1, 'Before the table upgrade, email sign-in still works');
+r = await call('/me', await tok({ e: 'old@x.gov', a: 'cb' })); ok(r[0] === 200 && r[1].level === 'Officer', 'Existing email sessions keep working until they lapse (even before the table upgrade)');
 // a User manager can fix their own name, but not their own role or levels
 const st3 = fakeArc([{ OBJECTID: 1, uid: 'um1', kind: 'Person', email: 'um@x.gov', full_name: 'Um', agency: 'EM', cb_level: 'Viewer', mci_level: 'None', user_role: 'User manager', active: 'Yes' }]);
 const U3 = await tok({ u: 'um1', e: 'um@x.gov' });

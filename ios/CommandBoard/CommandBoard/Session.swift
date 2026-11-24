@@ -41,7 +41,7 @@ final class SessionStore: ObservableObject {
     static var deviceId: String { UIDevice.current.identifierForVendor?.uuidString ?? "unknown" }
 }
 
-/// Calls to the gate for signing in.
+/// Calls to the gate for signing in (setup codes and incident codes; email sign-in was retired Nov 24, 2026).
 enum Gate {
     struct Failure: LocalizedError { let message: String; var errorDescription: String? { message } }
 
@@ -59,8 +59,6 @@ enum Gate {
         return j
     }
 
-    static func startEmail(_ email: String) async throws { _ = try await post("auth/start", ["email": email]) }
-
     /// Setup code (typed, or scanned from its QR "beacon-setup:XXXXXXXXXX") from a Chief, a User manager or an Admin.
     static func setup(code: String) async throws -> GateSession {
         session(from: try await post("auth/setup", ["code": code, "device": SessionStore.deviceId]))
@@ -70,10 +68,6 @@ enum Gate {
         var t = raw.uppercased()
         if let r = t.range(of: "BEACON-SETUP:") { t = String(t[r.upperBound...]) }
         return String(t.filter { $0.isLetter || $0.isNumber })
-    }
-
-    static func verify(email: String, code: String) async throws -> GateSession {
-        session(from: try await post("auth/verify", ["email": email, "code": code, "device": SessionStore.deviceId]))
     }
 
     static func guest(code: String, name: String, agency: String) async throws -> GateSession {

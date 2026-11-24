@@ -4,14 +4,14 @@
  * On the list you're in; turned off, you're out. Each row is identified by its uid.
  * Sign-in is a one-time setup code (or its QR) that a Chief, User manager or Admin issues from the Users page or an app.
  *   People stay signed in 30 days while they use the app. Devices (truck iPads, shared email) stay signed in until turned off.
- * Email sign-in (/auth/start, /auth/verify) only works while MAIL_FLOW_URL is set; remove that secret to retire it.
+ * Email sign-in was retired Nov 24, 2026. Older email sessions keep working until they lapse (30 days unused).
  * The Users page for the Teams tab is served at /users.
  * The county's ArcGIS app credentials live only here (ARC_CLIENT_ID + secret ARC_CLIENT_SECRET). The apps never see them.
  * The apps reach ArcGIS through /arc/<host>/<path>; only the services in layersFor() are allowed,
  * and what each level may do with each layer is decided here, not in the app.
  *
- * Secrets (wrangler secret put):  ARC_CLIENT_SECRET  MAIL_FLOW_URL   (optional: SIGNING_KEY; or ARC_KEY instead of the client credentials)
- * Vars (wrangler.toml):           SERVICES (JSON from EM Ops)  AUTO_VIEWER_DOMAIN (optional)  USERS_TABLE (optional)
+ * Secrets (wrangler secret put):  ARC_CLIENT_SECRET   (optional: SIGNING_KEY; or ARC_KEY instead of the client credentials)
+ * Vars (wrangler.toml):           SERVICES (JSON from EM Ops)  USERS_TABLE, USERLOG_TABLE (optional)
  */
 import USERS_PAGE from './users-page.js';
 
@@ -80,7 +80,6 @@ async function verify(env, tok) {
   const o = JSON.parse(new TextDecoder().decode(unb64u(body))); return o.exp > Date.now() ? o : null;
 }
 function timingSafe(a, b) { if (!a || !b || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
-async function codeFor(env, email, win) { const h = await hmac(env, 'code.' + email + '.' + win); return String(((h[0] << 24 | h[1] << 16 | h[2] << 8 | h[3]) >>> 0) % 1000000).padStart(6, '0'); }
 const win = (t) => Math.floor((t || Date.now()) / (CODE_MIN * 60000));
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 const okEmail = (e) => /^[^@\s'"]+@[^@\s'"]+\.[a-z]{2,}$/.test(e);
@@ -105,7 +104,7 @@ const json = (o, s = 200, h = {}) => new Response(JSON.stringify(o), { status: s
 const err = (m, s = 400) => json({ error: { message: m, code: s } }, s);
 
 // ---------- roster (ArcGIS table, cached briefly so a removed person is locked out within minutes) ----------
-// Looked up by uid (setup-code sessions) or by email (older email sessions; never matches a Device row).
+// Looked up by uid (setup-code sessions) or by email (email sessions from before Nov 24, until they lapse; never a Device row).
 const usersUrl = (env) => 'https://' + (env.USERS_TABLE || services(env).users + '/0');
 const logUrl = (env) => 'https://' + (env.USERLOG_TABLE || services(env).users + '/1');
 const q = (v) => "'" + String(v).replace(/'/g, "''") + "'";
@@ -134,9 +133,6 @@ async function roster(env, ctx, who) {
     : await usersQuery(env, 'LOWER(email) = ' + q(email) + " AND (kind IS NULL OR kind <> 'Device')", 'LOWER(email) = ' + q(email));
   const a = rows.find((x) => !(!byUid && isDev(x))) || null;
   let row = a ? rowOut(a, byUid ? who.u : email) : null;
-  if (!row && !byUid && env.AUTO_VIEWER_DOMAIN && email.endsWith('@' + env.AUTO_VIEWER_DOMAIN)) {
-    row = { email, name: email.split('@')[0], agency: 'Botetourt County', kind: 'Person', active: true, levels: { cb: 'Viewer', mci: 'None', admin: 'None' }, auto: true };
-  }
   const out = row || { email, active: false, levels: {} };
   ctx.waitUntil(cache.put(key, new Response(JSON.stringify(out), { headers: { 'Cache-Control': 'max-age=' + ROSTER_TTL } })));
   return out;
@@ -144,7 +140,7 @@ async function roster(env, ctx, who) {
 async function forget(row) { for (const k of [row.uid && 'u/' + encodeURIComponent(row.uid), row.email && encodeURIComponent(normEmail(row.email))].filter(Boolean)) await caches.default.delete(new Request('https://gate.cache/roster/' + k)); }
 const levelOf = (row, app) => (row && row.active ? row.levels[app] || 'None' : 'None');
 
-// simple attempt limit per email (per Cloudflare location; good enough to stop guessing)
+// simple attempt limit (per Cloudflare location; good enough to stop guessing setup codes)
 async function tries(email, add) {
   const key = new Request('https://gate.cache/tries/' + encodeURIComponent(email) + '/' + win());
   const hit = await caches.default.match(key); let n = hit ? +(await hit.text()) : 0;
@@ -153,13 +149,6 @@ async function tries(email, add) {
 }
 
 // ---------- guest codes: the IC hands a code to a mutual-aid company for one incident ----------
-const MAX_SENDS = 3;
-async function sends(email, add) {
-  const key = new Request('https://gate.cache/sends/' + encodeURIComponent(email) + '/' + win());
-  const hit = await caches.default.match(key); let n = hit ? +(await hit.text()) : 0;
-  if (add) { n++; await caches.default.put(key, new Response(String(n), { headers: { 'Cache-Control': 'max-age=' + CODE_MIN * 60 } })); }
-  return n;
-}
 async function guestCode(env, incKey) { const h = await hmac(env, 'guest.' + incKey); return 'G' + b64u(h).replace(/[-_]/g, '').slice(0, 7).toUpperCase(); }
 
 async function session(env, req) {
@@ -216,37 +205,10 @@ export default {
         return json({ token: await sign(env, s), ...sessionOut(s, lvl, row) });
       }
 
-      // 1) ask for an email code (only while MAIL_FLOW_URL is set)
-      if ((path === '/auth/start' || path === '/auth/verify') && !env.MAIL_FLOW_URL) return err('Email sign-in is turned off. Ask a Chief, a User manager or Emergency Management for a setup code.', 410);
-      if (path === '/auth/start' && req.method === 'POST') {
-        const b = await req.json(), email = normEmail(b.email), app = APPS[b.app] ? b.app : 'cb';
-        if (!okEmail(email)) return err('Enter a full email address.');
-        const row = await roster(env, ctx, email);
-        // same answer whether or not the email is on the list, so the list can't be fished
-        if (levelOf(row, app) !== 'None' && (await sends(email)) < MAX_SENDS) {
-          await sends(email, true);
-          const code = await codeFor(env, email, win());
-          const r = await fetch(env.MAIL_FLOW_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: email, name: row.name, code, app: app === 'mci' ? 'MCI Board' : 'Command Board', minutes: CODE_MIN }) });
-          if (!r.ok) return err('The sign-in email could not be sent. Try again in a minute.', 502);
-        }
-        return json({ ok: true, minutes: CODE_MIN });
-      }
+      // email sign-in was retired Nov 24, 2026: older app builds get a clear answer
+      if (path === '/auth/start' || path === '/auth/verify') return err('Email sign-in has been retired. Ask a Chief, a User manager or Emergency Management for a setup code, and update the app from TestFlight.', 410);
 
-      // 2) trade the code for a session
-      if (path === '/auth/verify' && req.method === 'POST') {
-        const b = await req.json(), email = normEmail(b.email), app = APPS[b.app] ? b.app : 'cb', code = String(b.code || '').replace(/\D/g, '');
-        if (!okEmail(email) || code.length !== 6) return err('Enter the 6-digit code from the email.');
-        if ((await tries(email)) >= MAX_TRIES) return err('Too many tries. Wait 10 minutes and ask for a new code.', 429);
-        const ok = timingSafe(code, await codeFor(env, email, win())) || timingSafe(code, await codeFor(env, email, win() - 1));
-        if (!ok) { await tries(email, true); return err('That code is not right, or it has expired.', 401); }
-        const row = await roster(env, ctx, email), lvl = levelOf(row, app);
-        if (lvl === 'None') return err('This email does not have access.', 403);
-        const s = { e: email, n: row.name, ag: row.agency, a: app, d: String(b.device || '').slice(0, 64), iat: Date.now(), exp: Date.now() + SESSION_DAYS * 864e5 };
-        if (row.uid) s.u = row.uid;
-        return json({ token: await sign(env, s), ...sessionOut(s, lvl, row) });
-      }
-
-      // 2b) guest: an incident code from the IC (view only, that incident only, until it closes)
+      // 1) guest: an incident code from the IC (view only, that incident only, until it closes)
       if (path === '/auth/guest' && req.method === 'POST') {
         const b = await req.json(), code = String(b.code || '').trim().toUpperCase(), name = String(b.name || '').trim().slice(0, 60), app = APPS[b.app] ? b.app : 'cb';
         if (!/^G[A-Z0-9]{7}$/.test(code) || !name) return err('Enter your name and the incident code.');

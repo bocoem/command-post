@@ -6,7 +6,7 @@ const st = fakeArc([
   { OBJECTID: 2, email: 'chief@x.gov', full_name: 'Chief', agency: 'Station 1', cb_level: 'Chief', mci_level: 'None', active: 'Yes' },
   { OBJECTID: 3, email: 'capt@x.gov', full_name: 'Capt', agency: 'Station 1', cb_level: 'Command', mci_level: 'None', active: 'Yes' },
   { OBJECTID: 4, email: 'ff@x.gov', full_name: 'FF', agency: 'Station 1', cb_level: 'Viewer', mci_level: 'None', active: 'Yes' }]);
-const env = { ARC_CLIENT_ID: 'x', ARC_CLIENT_SECRET: 'secret-secret-secret-123', MAIL_FLOW_URL: 'https://mail', QUIET: '1' };
+const env = { ARC_CLIENT_ID: 'x', ARC_CLIENT_SECRET: 'secret-secret-secret-123', QUIET: '1' };
 const call = async (path, tok, method = 'GET', body) => { const r = await W.fetch(new Request('https://g' + path, { method, headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), env, ctx); return [r.status, await r.json()]; };
 const enc = new TextEncoder(); const b64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 async function tok(e) { const k = await crypto.subtle.importKey('raw', enc.encode('beacon-gate.' + env.ARC_CLIENT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']); const body = b64u(enc.encode(JSON.stringify({ e, n: e, a: 'cb', exp: Date.now() + 1e6 }))); return body + '.' + b64u(await crypto.subtle.sign('HMAC', k, enc.encode('tok.' + body))); }

@@ -8,8 +8,6 @@ workers_dev = true
 USERS_TABLE = ""
 # Optional: change log table layer URL without https://. Empty = layer 1 of SERVICES.users (EM Ops → App Access → Upgrade creates it).
 USERLOG_TABLE = ""
-# Optional: anyone with an email at this domain who is not on the list gets Viewer in the Command Board. Leave empty to require the list.
-AUTO_VIEWER_DOMAIN = ""
 # ArcGIS services the apps may use, as JSON (paste from EM Ops -> Setup -> "Command Board & MCI apps" -> Copy gate settings).
 SERVICES = ""
 
@@ -19,5 +17,3 @@ ARC_PORTAL = "https://botetourt.maps.arcgis.com"
 
 # Secrets (Cloudflare dashboard → the worker → Settings → Variables and Secrets → Add → type Secret):
 #   ARC_CLIENT_SECRET  the Client Secret from that ArcGIS item
-#   MAIL_FLOW_URL      (optional, being retired) Power Automate "BEACON sign-in code" flow. While it is set, email sign-in also works.
-#                      Delete this secret once everyone has setup codes: the apps then sign in with setup codes only.
