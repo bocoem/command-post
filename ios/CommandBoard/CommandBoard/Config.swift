@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Settings for this app. The MCI Board app uses the same files with its own Config.
 enum AppConfig {
-    /// The BEACON gate (Cloudflare Worker): email sign-in, access levels, and the only way this app reaches ArcGIS.
+    /// The BEACON gate (Cloudflare Worker): setup-code sign-in, access levels, and the only way this app reaches ArcGIS.
     static let gateURL = URL(string: "https://beacon-gate.dmurray-5fa.workers.dev")!
     /// Which app this is, for the gate ("cb" = Command Board, "mci" = MCI Board).
     static let appKey = "cb"

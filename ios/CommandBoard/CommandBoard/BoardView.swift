@@ -70,6 +70,8 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
                 s.level = me["level"] as? String ?? s.level
                 s.name = me["name"] as? String ?? s.name
                 s.layers = (me["layers"] as? [[String: Any]] ?? []).compactMap { $0["url"] as? String }
+                if let k = me["kind"] as? String { s.kind = k }
+                s.role = me["role"] as? String ?? s.role
                 store?.set(s)
             }
         }
@@ -85,7 +87,8 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
     /// Runs before the page: who is signed in, and any board in the app's own storage that the page has lost or has older.
     static func bootScript(_ s: GateSession) -> String {
         let gate: [String: Any] = ["url": AppConfig.gateURL.absoluteString, "token": s.token, "email": s.email, "name": s.name, "agency": s.agency,
-                                   "level": s.level, "app": AppConfig.appKey, "incident": s.incident ?? NSNull(), "layers": s.layers.map { ["url": $0] }]
+                                   "level": s.level, "app": AppConfig.appKey, "incident": s.incident ?? NSNull(), "layers": s.layers.map { ["url": $0] },
+                                   "kind": s.kind ?? "Person", "role": s.role ?? ""]
         BoardVault.prune()
         let saved = BoardVault.recent().map { ["id": $0.0.id, "updated": $0.0.updated, "json": $0.1] }
         let g = String(data: try! JSONSerialization.data(withJSONObject: gate), encoding: .utf8)!

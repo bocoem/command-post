@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BEACON Users</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* BEACON Users: the Teams tab (and the Users screen inside the apps) for adding people and truck iPads,
+   turning them off, issuing setup codes, and reading the change log. Served by the BEACON gate at /users. */
+:root{--page:#0a1724;--card:#12273d;--line:#23476b;--ink:#f2f5f9;--dim:#a9b8c8;--gold:#fdb833;--red:#d02129;--ok:#3fb47a}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;background:var(--page);color:var(--ink);font:16px/1.45 Barlow,system-ui,sans-serif}
+h1,h2,h3,.cond{font-family:"Barlow Condensed",Barlow,sans-serif;letter-spacing:.01em;margin:0}
+button,input,select{font:inherit;color:inherit}
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px max(4vw,16px);background:#0e2033;border-bottom:3px solid var(--gold)}
+.top h1{font-size:28px;font-weight:800}
+.top .who{margin-left:auto;font-size:14px;color:var(--dim);text-align:right}
+.wrap{max-width:1100px;margin:0 auto;padding:16px max(4vw,16px) 60px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab{background:none;border:1px solid var(--line);border-radius:8px;padding:9px 16px;cursor:pointer;font-weight:600}
+.tab[aria-selected=true]{background:var(--gold);color:#0a1724;border-color:var(--gold)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.in{background:var(--page);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-height:44px;font-size:16px;width:100%}
+.in:focus{outline:2px solid var(--gold);outline-offset:1px}
+.bar .in{flex:1 1 220px;width:auto}
+.btn{min-height:44px;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--gold)}.btn:focus-visible{outline:2px solid var(--gold)}
+.btn.pri{background:var(--gold);border-color:var(--gold);color:#0a1724}
+.btn.red{background:var(--red);border-color:var(--red);color:#fff}
+.btn.ghost{background:none}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:14px;cursor:pointer;background:none}
+.chip[aria-pressed=true]{border-color:var(--gold);color:var(--gold)}
+.list{display:grid;gap:8px}
+.row{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;text-align:left;width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer}
+.row:hover{border-color:var(--gold)}.row[disabled]{cursor:default;opacity:.65}.row[disabled]:hover{border-color:var(--line)}
+.row.off{opacity:.55}
+.ico{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#0e2033;border:1px solid var(--line)}
+.ico svg{width:22px;height:22px;fill:none;stroke:var(--gold);stroke-width:1.8}
+.row b{display:block;font-weight:600}
+.row small{color:var(--dim);font-size:14px;overflow-wrap:anywhere}
+.lv{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag{font-size:13px;font-weight:600;border-radius:20px;padding:2px 9px;white-space:nowrap;border:1px solid var(--line);color:var(--dim)}
+.tag.g{background:var(--gold);color:#0a1724;border-color:var(--gold)}
+.tag.r{background:var(--red);color:#fff;border-color:var(--red)}
+.tag.o{border-color:var(--ok);color:var(--ok)}
+.empty{color:var(--dim);padding:20px;text-align:center;border:1px dashed var(--line);border-radius:10px}
+.msg{padding:10px 14px;border-radius:8px;margin-bottom:12px;background:#0e2033;border-left:4px solid var(--gold)}
+.msg.err{border-color:var(--red)}
+dialog{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:0;width:min(560px,94vw);max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dh{padding:16px 20px 6px}.dh h2{font-size:26px}
+.db{padding:6px 20px 10px;overflow:auto;max-height:66vh}
+.df{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;padding:12px 20px 16px;border-top:1px solid var(--line)}
+.df .left{margin-right:auto;display:flex;gap:8px;flex-wrap:wrap}
+label.f{display:block;margin:10px 0}
+label.f span{display:block;font-size:14px;color:var(--dim);margin-bottom:4px}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:0 12px}
+.kind{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 4px}
+.kind button{padding:12px;border-radius:10px;border:1px solid var(--line);background:none;cursor:pointer;text-align:left}
+.kind button[aria-pressed=true]{border-color:var(--gold);background:#0e2033}
+.kind b{display:block}.kind small{color:var(--dim);font-size:13px}
+.code{font:800 44px/1 "Barlow Condensed",monospace;letter-spacing:.06em;color:var(--gold);text-align:center;margin:8px 0}
+.qr{background:#fff;border-radius:10px;padding:10px;width:220px;margin:8px auto}
+.qr svg{display:block;width:100%;height:auto}
+.steps{color:var(--dim);font-size:15px;padding-left:20px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{text-align:left;color:var(--dim);font-weight:600;font-size:14px;border-bottom:2px solid var(--line);padding:6px 8px 6px 0}
+td{border-bottom:1px solid var(--line);padding:8px 8px 8px 0;vertical-align:top}
+td.t{white-space:nowrap;color:var(--dim)}
+.signin{max-width:440px;margin:8vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px}
+.signin h2{font-size:30px;margin-bottom:6px}
+.signin .in{font:700 26px/1 "Barlow Condensed",monospace;letter-spacing:.08em;text-align:center;text-transform:uppercase}
+.dim{color:var(--dim)}
+@media(max-width:600px){.row{grid-template-columns:36px minmax(0,1fr)}.lv{grid-column:2;justify-content:flex-start}.top .who{margin-left:0;text-align:left}.stack thead{display:none}.stack tr{display:grid;padding:8px 0;border-bottom:1px solid var(--line)}.stack td{border:0;padding:2px 0}}
+@media(prefers-reduced-motion:no-preference){.row{transition:border-color .15s}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>BEACON Users</h1>
+  <div class="who" id="who"></div>
+</header>
+<main class="wrap" id="main"></main>
+<dialog id="dlg"></dialog>
+
+<!--QRCODE-->
+<script>
+{
+  const API = location.origin;
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
+  // the apps open this page with their own token in the address fragment (never sent to the server)
+  let tok = null, embedded = false;
+  { const m = location.hash.match(/(?:^#|&)t=([^&]+)/); if (m) { tok = decodeURIComponent(m[1]); embedded = true; try { history.replaceState(null, '', location.pathname); } catch (e) {} } }
+  if (!tok) tok = store.get('beaconUsersToken');
+  const LV = ['None', 'Viewer', 'Officer', 'Command', 'Chief', 'Admin'];
+  const HELP = { None: 'No access', Viewer: 'View only', Officer: 'Boards, CAD calls, triage (no names)', Command: 'Runs incidents; caller details; MCI names', Chief: 'Command, plus manages own agency', Admin: 'Everything' };
+  const ICON = { Person: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>', Device: '<svg viewBox="0 0 24 24"><rect x="4" y="2.5" width="16" height="19" rx="2.5"/><path d="M10 18.5h4"/></svg>' };
+  let D = null, view = 'list', filter = 'all', q = '', log = null;
+
+  async function api(path, body) {
+    let r;
+    try { r = await fetch(API + path, body ? { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { headers: { Authorization: 'Bearer ' + tok } }); }
+    catch (e) { throw new Error('No connection. Try again.'); }
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401) { signOut('Your sign-in has ended. Enter a new setup code.'); throw new Error('Signed out.'); }
+    if (j.error) throw new Error(j.error.message);
+    return j;
+  }
+  function signOut(note) { tok = null; store.set('beaconUsersToken', null); D = null; signIn(note); }
+
+  function signIn(note) {
+    $('#who').textContent = '';
+    $('#main').innerHTML = '<form class="signin" id="si"><h2>Sign in</h2><p class="dim">Enter the setup code you were given. Ask an Admin or a User manager for one. You stay signed in on this computer for 30 days.</p>' +
+      (note ? '<div class="msg err">' + esc(note) + '</div>' : '') +
+      '<label class="f"><span>Setup code</span><input class="in" id="sc" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX" maxlength="13"></label>' +
+      '<button class="btn pri" style="width:100%">Sign in</button><p class="dim" style="font-size:14px;margin-bottom:0">Chiefs, User managers and Admins only. Everyone else signs in inside the Command Board or MCI Board app.</p></form>';
+    $('#sc').focus();
+    $('#si').addEventListener('submit', async (e) => {
+      e.preventDefault(); const b = e.target.querySelector('button'); b.disabled = true; b.textContent = 'Checking…';
+      try {
+        const r = await fetch(API + '/auth/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#sc').value, app: 'admin' }) });
+        const j = await r.json(); if (j.error) throw new Error(j.error.message);
+        tok = j.token; store.set('beaconUsersToken', tok); load();
+      } catch (er) { signIn(er.message); }
+    });
+  }
+
+  async function load(note) {
+    try { D = await api('/admin/users'); }
+    catch (e) { if (tok) $('#main').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; return; }
+    const R = D.rights;
+    $('#who').innerHTML = esc(D.me.name) + ' · ' + (R.admin ? 'Admin' : R.userManager ? 'User manager' : 'Chief, ' + esc(D.me.agency || 'no agency set')) + (embedded ? '' : ' · <button class="btn ghost" id="so" style="min-height:32px;padding:4px 10px">Sign out</button>');
+    const so = $('#so'); if (so) so.onclick = () => signOut();
+    render(note);
+  }
+
+  const isOn = (u) => u.active !== 'No' && !(u.expires && u.expires < Date.now());
+  function rows() {
+    const t = q.toLowerCase();
+    return D.users.filter((u) => (filter === 'all' || (filter === 'people' && u.kind === 'Person') || (filter === 'devices' && u.kind === 'Device') || (filter === 'off' && !isOn(u)) || (filter === 'pending' && u.setup_pending)) &&
+      (!t || [u.full_name, u.email, u.agency, u.cb_level, u.mci_level, u.user_role, u.notes].join(' ').toLowerCase().includes(t)));
+  }
+  function render(note) {
+    const tabs = '<div class="tabs" role="tablist"><button class="tab" role="tab" data-v="list" aria-selected="' + (view === 'list') + '">People and iPads</button><button class="tab" role="tab" data-v="log" aria-selected="' + (view === 'log') + '">Change log</button></div>';
+    let h = tabs + (note ? '<div class="msg">' + esc(note) + '</div>' : '');
+    if (view === 'list') {
+      const n = (f) => D.users.filter(f).length;
+      h += '<div class="bar"><input class="in" id="q" type="search" placeholder="Search name, email, agency, level" value="' + esc(q) + '"><button class="btn pri" data-add="Person">Add person</button><button class="btn pri" data-add="Device">Add truck iPad</button></div>' +
+        '<div class="bar chips">' + [['all', 'All', D.users.length], ['people', 'People', n((u) => u.kind === 'Person')], ['devices', 'Truck iPads', n((u) => u.kind === 'Device')], ['pending', 'Setup code waiting', n((u) => u.setup_pending)], ['off', 'Turned off', n((u) => !isOn(u))]]
+          .map((c) => '<button class="chip" data-f="' + c[0] + '" aria-pressed="' + (filter === c[0]) + '">' + c[1] + ' · ' + c[2] + '</button>').join('') + '</div>' +
+        '<div class="list" id="list">' + listHtml() + '</div>';
+    } else h += '<div id="log"><p class="dim">Loading…</p></div>';
+    $('#main').innerHTML = h;
+    if (view === 'list') { const qi = $('#q'); qi.addEventListener('input', () => { q = qi.value; $('#list').innerHTML = listHtml(); }); }
+    else showLog();
+  }
+  function listHtml() {
+    const L = rows();
+    if (!L.length) return '<div class="empty">' + (D.users.length ? 'Nothing matches.' : 'Nobody on the list yet. Add a person or a truck iPad.') + '</div>';
+    return L.map((u) => {
+      const tags = [];
+      if (u.cb_level && u.cb_level !== 'None') tags.push('<span class="tag">CB ' + esc(u.cb_level) + '</span>');
+      if (u.mci_level && u.mci_level !== 'None') tags.push('<span class="tag">MCI ' + esc(u.mci_level) + '</span>');
+      if (u.user_role) tags.push('<span class="tag g">' + esc(u.user_role) + '</span>');
+      if (u.setup_pending) tags.push('<span class="tag o">Code waiting</span>');
+      if (!isOn(u)) tags.push('<span class="tag r">' + (u.active === 'No' ? 'Off' : 'Expired') + '</span>');
+      return '<button class="row' + (isOn(u) ? '' : ' off') + '" data-id="' + u.OBJECTID + '"' + (u.locked ? ' disabled title="Only an Admin can change this one"' : '') + '><span class="ico">' + ICON[u.kind] + '</span><span><b>' + esc(u.full_name || u.email) + (u.self ? ' <span class="dim">(you)</span>' : '') + '</b><small>' +
+        esc([u.kind === 'Device' ? 'Truck iPad' : u.email, u.agency].filter(Boolean).join(' · ')) + '</small></span><span class="lv">' + tags.join('') + '</span></button>';
+    }).join('');
+  }
+  async function showLog() {
+    try { log = await api('/admin/log?limit=300'); } catch (e) { $('#log').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; return; }
+    const E = log.entries || [];
+    $('#log').innerHTML = (log.note ? '<div class="msg">' + esc(log.note) + '</div>' : '') + (E.length ? '<table class="stack"><thead><tr><th>When</th><th>Who</th><th>What</th><th>About</th><th>Details</th></tr></thead><tbody>' +
+      E.map((x) => '<tr><td class="t">' + esc(new Date(x.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + '</td><td>' + esc(x.by_name) + '</td><td><b>' + esc(x.action) + '</b></td><td>' + esc(x.target_name) + (x.agency ? ' <span class="dim">· ' + esc(x.agency) + '</span>' : '') + '</td><td class="dim">' + esc(x.details) + '</td></tr>').join('') + '</tbody></table>' : '<div class="empty">No changes logged yet.</div>');
+  }
+
+  // ---------- dialogs ----------
+  const dlg = $('#dlg');
+  function open(html, onReady) { dlg.innerHTML = html; if (!dlg.open) dlg.showModal(); if (onReady) onReady(dlg); }
+  function close() { if (dlg.open) dlg.close(); }
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+
+  function levelSel(id, v, R, kind, disabled) {
+    const top = R.admin ? 'Admin' : 'Command';
+    const opts = LV.filter((l) => LV.indexOf(l) <= LV.indexOf(top) && !(kind === 'Device' && !R.admin && LV.indexOf(l) > LV.indexOf('Officer') && l !== v));
+    if (v && !opts.includes(v)) opts.push(v);
+    return '<select class="in" id="' + id + '"' + (disabled ? ' disabled' : '') + '>' + opts.map((l) => '<option value="' + l + '"' + (l === (v || 'None') ? ' selected' : '') + '>' + l + ' · ' + esc(HELP[l]) + '</option>').join('') + '</select>';
+  }
+  function edit(u, kind) {
+    const R = D.rights, add = !u; kind = u ? u.kind : kind;
+    const x = u || { cb_level: kind === 'Device' ? 'Officer' : 'Viewer', mci_level: kind === 'Device' ? 'Officer' : 'None', active: 'Yes', agency: R.chief ? D.me.agency : '' };
+    const self = u && u.self, dev = kind === 'Device';
+    const exp = x.expires ? new Date(x.expires).toISOString().slice(0, 10) : '';
+    open('<div class="dh"><h2>' + (add ? (dev ? 'Add a truck iPad' : 'Add a person') : esc(x.full_name || x.email)) + '</h2>' + (self ? '<p class="dim">This is you. You can fix your name and notes; another Admin has to change your access.</p>' : '') + '</div><form class="db" id="uf">' +
+      (dev ? '<label class="f"><span>Device name</span><input class="in" id="fn" required placeholder="e.g. Engine 51 iPad, EMS Sup 1 iPad" value="' + esc(x.full_name) + '"></label>' +
+        '<label class="f"><span>Contact email (optional; the shared truck email is fine)</span><input class="in" id="em" type="email" autocapitalize="off" value="' + esc(x.email) + '"></label>'
+      : '<label class="f"><span>Email</span><input class="in" id="em" type="email" required autocapitalize="off" value="' + esc(x.email) + '"' + (self ? ' disabled' : '') + '></label>' +
+        '<label class="f"><span>Name</span><input class="in" id="fn" required value="' + esc(x.full_name) + '"></label>') +
+      '<label class="f"><span>Agency or station</span><input class="in" id="ag" value="' + esc(x.agency) + '"' + (R.chief ? ' disabled' : '') + ' placeholder="e.g. Botetourt County Fire & EMS"></label>' +
+      '<div class="g2"><label class="f"><span>Command Board</span>' + levelSel('cb', x.cb_level, R, kind, self) + '</label><label class="f"><span>MCI Board</span>' + levelSel('mci', x.mci_level, R, kind, self) + '</label></div>' +
+      (dev && !R.admin ? '<p class="dim" style="font-size:14px">Truck iPads go up to Officer. An Admin can raise one (for example EMS supervisor trucks to MCI Command).</p>' : '') +
+      (dev ? '<p class="dim" style="font-size:14px">Anyone holding this iPad gets these levels. Keep a passcode and auto-lock on it.</p>' : '') +
+      (!dev && R.admin ? '<label class="f"><span>Role</span><select class="in" id="role"' + (self ? ' disabled' : '') + '>' + (D.roles || ['']).map((r) => '<option value="' + esc(r) + '"' + (r === (x.user_role || '') ? ' selected' : '') + '>' + (r || 'None') + (r === 'User manager' ? ' · can add people, issue codes, turn off' : '') + '</option>').join('') + '</select></label>' : '') +
+      (!dev ? '<label class="f"><span>Access ends (optional)</span><input class="in" id="ex" type="date" value="' + exp + '"' + (self ? ' disabled' : '') + '></label>' : '') +
+      '<label class="f"><span>Notes</span><input class="in" id="no" value="' + esc(x.notes) + '"></label></form>' +
+      '<div class="df"><div class="left">' +
+        (!add && !self ? '<button class="btn" data-act="code">' + (x.setup_pending ? 'New setup code' : 'Setup code') + '</button><button class="btn" data-act="' + (isOn(x) ? 'off' : 'on') + '">' + (isOn(x) ? 'Turn off' : 'Turn on') + '</button>' : '') +
+        (!add && !self && R.admin ? '<button class="btn red" data-act="remove">Remove</button>' : '') +
+      '</div><button class="btn ghost" data-act="cancel">Cancel</button><button class="btn pri" data-act="save">' + (add ? 'Add' : 'Save') + '</button></div>', (d) => {
+      d.querySelector('[data-act=save]').onclick = async (e) => {
+        const v = (id) => { const el = d.querySelector('#' + id); return el ? el.value.trim() : undefined; };
+        const user = { kind, email: (v('em') || '').toLowerCase(), full_name: v('fn'), agency: v('ag'), cb_level: v('cb'), mci_level: v('mci'), notes: v('no'), active: x.active === 'No' ? 'No' : 'Yes', user_role: v('role') ?? (x.user_role || ''), expires: v('ex') ? new Date(v('ex') + 'T23:59:00').getTime() : (dev ? null : null) };
+        if (!user.full_name) { d.querySelector('#fn').focus(); return; }
+        if (!dev && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(user.email)) { d.querySelector('#em').focus(); return; }
+        e.target.disabled = true;
+        try {
+          const r = await api('/admin/users', add ? { op: 'add', user } : { op: 'update', id: u.OBJECTID, user });
+          if (add) { await load(); const nu = D.users.find((y) => y.OBJECTID === r.id); if (nu) return issue(nu, true); close(); return; }
+          close(); load('Saved.');
+        } catch (er) { e.target.disabled = false; alertIn(d, er.message); }
+      };
+      d.querySelector('[data-act=cancel]').onclick = close;
+      const b = (a) => d.querySelector('[data-act=' + a + ']');
+      if (b('code')) b('code').onclick = () => issue(u);
+      if (b('off')) b('off').onclick = () => confirmDo('Turn off ' + (u.full_name || u.email) + '?', dev ? 'This iPad is signed out within about 2 minutes. Nothing else is affected.' : 'They are signed out within about 2 minutes on every device. You can turn them back on later.', 'Turn off', { op: 'off', id: u.OBJECTID });
+      if (b('on')) b('on').onclick = () => confirmDo('Turn on ' + (u.full_name || u.email) + '?', 'They can sign in again with a setup code.', 'Turn on', { op: 'on', id: u.OBJECTID });
+      if (b('remove')) b('remove').onclick = () => confirmDo('Remove ' + (u.full_name || u.email) + ' for good?', 'This deletes the row. The change log keeps a record. To pause access instead, turn them off.', 'Remove', { op: 'remove', id: u.OBJECTID }, true);
+    });
+  }
+  function alertIn(d, m) { let a = d.querySelector('.msg.err'); if (!a) { a = document.createElement('div'); a.className = 'msg err'; d.querySelector('.db').prepend(a); } a.textContent = m; }
+  function confirmDo(title, text, label, body, red) {
+    open('<div class="dh"><h2>' + esc(title) + '</h2></div><div class="db"><p>' + esc(text) + '</p></div><div class="df"><button class="btn ghost" data-act="no">Cancel</button><button class="btn ' + (red ? 'red' : 'pri') + '" data-act="yes">' + esc(label) + '</button></div>', (d) => {
+      d.querySelector('[data-act=no]').onclick = close;
+      d.querySelector('[data-act=yes]').onclick = async (e) => { e.target.disabled = true; try { await api('/admin/users', body); close(); load(label === 'Remove' ? 'Removed.' : 'Done.'); } catch (er) { e.target.disabled = false; alertIn(d, er.message); } };
+    });
+  }
+  async function issue(u, justAdded) {
+    let r;
+    try { r = await api('/admin/users', { op: 'setup', id: u.OBJECTID }); } catch (e) { open('<div class="dh"><h2>Setup code</h2></div><div class="db"><div class="msg err">' + esc(e.message) + '</div></div><div class="df"><button class="btn" data-act="x">Close</button></div>', (d) => { d.querySelector('[data-act=x]').onclick = close; }); return; }
+    let qr = ''; try { if (window.qrcode) { const g = qrcode(0, 'M'); g.addData(r.qr); g.make(); qr = '<div class="qr">' + g.createSvgTag({ cellSize: 6, margin: 2, scalable: true }) + '</div>'; } } catch (e) {}
+    const until = new Date(r.expires).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    const dev = u.kind === 'Device';
+    open('<div class="dh"><h2>' + (justAdded ? 'Added. ' : '') + 'Setup code for ' + esc(u.full_name || u.email) + '</h2></div><div class="db"><div class="code" id="cd">' + esc(r.code) + '</div>' + qr +
+      '<p class="dim" style="text-align:center">Good until ' + esc(until) + '. Works once in each app. Issuing a new code cancels this one.</p>' +
+      '<ol class="steps">' + (dev ? '<li>On the truck iPad, open the Command Board app (and the MCI Board app).</li><li>Tap <b>Scan setup code</b> and point it at this QR, or type the code.</li><li>The iPad stays signed in until someone turns it off here.</li>'
+        : '<li>Send them the code by text, radio or in person. Don\'t email it with their name.</li><li>They open the app and enter it, or scan the QR.</li><li>They stay signed in for 30 days while they use the app.</li>') + '</ol></div>' +
+      '<div class="df"><button class="btn" data-act="copy">Copy code</button><button class="btn pri" data-act="done">Done</button></div>', (d) => {
+      d.querySelector('[data-act=copy]').onclick = async (e) => { try { await navigator.clipboard.writeText(r.code); e.target.textContent = 'Copied'; } catch (er) { e.target.textContent = 'Select the code to copy'; } };
+      d.querySelector('[data-act=done]').onclick = () => { close(); load(); };
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-v],[data-f],[data-add],.row[data-id]'); if (!t || !D) return;
+    if (t.dataset.v) { view = t.dataset.v; render(); }
+    else if (t.dataset.f) { filter = t.dataset.f; render(); }
+    else if (t.dataset.add) edit(null, t.dataset.add);
+    else if (!t.disabled) edit(D.users.find((u) => u.OBJECTID === +t.dataset.id));
+  });
+
+  if (tok) load(); else signIn();
+}
+</script>
+</body>
+</html>

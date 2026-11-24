@@ -12,6 +12,10 @@ struct GateSession: Codable, Equatable {
     var level: String
     var incident: String?
     var layers: [String]
+    /// "Person" or "Device" (a truck iPad: stays signed in until turned off on the Users page). Older saved sessions have none.
+    var kind: String?
+    /// "User manager" lets someone use the Users screen without a Chief level on the boards.
+    var role: String?
 }
 
 @MainActor
@@ -37,7 +41,7 @@ final class SessionStore: ObservableObject {
     static var deviceId: String { UIDevice.current.identifierForVendor?.uuidString ?? "unknown" }
 }
 
-/// Calls to the gate for signing in.
+/// Calls to the gate for signing in (setup codes and incident codes; email sign-in was retired Nov 24, 2026).
 enum Gate {
     struct Failure: LocalizedError { let message: String; var errorDescription: String? { message } }
 
@@ -55,10 +59,15 @@ enum Gate {
         return j
     }
 
-    static func startEmail(_ email: String) async throws { _ = try await post("auth/start", ["email": email]) }
-
-    static func verify(email: String, code: String) async throws -> GateSession {
-        session(from: try await post("auth/verify", ["email": email, "code": code, "device": SessionStore.deviceId]))
+    /// Setup code (typed, or scanned from its QR "beacon-setup:XXXXXXXXXX") from a Chief, a User manager or an Admin.
+    static func setup(code: String) async throws -> GateSession {
+        session(from: try await post("auth/setup", ["code": code, "device": SessionStore.deviceId]))
+    }
+    /// Pull the 10-character code out of whatever was typed or scanned.
+    static func cleanSetup(_ raw: String) -> String {
+        var t = raw.uppercased()
+        if let r = t.range(of: "BEACON-SETUP:") { t = String(t[r.upperBound...]) }
+        return String(t.filter { $0.isLetter || $0.isNumber })
     }
 
     static func guest(code: String, name: String, agency: String) async throws -> GateSession {
@@ -68,7 +77,7 @@ enum Gate {
     private static func session(from j: [String: Any]) -> GateSession {
         GateSession(token: j["token"] as? String ?? "", email: j["email"] as? String ?? "", name: j["name"] as? String ?? "",
                     agency: j["agency"] as? String ?? "", level: j["level"] as? String ?? "Viewer",
-                    incident: j["incident"] as? String, layers: [])
+                    incident: j["incident"] as? String, layers: [], kind: j["kind"] as? String, role: j["role"] as? String)
     }
 
     /// Layers this level may use (the page asks again on every launch; this copy lets it start offline).

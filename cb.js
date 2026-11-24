@@ -169,7 +169,7 @@
   // ---------- start screen ----------
   function viewerStart() {
     var l = CB.list || [];
-    return '<div class="cbstart"><div class="cbstrip"><span class="lead">Signed in as ' + E(CP.gate.name) + ' · ' + E(CP.gate.level) + '. Running incidents open view-only.</span></div><div class="cbcols"><section class="card"><h3>' + I('list') + 'Running incidents</h3>' +
+    return '<div class="cbstart"><div class="cbstrip"><span class="lead">Signed in as ' + E(CP.gate.name) + ' · ' + E(CP.gate.level) + '. Running incidents open view-only.</span>' + (CP.gate.canUsers() ? '<button class="btn sm" data-cb="users" style="margin-left:8px">' + I('users') + 'Users</button>' : '') + '</div><div class="cbcols"><section class="card"><h3>' + I('list') + 'Running incidents</h3>' +
       (!Array.isArray(CB.list) ? '<div class="empty">Loading…</div>' : !l.length ? '<div class="empty">No running incidents.</div>' : l.map(function (x) { return '<button class="cbcad" data-cb="open" data-a="' + E(x.incident_key) + '"><b>' + E(x.incident_name) + '</b><span>' + E(x.incident_number || '') + ' · ' + E(x.incident_type || '') + '</span><i>' + (x.exercise === 'Yes' ? 'PRACTICE · ' : '') + 'started ' + E(x.start_time ? CP.fmtTime(new Date(x.start_time).toISOString()) : '') + '</i></button>'; }).join('')) +
       '</section></div></div>';
   }
@@ -177,7 +177,7 @@
     if (app() && !CP.gate.can('Command')) return viewerStart();
     var l = CB.list, cad = CB.cad;
     var nCad = Array.isArray(cad) ? cad.length : '–', nInc = Array.isArray(l) ? l.length : '–';
-    var h = '<div class="cbstart"><div class="cbstrip"><span class="lead">Start a board, pick up a CAD call, or rejoin a running incident.</span>' + (app() && CP.gate.can('Chief') ? '<button class="btn sm" data-cb="users" style="margin-left:8px">' + I('users') + 'Users</button>' : '') +
+    var h = '<div class="cbstart"><div class="cbstrip"><span class="lead">Start a board, pick up a CAD call, or rejoin a running incident.</span>' + (app() && CP.gate.canUsers() ? '<button class="btn sm" data-cb="users" style="margin-left:8px">' + I('users') + 'Users</button>' : '') +
       '<div class="hs"><button data-cb="htab" data-a="map"><b>' + nCad + '</b><span>Active fire &amp; EMS calls</span></button><div><b>' + nInc + '</b><span>Running incidents</span></div>' + (CB.wx && CB.wx.ok ? '<div class="w"><b>' + (CB.wx.f != null ? Math.round(CB.wx.f) + '°' : '–') + '</b><span>' + E(CB.wx.dir != null ? compass(CB.wx.dir) + ' ' + Math.round(CB.wx.mph || 0) + ' mph' : 'Wind calm') + '</span></div>' : '') + '</div></div>';
     h += '<div class="cbcols"><section class="card"><h3>' + I('plus') + 'New board</h3><div class="cbtypes">' + Object.keys(TEMPLATES).map(function (k) { return '<button class="cbtype t-' + k + (CB.tpl === k ? ' on' : '') + '" data-cb="tpl" data-a="' + k + '">' + svg(TEMPLATES[k].icon || 'flag') + E(TEMPLATES[k].n) + '</button>'; }).join('') + '</div>' +
       '<label class="f"><span>Call type (county response plan)</span><select class="in big" id="cbCall" data-cbchg="call"><option value="">Pick a call type, or tap a type above</option>' +
@@ -563,9 +563,14 @@
     var el = document.getElementById('cbEl'); if (el) el.textContent = since(i.start);
     var p = document.getElementById('cbPar'); if (p) { var due = new Date(kv('parT', i.start)).getTime() + (+kv('parEvery', 20)) * 60000, left = Math.round((due - Date.now()) / 1000); p.textContent = left <= 0 ? 'DUE ' + since(new Date(due).toISOString()) : Math.floor(left / 60) + ':' + CP.pad(left % 60); var b = p.closest('.cbpar'); if (b) { b.classList.toggle('due', left <= 0); b.classList.toggle('soon', left > 0 && left < 120); if (left === 0 && navigator.vibrate) navigator.vibrate([200, 100, 200]); } var pb = document.getElementById('cbParBar'); if (pb) pb.style.width = Math.max(0, Math.min(100, left / ((+kv('parEvery', 20)) * 60) * 100)).toFixed(1) + '%'; }
   }, 1000);
-  // pull others' changes (phones and other tablets stay in step)
+  // Idle backoff: a mounted truck iPad nobody has touched for 5 minutes checks less often (fewer requests through the gate).
+  var lastTouch = Date.now(), tick = 0;
+  ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, function () { lastTouch = Date.now(); }, { passive: true, capture: true }); });
+  CB.idle = function () { return Date.now() - lastTouch > 5 * 60000; };
+  // pull others' changes (phones and other tablets stay in step): every 5 s, every 10 s when idle
   setInterval(async function () {
-    if (!inc() || A.status !== 'on' || CB.saving || CB.drawing || document.getElementById('modal')) return;
+    if (!inc() || A.status !== 'on' || CB.saving || CB.drawing || document.hidden || document.getElementById('modal')) return;
+    if (CB.idle() && (++tick % 2)) return;
     try { var m = await A.checkRemote(inc()); if (m) { CB.inc = m; CP.store.put(m); render(); } } catch (e) {}
     if (kv('mci') && (!CB.mciLive || Date.now() - (CB.mciLive.t || 0) > 15000)) { var before = JSON.stringify(CB.mciLive || {}); await loadMci(); if (JSON.stringify(CB.mciLive || {}) !== before && !document.getElementById('modal')) render(); }
   }, 5000);
@@ -772,9 +777,11 @@
   function avlFor(r) { if (!CB.avl) return null; var n = norm(r.name); return CB.avl.find(function (v) { return norm(v.id) === n; }) || null; }
   function cadKind(v) { var t = v.type; return /^ENGINE/.test(t) ? 'Engine' : /LADDER/.test(t) ? 'Ladder/Truck' : /TANKER/.test(t) ? 'Tanker/Tender' : /SQUAD|SOTT/.test(t) ? 'Rescue' : /BRUSH|WILDLAND/.test(t) ? 'Brush Truck' : /^ALS$/.test(t) ? 'Ambulance (ALS)' : /BLS|EMS MUTUAL|ALL EMS/.test(t) ? 'Ambulance (BLS)' : /DUTY|CAPTAIN|SUPERVISOR|ONCALL|ADMIN|DIRECTOR|EMERGENCY MGNT/.test(t) ? 'Overhead (single person)' : kindOf(v.id); }
   act.avladd = function (id) { var v = (CB.avl || []).find(function (x) { return x.id === id; }); if (!v) return; var r = addUnit(v.id, cadKind(v), v.dept, /ARRIV|SCENE/i.test(v.st) ? 'Checked In' : 'En Route'); commit(null); U.toast(v.id + ' added to the board', 'ok'); };
-  setInterval(function () { if (!inc() || A.status !== 'on' || inc().status === 'Closed') return; var enr = units().some(function (r) { return r.status === 'En Route'; }); if (CB.tab !== 'map' && !enr) return; loadAvl().then(function () { if (CB.tab === 'map') { if (CB.map) mapDraw(); } else if (enr && !document.getElementById('modal') && !CB.sel && !(document.activeElement && document.activeElement.id === 'cbQuick')) render(); }); }, 15000);
+  setInterval(function () { if (!inc() || A.status !== 'on' || document.hidden || inc().status === 'Closed') return; var enr = units().some(function (r) { return r.status === 'En Route'; }); if (CB.tab !== 'map' && !enr) return; loadAvl().then(function () { if (CB.tab === 'map') { if (CB.map) mapDraw(); } else if (enr && !document.getElementById('modal') && !CB.sel && !(document.activeElement && document.activeElement.id === 'cbQuick')) render(); }); }, 15000);
   // home live map: refresh calls and units
-  setInterval(function () { if (inc() || CB.htab !== 'map' || A.status !== 'on' || document.getElementById('modal')) return; Promise.all([loadAvl(), loadLists()]).then(function () { if (!inc() && CB.htab === 'map') homeMapMount(); }); }, 20000);
+  // home map with no incident open: every 20 s while someone is using it, every 2 minutes when idle
+  var homeTick = 0;
+  setInterval(function () { if (inc() || CB.htab !== 'map' || A.status !== 'on' || document.hidden || document.getElementById('modal')) return; if (CB.idle() && (++homeTick % 6)) return; Promise.all([loadAvl(), loadLists()]).then(function () { if (!inc() && CB.htab === 'map') homeMapMount(); }); }, 20000);
   // keep work timers fresh on the board
   setInterval(function () { if (!inc() || CB.tab !== 'board' || CB.drawing || document.getElementById('modal') || (document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) return; if (units().some(function (r) { return r.workT && r.assign; }) || prompts().length || (kv('pr', {}) && Object.keys(kv('pr', {}) || {}).length)) render(); }, 30000);
 
@@ -1243,7 +1250,7 @@
   act.umenu = function (id) { unitMenu(id); };
   act.note = function () { U.modal('Log entry', '<textarea class="in" id="cbNote" style="min-height:90px"></textarea><div class="cbmenu grid" style="margin-top:8px">' + quickFor().map(function (q) { return '<button data-q="' + E(q) + '">' + E(q) + '</button>'; }).join('') + '</div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Log', cls: 'pri', fn: function (b) { var t = b.querySelector('#cbNote').value.trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); } }], { onOpen: function (b) { b.addEventListener('click', function (e) { var q = e.target.closest('[data-q]'); if (!q) return; e.preventDefault(); var n = b.querySelector('#cbNote'); n.value = (n.value ? n.value + '. ' : '') + q.dataset.q; }); } }); };
   act.more = function () {
-    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], (app() ? ['guestcode', 'Incident code for mutual aid (view only)'] : ['phonelink', 'Phone view link / QR']), (app() ? ['handoff', 'Hand off to another iPad'] : null), ['itexport', 'Export for ImageTrend (NERIS)' + (cadNoOf() ? ' · CAD ' + cadNoOf() : '')], ['backup', 'Save board to a file (backup or hand-off to another tablet)'], ['cadtoggle', cadPref() ? 'Turn CAD off on this tablet (run by hand)' : 'Turn CAD on'], (app() ? null : ['tocp', 'Move to Command Post (full ICS)']), [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list'], (app() && CP.gate.can('Chief') ? ['users', 'Users (who can sign in)'] : null), (app() ? ['signout', 'Sign out on this device'] : null)].filter(Boolean).map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    var bg = U.modal('More', '<div class="cbmenu">' + [['report', 'Incident report (print / PDF)'], ['ic', 'Transfer command (new IC)'], ['staff', 'Command staff, Unified Command, channels, CP / ACP'], ['sizeup', 'On-scene report'], ['r360', '360 report'], ['pov', 'POV check-in'], ['iso', 'Isolation zone (map)'], ['gas', 'Gas / LEL calculator'], ['peac', 'PEAC-WMD (ERG, chemicals, sites)'], ['work', 'Crew work timers (' + wkWarn() + ' / ' + wkMax() + ' min)'], ['upgrade', kv('tpl') === 'alarm' ? 'Upgrade: alarm is a working fire' : 'Add structure-fire assignments'], (app() ? ['guestcode', 'Incident code for mutual aid (view only)'] : ['phonelink', 'Phone view link / QR']), (app() ? ['handoff', 'Hand off to another iPad'] : null), ['itexport', 'Export for ImageTrend (NERIS)' + (cadNoOf() ? ' · CAD ' + cadNoOf() : '')], ['backup', 'Save board to a file (backup or hand-off to another tablet)'], ['cadtoggle', cadPref() ? 'Turn CAD off on this tablet (run by hand)' : 'Turn CAD on'], (app() ? null : ['tocp', 'Move to Command Post (full ICS)']), [inc().status === 'Closed' ? 'reopen' : 'close', inc().status === 'Closed' ? 'Reopen incident' : 'Terminate command / close incident'], ['exit', 'Back to board list'], (app() && CP.gate.canUsers() ? ['users', 'Users (who can sign in)'] : null), (app() ? ['signout', 'Sign out on this device'] : null)].filter(Boolean).map(function (o) { return '<button data-mo="' + o[0] + '"' + (o[0] === 'close' ? ' class="red"' : '') + '>' + E(o[1]) + '</button>'; }).join('') + '</div>', [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-mo]'); if (!b) return; e.preventDefault(); var k = b.dataset.mo; U.closeModal();
       if (k === 'ic') setTimeout(act.xfer, 30);
@@ -1833,15 +1840,17 @@
   async function loadMci() {
     if (!inc() || !kv('mci') || A.status !== 'on') return;
     try {
-      if (!CB.ptUrl) {
+      // in the iPad app the gate lists the patient layer (counts only); on the web, find it by name
+      if (!CB.ptUrl && CP.gate) { var gl = (CP.gate.layers || []).find(function (x) { return /PatientCare\/FeatureServer\/?$/.test(x.url); }); if (gl) CB.ptUrl = gl.url.replace(/\/$/, '') + '/0'; }
+      if (!CB.ptUrl && !CP.gate) {
         for (var nm of ['BOCO_EMS_PatientCare', 'BOCO_EMS_PatientCare_Field']) {
           var r = await A.req(A.portal + '/sharing/rest/search', { q: 'title:"' + nm + '" AND orgid:' + A.user.orgId, num: 2 }); var it = (r.results || []).find(function (x) { return x.title === nm; }); if (!it) continue;
           var info = await A.req(it.url, {}); var l = (info.layers || []).concat(info.tables || []).find(function (x) { return x.name === 'PROT_MCI_Patients'; }); if (l) { CB.ptUrl = it.url.replace(/\/$/, '') + '/' + l.id; break; }
         }
         if (!CB.ptUrl) { CB.mciLive = { ok: false }; return; }
       }
-      var st = await A.stats(CB.ptUrl, 'incident_key=' + A.sq(inc().id), [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], 'triage');
-      var c = { red: 0, yellow: 0, green: 0, black: 0 }; st.forEach(function (x) { var t = x.triage || ''; if (/Red/.test(t)) c.red += x.n; else if (/Yellow/.test(t)) c.yellow += x.n; else if (/Green/.test(t)) c.green += x.n; else if (/Black|Gray/.test(t)) c.black += x.n; });
+      var st = await A.stats(CB.ptUrl, 'incident_key=' + A.sq(inc().id), [{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }], 'triage,status');
+      var c = { red: 0, yellow: 0, green: 0, black: 0 }; st.forEach(function (x) { var t = x.triage || ''; if (x.status === 'Entered in error') return; if (/Red/.test(t)) c.red += x.n; else if (/Yellow/.test(t)) c.yellow += x.n; else if (/Green/.test(t)) c.green += x.n; else if (/Black|Gray/.test(t)) c.black += x.n; });
       CB.mciLive = { ok: true, c: c, t: Date.now() };
     } catch (e) { CB.mciLive = { ok: false }; }
   }
@@ -1852,7 +1861,7 @@
     return '<div class="cbmci"><div class="cbh" style="color:#ffb3b8">' + svg('mci') + 'MCI · LEVEL ' + lv + '<span class="ct">' + c.total + (m.est && !c.total ? ' est ' + m.est : '') + '</span></div>' +
       '<div class="cbtris">' + cell('red', 'Red', 'r') + cell('yellow', 'Yellow', 'y') + cell('green', 'Green', 'g') + cell('black', 'Deceased', 'k') + '</div>' +
       (lv <= 2 ? '<div class="cbrhcc">' + I('phone') + ' Level ' + lv + ': call RHCC <b>1-866-679-7422</b></div>' : '') +
-      '<div class="row" style="gap:6px;margin-top:8px"><a class="btn sm pri" href="mci.html?incident=' + encodeURIComponent(inc().id) + '" target="_blank" rel="noopener">' + I('med') + 'MCI patient tracking</a></div>' +
+      '<div class="row" style="gap:6px;margin-top:8px"><a class="btn sm pri" href="' + (CP.gate ? 'beaconmci://open?incident=' : 'mci.html?incident=') + encodeURIComponent(inc().id) + '" target="_blank" rel="noopener">' + I('med') + (CP.gate ? 'Open MCI Board app' : 'MCI patient tracking') + '</a></div>' +
       '<div class="dim" style="font-size:11.5px;margin-top:4px">' + (live ? 'Live from MCI patient tracking.' : 'Tap +/− to keep a tally here; triage in the MCI app for full tracking.') + '</div></div>';
   }
   act.tally = function (a) { var p = a.split('|'), t = Object.assign({}, kv('mciTally', {}) || {}); t[p[0]] = Math.max(0, (t[p[0]] || 0) + (+p[1])); setKV('mciTally', t); var c = mciCounts(); var was = kv('mciLv', 4), now = mciLevel(c.total); if (now !== was) { setKV('mciLv', now); return commit('MCI now Level ' + now + ' (' + c.total + ' patients)', 'Event'); } commit(null, null, true); render(); };

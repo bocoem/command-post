@@ -18,5 +18,4 @@ r=await call('where=1%3D1&f=geojson'); ok(r[0]===200 && !/Jane/.test(r[1]) && /f
 r=await call("where=caller_name%20LIKE%20'J%25'"); ok(r[0]===403,'Officer: filter on caller field refused');
 r=await call('where=1%3D1&orderByFields=CallerPhone'); ok(r[0]===403,'Officer: sort on caller field refused');
 r=await call('where=1%3D1&outStatistics=%5B%7B%22onStatisticField%22%3A%22caller_name%22%7D%5D'); ok(r[0]===403,'Officer: statistics on caller field refused');
-for (let i=0;i<5;i++) await W.fetch(new Request('https://g/auth/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'ff@x.gov',app:'cb'})}),env,ctx);
-ok(mails===3,'Sign-in emails capped at 3 per 10 minutes (sent '+mails+')');
+for (const pth of ['/auth/start','/auth/verify']) { const r2=await W.fetch(new Request('https://g'+pth,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'ff@x.gov',code:'123456',app:'cb'})}),env,ctx); ok(r2.status===410 && mails===0,'Email sign-in is gone: '+pth+' answers 410 and sends nothing'); }

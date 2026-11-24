@@ -1,31 +1,45 @@
 /* BEACON gate — sign-in and ArcGIS access for the Command Board and MCI Board apps (Botetourt County).
  *
- * Who gets in is decided by one ArcGIS table ("Command Board Users"): one row per email with a level per app.
- * People sign in with their email and a 6-digit code (no password, no ArcGIS login).
+ * Who gets in is decided by one ArcGIS table (BEACON_App_Access / APP_Users): one row per person or truck iPad, a level per app.
+ * On the list you're in; turned off, you're out. Each row is identified by its uid.
+ * Sign-in is a one-time setup code (or its QR) that a Chief, User manager or Admin issues from the Users page or an app.
+ *   People stay signed in 30 days while they use the app. Devices (truck iPads, shared email) stay signed in until turned off.
+ * Email sign-in was retired Nov 24, 2026. Older email sessions keep working until they lapse (30 days unused).
+ * The Users page for the Teams tab is served at /users.
  * The county's ArcGIS app credentials live only here (ARC_CLIENT_ID + secret ARC_CLIENT_SECRET). The apps never see them.
  * The apps reach ArcGIS through /arc/<host>/<path>; only the services in layersFor() are allowed,
  * and what each level may do with each layer is decided here, not in the app.
  *
- * Secrets (wrangler secret put):  ARC_CLIENT_SECRET  MAIL_FLOW_URL   (optional: SIGNING_KEY; or ARC_KEY instead of the client credentials)
- * Vars (wrangler.toml):           SERVICES (JSON from EM Ops)  AUTO_VIEWER_DOMAIN (optional)  USERS_TABLE (optional)
+ * Secrets (wrangler secret put):  ARC_CLIENT_SECRET   (optional: SIGNING_KEY; or ARC_KEY instead of the client credentials)
+ * Vars (wrangler.toml):           SERVICES (JSON from EM Ops)  USERS_TABLE, USERLOG_TABLE (optional)
  */
+import USERS_PAGE from './users-page.js';
 
 const ORDER = ['None', 'Guest', 'Viewer', 'Officer', 'Command', 'Chief', 'Admin'];
 const rank = (l) => Math.max(0, ORDER.indexOf(l || 'None'));
-const SESSION_DAYS = 30, CODE_MIN = 10, ROSTER_TTL = 120, MAX_TRIES = 8;
+const SESSION_DAYS = 30, DEVICE_DAYS = 3650, CODE_MIN = 10, ROSTER_TTL = 120, MAX_TRIES = 8, SETUP_HOURS = 24;
+const SETUP_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const S6 = 'services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/';
 
 // Every ArcGIS service the apps may touch. Anything else is refused.
 // The addresses come from the SERVICES var (EM Ops → Setup → "Command Board & MCI apps" → Copy gate settings);
 // the defaults below are only used until it is set.
 //  read: lowest level that may query.  write: lowest level that may edit (null = never).  del: lowest level that may delete.
-//  strip: fields removed unless the level is at least `stripBelow`.  guestScope: guests only see their incident's rows.
+//  strip: fields removed unless the level is at least `stripBelow`. Below that level these fields also can't be searched,
+//         sorted or grouped on (so a filter can't be used to guess them), and with noWrite they can't be written either.
+//  guestScope: guests only see their incident's rows.
+//  layers: only these layer numbers inside the service (the service's own summary is refused).
+//  only: the only operations allowed on this service (for example add-only).
+//  statsBelow: levels below this may only ask for counts (by triage, status, hospital), never rows.  countsOnly: everyone.
 const DEFAULT_SERVICES = {
   users: S6 + 'BEACON_App_Access/FeatureServer', cp: S6 + 'BOCO_Command_Post/FeatureServer',
   cadCalls: S6 + 'CAD_Calls_For_Service_Active_Fire_EMS/FeatureServer', cadUnits: S6 + 'CAD_Units_Fire_EMS/FeatureServer',
   hydrants: S6 + 'Hydrants/FeatureServer', ppTac: S6 + 'BOCO_Preplans_Tactical/FeatureServer', ppProt: S6 + 'BOCO_Preplans_Protected/FeatureServer',
-  patients: S6 + 'BOCO_EMS_PatientCare/FeatureServer'
+  patients: S6 + 'BOCO_EMS_PatientCare/FeatureServer',
+  ops: S6 + 'BOCO_EM_Operations/FeatureServer', prot: S6 + 'BOCO_EM_Protected/FeatureServer'
 };
+// Layer numbers inside shared services (EM Ops schema: OPS_Hospitals = 15, PROT_Reunification = 2, PROT_MCI_Patients = 0).
+const HOSP_LAYER = 15, REUN_LAYER = 2, PT_LAYER = 0;
 function services(env) {
   let o = {}; try { o = env.SERVICES ? JSON.parse(env.SERVICES) : {}; } catch (e) {}
   const out = { ...DEFAULT_SERVICES };
@@ -41,18 +55,26 @@ function layersFor(env) {
       { svc: S.cadUnits, read: 'Officer' },
       { svc: S.hydrants, read: 'Viewer' },
       { svc: S.ppTac, read: 'Officer' },
-      { svc: S.ppProt, read: 'Command' }
+      { svc: S.ppProt, read: 'Command' },
+      // live MCI count on the board: counts by triage and status only, never patient rows
+      { svc: S.patients, read: 'Officer', write: null, layers: [PT_LAYER], countsOnly: true }
     ],
-    mci: [ // planned: the MCI Board app uses the same gate
-      { svc: S.cp, read: 'Viewer', write: null },
-      { svc: S.patients, read: 'Officer', write: 'Officer', del: null, guestScope: 'incident_key' },
-      { svc: S.hydrants, read: 'Viewer' }
+    mci: [ // the MCI Board iPad/iPhone app (no guests: patient records)
+      { svc: S.cp, read: 'Viewer', write: null, layers: [0] },
+      // patients: Officers triage, treat and transport; names only for Command and up; Viewers get counts only; nothing is ever deleted
+      { svc: S.patients, read: 'Viewer', write: 'Officer', del: null, layers: [PT_LAYER], strip: [/first_name/i, /last_name/i], stripBelow: 'Command', noWrite: true, statsBelow: 'Officer' },
+      { svc: S.ops, read: 'Viewer', write: 'Officer', del: null, layers: [HOSP_LAYER] },            // hospital board only
+      { svc: S.prot, read: 'Command', write: 'Command', del: null, layers: [REUN_LAYER], only: /^addFeatures$/ }, // send a found person to Reunification; can't read it back
+      { svc: S.cadUnits, read: 'Officer' }
     ]
   };
 }
-const APPS = { cb: 'cb_level', mci: 'mci_level' };
+const APPS = { cb: 'cb_level', mci: 'mci_level', admin: 'manager' }; // admin = the Users page (level from manager rights, not a column)
+const LEVEL_COLS = ['cb_level', 'mci_level'];
 const READ_OPS = /^(query|queryRelatedRecords|queryAttachments|attachments\/\d+|\d+\/attachments\/\d+)?$/;
 const WRITE_OPS = /^(applyEdits|addFeatures|updateFeatures)$/;
+const STAT_FIELDS = ['OBJECTID', 'triage', 'status', 'hospital', 'incident_key'];
+const SEARCH_PARAMS = ['where', 'orderByFields', 'groupByFieldsForStatistics', 'outStatistics', 'having', 'text', 'sqlFormat'];
 const DEL_OPS = /^deleteFeatures$/;
 
 const enc = new TextEncoder();
@@ -73,7 +95,6 @@ async function verify(env, tok) {
   const o = JSON.parse(new TextDecoder().decode(unb64u(body))); return o.exp > Date.now() ? o : null;
 }
 function timingSafe(a, b) { if (!a || !b || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
-async function codeFor(env, email, win) { const h = await hmac(env, 'code.' + email + '.' + win); return String(((h[0] << 24 | h[1] << 16 | h[2] << 8 | h[3]) >>> 0) % 1000000).padStart(6, '0'); }
 const win = (t) => Math.floor((t || Date.now()) / (CODE_MIN * 60000));
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 const okEmail = (e) => /^[^@\s'"]+@[^@\s'"]+\.[a-z]{2,}$/.test(e);
@@ -98,28 +119,43 @@ const json = (o, s = 200, h = {}) => new Response(JSON.stringify(o), { status: s
 const err = (m, s = 400) => json({ error: { message: m, code: s } }, s);
 
 // ---------- roster (ArcGIS table, cached briefly so a removed person is locked out within minutes) ----------
-async function roster(env, ctx, email) {
-  const key = new Request('https://gate.cache/roster/' + encodeURIComponent(email));
-  const cache = caches.default; const hit = await cache.match(key); if (hit) return hit.json();
-  const p = new URLSearchParams({ f: 'json', where: "LOWER(email) = '" + email.replace(/'/g, "''") + "'", outFields: '*', resultRecordCount: '1', token: await arcToken(env) });
-  const r = await fetch('https://' + (env.USERS_TABLE || services(env).users + '/0') + '/query?' + p).then((x) => x.json());
+// Looked up by uid (setup-code sessions) or by email (email sessions from before Nov 24, until they lapse; never a Device row).
+const usersUrl = (env) => 'https://' + (env.USERS_TABLE || services(env).users + '/0');
+const logUrl = (env) => 'https://' + (env.USERLOG_TABLE || services(env).users + '/1');
+const q = (v) => "'" + String(v).replace(/'/g, "''") + "'";
+async function usersQuery(env, where, fallbackWhere) {
+  const p = new URLSearchParams({ f: 'json', where, outFields: '*', orderByFields: 'full_name', resultRecordCount: '2000', token: await arcToken(env) });
+  let r = await fetch(usersUrl(env) + '/query?' + p).then((x) => x.json());
+  if (r.error && fallbackWhere) { p.set('where', fallbackWhere); r = await fetch(usersUrl(env) + '/query?' + p).then((x) => x.json()); } // table not yet upgraded by EM Ops
   if (r.error) throw new Error('Users table: ' + r.error.message);
-  const a = (r.features && r.features[0] && r.features[0].attributes) || null;
-  let row = null;
-  if (a) {
-    const lv = (k) => (ORDER.includes(a[k]) ? a[k] : 'None');
-    const expired = a.expires && a.expires < Date.now();
-    row = { email, name: a.full_name || email, agency: a.agency || '', active: String(a.active || 'Yes') !== 'No' && !expired, levels: { cb: lv('cb_level'), mci: lv('mci_level') } };
-  } else if (env.AUTO_VIEWER_DOMAIN && email.endsWith('@' + env.AUTO_VIEWER_DOMAIN)) {
-    row = { email, name: email.split('@')[0], agency: 'Botetourt County', active: true, levels: { cb: 'Viewer', mci: 'None' }, auto: true };
-  }
+  return (r.features || []).map((f) => f.attributes);
+}
+const isDev = (a) => String(a && a.kind || '') === 'Device';
+const umOf = (a) => String(a && a.user_role || '') === 'User manager';
+const topOf = (a) => LEVEL_COLS.reduce((m, k) => (rank(a[k]) > rank(m) ? a[k] : m), 'None');
+function managerLevel(a) { const t = topOf(a); if (rank(t) >= rank('Admin')) return 'Admin'; if (rank(t) >= rank('Chief') || umOf(a)) return 'Chief'; return 'None'; }
+function rowOut(a, key) {
+  const lv = (k) => (ORDER.includes(a[k]) ? a[k] : 'None');
+  const expired = a.expires && a.expires < Date.now();
+  return { key, id: a.OBJECTID, uid: a.uid || '', email: normEmail(a.email), name: a.full_name || a.email || 'Device', agency: a.agency || '', kind: isDev(a) ? 'Device' : 'Person', role: a.user_role || '',
+    active: String(a.active || 'Yes') !== 'No' && !expired, levels: { cb: lv('cb_level'), mci: lv('mci_level'), admin: managerLevel(a) } };
+}
+async function roster(env, ctx, who) {
+  const byUid = typeof who === 'object' && who.u, email = typeof who === 'object' ? who.e : who;
+  const key = new Request('https://gate.cache/roster/' + (byUid ? 'u/' + encodeURIComponent(who.u) : encodeURIComponent(email)));
+  const cache = caches.default; const hit = await cache.match(key); if (hit) return hit.json();
+  const rows = byUid ? await usersQuery(env, 'uid = ' + q(who.u))
+    : await usersQuery(env, 'LOWER(email) = ' + q(email) + " AND (kind IS NULL OR kind <> 'Device')", 'LOWER(email) = ' + q(email));
+  const a = rows.find((x) => !(!byUid && isDev(x))) || null;
+  let row = a ? rowOut(a, byUid ? who.u : email) : null;
   const out = row || { email, active: false, levels: {} };
   ctx.waitUntil(cache.put(key, new Response(JSON.stringify(out), { headers: { 'Cache-Control': 'max-age=' + ROSTER_TTL } })));
   return out;
 }
+async function forget(row) { for (const k of [row.uid && 'u/' + encodeURIComponent(row.uid), row.email && encodeURIComponent(normEmail(row.email))].filter(Boolean)) await caches.default.delete(new Request('https://gate.cache/roster/' + k)); }
 const levelOf = (row, app) => (row && row.active ? row.levels[app] || 'None' : 'None');
 
-// simple attempt limit per email (per Cloudflare location; good enough to stop guessing)
+// simple attempt limit (per Cloudflare location; good enough to stop guessing setup codes)
 async function tries(email, add) {
   const key = new Request('https://gate.cache/tries/' + encodeURIComponent(email) + '/' + win());
   const hit = await caches.default.match(key); let n = hit ? +(await hit.text()) : 0;
@@ -128,24 +164,31 @@ async function tries(email, add) {
 }
 
 // ---------- guest codes: the IC hands a code to a mutual-aid company for one incident ----------
-const MAX_SENDS = 3;
-async function sends(email, add) {
-  const key = new Request('https://gate.cache/sends/' + encodeURIComponent(email) + '/' + win());
-  const hit = await caches.default.match(key); let n = hit ? +(await hit.text()) : 0;
-  if (add) { n++; await caches.default.put(key, new Response(String(n), { headers: { 'Cache-Control': 'max-age=' + CODE_MIN * 60 } })); }
-  return n;
-}
 async function guestCode(env, incKey) { const h = await hmac(env, 'guest.' + incKey); return 'G' + b64u(h).replace(/[-_]/g, '').slice(0, 7).toUpperCase(); }
 
 async function session(env, req) {
   const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '') || new URL(req.url).searchParams.get('gt');
   return verify(env, t);
 }
+const who = (s) => (s.u ? { u: s.u, e: s.e } : s.e);
 async function currentLevel(env, ctx, s) {
   if (s.g) return 'Guest';
-  const row = await roster(env, ctx, s.e); return levelOf(row, s.a);
+  const row = await roster(env, ctx, who(s)); return levelOf(row, s.a);
 }
-function sessionOut(s, lvl, row) { return { email: s.e, name: (row && row.name) || s.n, agency: (row && row.agency) || s.ag || '', level: lvl, app: s.a, incident: s.g || null, exp: s.exp }; }
+function sessionOut(s, lvl, row) { return { email: s.e, name: (row && row.name) || s.n, agency: (row && row.agency) || s.ag || '', kind: s.k || (row && row.kind) || 'Person', role: (row && row.role) || '', uid: s.u || null, level: lvl, app: s.a, incident: s.g || null, exp: s.exp }; }
+const lifeDays = (s) => (s.k === 'Device' ? DEVICE_DAYS : SESSION_DAYS);
+async function sha256hex(t) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(t)))].map((b) => b.toString(16).padStart(2, '0')).join(''); }
+const normSetup = (c) => String(c || '').toUpperCase().replace(/^BEACON-SETUP:/, '').replace(/[^A-Z0-9]/g, '');
+function randFrom(abc, n) { const b = crypto.getRandomValues(new Uint8Array(n * 2)); let o = ''; for (let i = 0; o.length < n && i < b.length; i++) if (b[i] < 248) o += abc[b[i] % abc.length]; return o.length === n ? o : randFrom(abc, n); }
+const newUid = () => randFrom('abcdefghjkmnpqrstuvwxyz23456789', 12);
+async function arcEdit(env, url, op, payload) {
+  const p = new URLSearchParams({ f: 'json', token: await arcToken(env) });
+  if (op === 'deleteFeatures') p.set('objectIds', String(payload)); else p.set('features', JSON.stringify(payload));
+  const r = await fetch(url + '/' + op, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p }).then((x) => x.json());
+  const res = r.error ? r : ((r.addResults || r.updateResults || r.deleteResults || [])[0] || {});
+  if (r.error || !res.success) throw new Error('ArcGIS did not save the change: ' + ((r.error && r.error.message) || (res.error && res.error.description) || 'unknown') + '. If this is the first time, run EM Ops → Setup → App Access.');
+  return res;
+}
 
 export default {
   async fetch(req, env, ctx) {
@@ -154,37 +197,36 @@ export default {
     try {
       if (path === '/' || path === '/health') return json({ ok: true, service: 'BEACON gate', t: Date.now() });
 
-      // 1) ask for a code
-      if (path === '/auth/start' && req.method === 'POST') {
-        const b = await req.json(), email = normEmail(b.email), app = APPS[b.app] ? b.app : 'cb';
-        if (!okEmail(email)) return err('Enter a full email address.');
-        const row = await roster(env, ctx, email);
-        // same answer whether or not the email is on the list, so the list can't be fished
-        if (levelOf(row, app) !== 'None' && (await sends(email)) < MAX_SENDS) {
-          await sends(email, true);
-          const code = await codeFor(env, email, win());
-          const r = await fetch(env.MAIL_FLOW_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: email, name: row.name, code, app: app === 'mci' ? 'MCI Board' : 'Command Board', minutes: CODE_MIN }) });
-          if (!r.ok) return err('The sign-in email could not be sent. Try again in a minute.', 502);
-        }
-        return json({ ok: true, minutes: CODE_MIN });
-      }
+      // Users page (Teams tab)
+      if (path === '/users' || path === '/users/') return new Response(USERS_PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'Content-Security-Policy': "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; connect-src 'self'" } });
 
-      // 2) trade the code for a session
-      if (path === '/auth/verify' && req.method === 'POST') {
-        const b = await req.json(), email = normEmail(b.email), app = APPS[b.app] ? b.app : 'cb', code = String(b.code || '').replace(/\D/g, '');
-        if (!okEmail(email) || code.length !== 6) return err('Enter the 6-digit code from the email.');
-        if ((await tries(email)) >= MAX_TRIES) return err('Too many tries. Wait 10 minutes and ask for a new code.', 429);
-        const ok = timingSafe(code, await codeFor(env, email, win())) || timingSafe(code, await codeFor(env, email, win() - 1));
-        if (!ok) { await tries(email, true); return err('That code is not right, or it has expired.', 401); }
-        const row = await roster(env, ctx, email), lvl = levelOf(row, app);
-        if (lvl === 'None') return err('This email does not have access.', 403);
-        const s = { e: email, n: row.name, ag: row.agency, a: app, d: String(b.device || '').slice(0, 64), iat: Date.now(), exp: Date.now() + SESSION_DAYS * 864e5 };
+      // 0) sign in with a setup code (people and truck iPads)
+      if (path === '/auth/setup' && req.method === 'POST') {
+        const b = await req.json(), app = APPS[b.app] ? b.app : 'cb', code = normSetup(b.code);
+        const ip = req.headers.get('CF-Connecting-IP') || 'ip';
+        if ((await tries('ip:' + ip)) >= MAX_TRIES * 2) return err('Too many tries. Wait 10 minutes.', 429);
+        if (code.length !== 10) return err('Enter the 10-character setup code.');
+        const a = (await usersQuery(env, 'setup_hash = ' + q(await sha256hex(code))))[0];
+        const used = String(a && a.setup_used || '').split(',').filter(Boolean);
+        if (!a || !(a.setup_expires > Date.now()) || used.includes(app)) { await tries('ip:' + ip, true); return err('That setup code is not right, has expired, or was already used in this app. Ask for a new one.', 401); }
+        const uid = a.uid || newUid();
+        await arcEdit(env, usersUrl(env), 'updateFeatures', [{ attributes: { OBJECTID: a.OBJECTID, uid, setup_used: used.concat(app).join(',') } }]);
+        const row = rowOut({ ...a, uid }, uid), lvl = levelOf(row, app);
+        if (lvl === 'None') return err(app === 'admin' ? 'This account cannot manage users.' : 'This account does not have access to this app.', 403);
+        await forget(row);
+        const s = { u: uid, e: row.email, k: row.kind, n: row.name, ag: row.agency, a: app, d: String(b.device || '').slice(0, 64), iat: Date.now() };
+        s.exp = Date.now() + lifeDays(s) * 864e5;
+        ctx.waitUntil(writeLog(env, { uid, name: row.name }, 'signed in', row, (row.kind === 'Device' ? 'device set up' : 'setup code used') + ' in ' + ({ cb: 'Command Board', mci: 'MCI Board', admin: 'Users page' }[app]) + (s.d ? ' on ' + s.d : '')).catch(() => {}));
         return json({ token: await sign(env, s), ...sessionOut(s, lvl, row) });
       }
 
-      // 2b) guest: an incident code from the IC (view only, that incident only, until it closes)
+      // email sign-in was retired Nov 24, 2026: older app builds get a clear answer
+      if (path === '/auth/start' || path === '/auth/verify') return err('Email sign-in has been retired. Ask a Chief, a User manager or Emergency Management for a setup code, and update the app from TestFlight.', 410);
+
+      // 1) guest: an incident code from the IC (view only, that incident only, until it closes)
       if (path === '/auth/guest' && req.method === 'POST') {
         const b = await req.json(), code = String(b.code || '').trim().toUpperCase(), name = String(b.name || '').trim().slice(0, 60), app = APPS[b.app] ? b.app : 'cb';
+        if (app === 'mci') return err('The MCI Board has no guest access (patient records).', 403);
         if (!/^G[A-Z0-9]{7}$/.test(code) || !name) return err('Enter your name and the incident code.');
         const inc = await findIncidentForGuest(env, code);
         if (!inc) return err('That incident code is not valid or the incident is closed.', 403);
@@ -199,9 +241,9 @@ export default {
 
       // 3) who am I (the app calls this on launch and every few minutes; returns a fresh token)
       if (path === '/me') {
-        const row = s.g ? null : await roster(env, ctx, s.e);
-        const fresh = s.g ? s : { ...s, n: (row && row.name) || s.n, iat: Date.now(), exp: Date.now() + SESSION_DAYS * 864e5 };
-        return json({ token: s.g ? null : await sign(env, fresh), ...sessionOut(fresh, lvl, row), layers: (layersFor(env)[s.a] || []).filter((L) => rank(lvl) >= rank(L.read)).map((L) => ({ url: 'https://' + L.svc, write: !!(L.write && rank(lvl) >= rank(L.write)) })) });
+        const row = s.g ? null : await roster(env, ctx, who(s));
+        const fresh = s.g ? s : { ...s, n: (row && row.name) || s.n, iat: Date.now(), exp: Date.now() + lifeDays(s) * 864e5 };
+        return json({ token: s.g ? null : await sign(env, fresh), ...sessionOut(fresh, lvl, row), layers: (layersFor(env)[s.a] || []).filter((L) => L.read && rank(lvl) >= rank(L.read)).map((L) => ({ url: 'https://' + L.svc, write: !!(L.write && rank(lvl) >= rank(L.write)), ids: L.layers || null, only: L.only ? String(L.only.source) : null, counts: !!(L.countsOnly || (L.statsBelow && rank(lvl) < rank(L.statsBelow))), hidden: L.strip && rank(lvl) < rank(L.stripBelow) ? L.strip.map((re) => re.source) : [] })) });
       }
 
       // 4) guest code for an incident (Command only)
@@ -212,8 +254,9 @@ export default {
       }
 
       // 5) ArcGIS through the gate
-      if (path === '/admin/users') return await adminUsers(req, env, s, lvl);
-      if (path.startsWith('/arc/')) return await arcProxy(req, env, ctx, s, lvl, url);
+      if (path === '/admin/users') return await adminUsers(req, env, ctx, s);
+      if (path === '/admin/log') return await adminLog(req, env, ctx, s, url);
+      if (path.startsWith('/arc/')) { if (s.a === 'admin') return err('That layer is not available in this app.', 403); return await arcProxy(req, env, ctx, s, lvl, url); }
 
       return err('Not found', 404);
     } catch (e) {
@@ -235,17 +278,39 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
   if (/\.\.|%2e|%2f|\/\/|\\/i.test(rest)) return err('That request is not allowed.', 403);
   const L = (layersFor(env)[s.a] || []).find((x) => rest === x.svc || rest.startsWith(x.svc + '/'));
   if (!L) return err('That layer is not available in this app.', 403);
-  if (rank(lvl) < rank(L.read)) return err('Your access level cannot see this layer.', 403);
+  if (!L.read || rank(lvl) < rank(L.read)) return err('Your access level cannot see this layer.', 403);
   const tail = rest.slice(L.svc.length).replace(/^\//, ''); // e.g. "0/query", "applyEdits", ""
   const op = tail.replace(/^\d+\/?/, '');
+  if (L.layers) { const m = tail.match(/^(\d+)(\/|$)/); if (!m || !L.layers.includes(+m[1])) return err('That layer is not available in this app.', 403); }
+  if (L.only && !L.only.test(op)) return err('That request is not allowed.', 403);
   // read params from query string and (for POST) the form body
   const p = new URLSearchParams(url.search);
   if (req.method === 'POST') { const body = new URLSearchParams(await req.text()); for (const [k, v] of body) p.set(k, v); }
   p.delete('token'); p.delete('gt');
-  const isWrite = WRITE_OPS.test(op), isDel = DEL_OPS.test(op);
+  const isWrite = WRITE_OPS.test(op), isDel = DEL_OPS.test(op) || (op === 'applyEdits' && !!(p.get('deletes') || '').replace(/[\s\[\]]/g, ''));
   if (isWrite && !(L.write && rank(lvl) >= rank(L.write))) return err('Your access level cannot change this.', 403);
   if (isDel && !(L.del && rank(lvl) >= rank(L.del))) return err('Your access level cannot delete this.', 403);
   if (!isWrite && !isDel && !READ_OPS.test(op)) return err('That request is not allowed.', 403);
+  const hides = L.strip && rank(lvl) < rank(L.stripBelow);
+  if (hides) {
+    // hidden fields can't be used to filter, sort or group either (that would let someone guess them one letter at a time)
+    if (SEARCH_PARAMS.some((k) => p.has(k) && L.strip.some((re) => re.test(p.get(k))))) return err('Your access level cannot search on that field.', 403);
+    if (L.noWrite && isWrite && ['features', 'adds', 'updates'].some((k) => p.has(k) && L.strip.some((re) => re.test(p.get(k))))) return err('Your access level cannot change that field.', 403);
+  }
+  if ((L.countsOnly || (L.statsBelow && rank(lvl) < rank(L.statsBelow))) && !isWrite && !isDel) {
+    // counts only: by incident, and grouped by triage / status / hospital
+    if (op !== 'query') return err('Your access level can only see counts.', 403);
+    const w = (p.get('where') || '1=1').trim();
+    if (!/^(1\s*=\s*1|incident_key\s*=\s*'[\w-]{1,40}')$/i.test(w)) return err('Your access level can only see counts for one incident.', 403);
+    if (p.get('returnCountOnly') !== 'true') {
+      let st; try { st = JSON.parse(p.get('outStatistics') || 'null'); } catch (e) { st = null; }
+      const grp = (p.get('groupByFieldsForStatistics') || '').split(',').map((x) => x.trim()).filter(Boolean);
+      if (!Array.isArray(st) || !st.length || st.some((x) => !x || String(x.statisticType).toLowerCase() !== 'count' || !STAT_FIELDS.includes(x.onStatisticField)) || grp.some((g) => !STAT_FIELDS.includes(g)))
+        return err('Your access level can only see counts.', 403);
+    }
+    ['outFields', 'orderByFields', 'objectIds', 'geometry', 'text', 'having', 'returnDistinctValues', 'relationshipParam'].forEach((k) => p.delete(k));
+    p.set('returnGeometry', 'false');
+  }
   if (lvl === 'Guest') {
     if (isWrite || isDel) return err('Guests can only view.', 403);
     // guests: the filter is replaced, not added to, so no where clause can widen it
@@ -266,7 +331,7 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
     : await fetch(target + '?' + p);
   if (isBin) return new Response(r.body, { status: r.status, headers: { 'Content-Type': r.headers.get('Content-Type') || 'application/octet-stream', 'Cache-Control': 'private, max-age=3600', ...CORS } });
   let j = await r.json();
-  if (L.strip && rank(lvl) < rank(L.stripBelow)) j = stripFields(j, L.strip);
+  if (hides) j = stripFields(j, L.strip);
   if (j && typeof j === 'object' && !Array.isArray(j)) { delete j.serviceItemId; } // nothing that helps find the source item
   return json(j, r.status === 200 ? 200 : r.status);
 }
@@ -277,71 +342,135 @@ function stripFields(j, pats) {
   return j;
 }
 
-// ---------- user management inside the apps (Chief and Admin) ----------
-// Chief: add, change and turn off people up to Command; cannot touch Chiefs or Admins.
-// Admin: everything. Nobody can change their own levels, turn themselves off or remove themselves.
-const UF = ['email', 'full_name', 'agency', 'cb_level', 'mci_level', 'active', 'expires', 'notes'];
-const usersUrl = (env) => 'https://' + (env.USERS_TABLE || services(env).users + '/0');
-const capOf = (lvl) => (rank(lvl) >= rank('Admin') ? 'Admin' : 'Command');
-const canTouch = (lvl, row) => rank(lvl) >= rank('Admin') || (rank(row.cb_level) < rank('Chief') && rank(row.mci_level) < rank('Chief'));
-async function usersQuery(env, where) {
-  const p = new URLSearchParams({ f: 'json', where, outFields: 'OBJECTID,' + UF.join(','), orderByFields: 'full_name', resultRecordCount: '2000', token: await arcToken(env) });
-  const r = await fetch(usersUrl(env) + '/query?' + p).then((x) => x.json());
-  if (r.error) throw new Error('Users table: ' + r.error.message);
-  return (r.features || []).map((f) => f.attributes);
+// ---------- user management: the Users page (Teams tab) and the Users screen in each app ----------
+// Admin: everything. The only one who can raise a truck iPad above Officer, set "User manager", or remove a row.
+// User manager (a role, not a board level): people and devices up to Command, any agency. Can't touch Chiefs, Admins or User managers.
+// Chief: the same, but only their own agency.
+// Nobody can change their own access (levels, on/off, role, email) or remove themselves.
+const ROLES = ['', 'User manager'];
+function rightsOf(me) {
+  if (!me || !me.active) return null;
+  const admin = rank(me.levels.cb) >= rank('Admin') || rank(me.levels.mci) >= rank('Admin');
+  const um = me.role === 'User manager', chief = !admin && !um && (rank(me.levels.cb) >= rank('Chief') || rank(me.levels.mci) >= rank('Chief'));
+  if (!admin && !um && !chief) return null;
+  return { admin, um, chief, agency: (me.agency || '').trim().toLowerCase(), cap: admin ? 'Admin' : 'Command' };
 }
-function cleanUser(u, cap) {
+const sameAgency = (R, a) => (a.agency || '').trim().toLowerCase() === R.agency;
+function canTouch(R, a) {
+  if (R.admin) return true;
+  if (rank(topOf(a)) >= rank('Chief') || umOf(a)) return false;
+  return R.chief ? sameAgency(R, a) : true;
+}
+function publicRow(a, R, meUid) {
+  const o = {}; ['OBJECTID', 'uid', 'email', 'full_name', 'agency', 'cb_level', 'mci_level', 'active', 'expires', 'notes', 'user_role'].forEach((k) => { o[k] = a[k] == null ? (k === 'user_role' ? '' : null) : a[k]; });
+  o.kind = isDev(a) ? 'Device' : 'Person'; o.setup_pending = a.setup_expires > Date.now(); o.setup_expires = o.setup_pending ? a.setup_expires : null;
+  o.self = !!meUid && a.uid === meUid; o.locked = !o.self && !canTouch(R, a); return o;
+}
+function cleanUser(u0, R, old) {
+  // on a change, anything the request leaves out keeps its current value
+  const u = old ? { ...old, ...Object.fromEntries(Object.entries(u0).filter(([, v]) => v !== undefined)) } : u0;
   const o = {}, str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
-  o.email = normEmail(u.email); if (!okEmail(o.email)) throw new Error('Enter a full email address.');
-  o.full_name = str(u.full_name, 150); o.agency = str(u.agency, 150); o.notes = str(u.notes, 500);
-  ['cb_level', 'mci_level'].forEach((k) => {
+  const kind = old ? (isDev(old) ? 'Device' : 'Person') : (u.kind === 'Device' ? 'Device' : 'Person');
+  o.kind = kind;
+  o.full_name = str(u.full_name, 150); o.notes = str(u.notes, 500);
+  o.agency = R.chief ? (old ? old.agency || '' : R.agencyRaw || '') : str(u.agency, 150);
+  o.email = normEmail(u.email);
+  if (kind === 'Person' && !okEmail(o.email)) throw new Error('Enter a full email address.');
+  if (kind === 'Device') { if (o.email && !okEmail(o.email)) throw new Error('The contact email is not a valid address.'); if (!o.full_name) throw new Error('Give the device a name, like "Engine 51 iPad".'); }
+  LEVEL_COLS.forEach((k) => {
     const v = u[k] || 'None'; if (!ORDER.includes(v) || v === 'Guest') throw new Error('Unknown level ' + v + '.');
-    if (rank(v) > rank(cap)) throw new Error('You can give levels up to ' + cap + '.'); o[k] = v;
+    if (rank(v) > rank(R.cap) && !(old && (old[k] || 'None') === v)) throw new Error('You can give levels up to ' + R.cap + '.');
+    if (kind === 'Device' && rank(v) > rank('Officer') && !R.admin && !(old && old[k] === v)) throw new Error('Only an Admin can set a truck iPad above Officer.');
+    o[k] = v;
   });
+  o.user_role = R.admin ? (ROLES.includes(u.user_role) ? u.user_role : '') : (old ? old.user_role || '' : '');
+  if (kind === 'Device') o.user_role = '';
   o.active = u.active === 'No' ? 'No' : 'Yes';
   o.expires = u.expires ? Number(u.expires) || null : null;
   return o;
 }
-async function adminUsers(req, env, s, lvl) {
-  if (s.g || rank(lvl) < rank('Chief')) return err('Only Chiefs and Admins can manage users.', 403);
-  const cap = capOf(lvl);
+async function writeLog(env, by, action, target, details) {
+  const at = { at: Date.now(), by_uid: by.uid || '', by_name: String(by.name || '').slice(0, 150), action, target_uid: target.uid || '', target_name: String(target.name || target.full_name || target.email || '').slice(0, 150), agency: String(target.agency || '').slice(0, 150), details: String(details || '').slice(0, 500) };
+  if (!env.QUIET) console.log(JSON.stringify({ log: at }));
+  await arcEdit(env, logUrl(env), 'addFeatures', [{ attributes: at }]);
+}
+async function managerOf(env, ctx, s) {
+  if (s.g) return [null, null];
+  const me = await roster(env, ctx, who(s)); const R = rightsOf(me); if (R) R.agencyRaw = me.agency || '';
+  return [me, R];
+}
+async function adminUsers(req, env, ctx, s) {
+  const [me, R] = await managerOf(env, ctx, s);
+  if (!R) return err('Only Chiefs, User managers and Admins can manage users.', 403);
+  const meUid = me.uid || '';
   if (req.method === 'GET') {
-    const rows = await usersQuery(env, '1=1');
-    return json({ me: s.e, level: lvl, cap, levels: ORDER.filter((l) => l !== 'Guest' && rank(l) <= rank(cap)), users: rows.map((r) => ({ ...r, locked: !canTouch(lvl, r), self: normEmail(r.email) === s.e })) });
+    let rows = await usersQuery(env, '1=1');
+    if (R.chief) rows = rows.filter((a) => sameAgency(R, a));
+    return json({ me: { uid: meUid, email: me.email, name: me.name, agency: me.agency }, rights: { admin: R.admin, userManager: R.um, chief: R.chief, cap: R.cap }, levels: ORDER.filter((l) => l !== 'Guest' && rank(l) <= rank(R.cap)), roles: R.admin ? ROLES : [], users: rows.map((a) => publicRow(a, R, meUid)) });
   }
   if (req.method !== 'POST') return err('Not allowed', 405);
   const b = await req.json(), op = b.op;
-  let old = null, edits = {};
-  if (op === 'update' || op === 'remove') {
+  let old = null;
+  if (op !== 'add') {
     const id = parseInt(b.id, 10); if (!id) return err('No user.');
-    old = (await usersQuery(env, 'OBJECTID = ' + id))[0]; if (!old) return err('That person is no longer on the list.', 404);
-    if (!canTouch(lvl, old)) return err('Only an Admin can change a Chief or an Admin.', 403);
+    old = (await usersQuery(env, 'OBJECTID = ' + id))[0]; if (!old) return err('That person or device is no longer on the list.', 404);
+    const mine = (meUid && old.uid === meUid) || (!s.u && !isDev(old) && normEmail(old.email) === me.email);
+    if (!mine && !canTouch(R, old)) return err(R.chief && !sameAgency(R, old) ? 'Chiefs can only manage their own agency.' : 'Only an Admin can change a Chief, an Admin or a User manager.', 403);
   }
-  const self = old && normEmail(old.email) === s.e;
+  const self = !!(old && meUid && old.uid === meUid) || !!(old && !isDev(old) && !old.uid && normEmail(old.email) === me.email && !s.u);
+  const by = { uid: meUid, name: me.name }, label = (a) => ({ uid: a.uid, name: a.full_name || a.email, agency: a.agency });
+  let res, logAction = op, details = '', out = {};
   if (op === 'remove') {
+    if (!R.admin) return err('Only an Admin can remove. Turn them off instead.', 403);
     if (self) return err('You cannot remove yourself. Ask another Admin.', 403);
-    edits = { deletes: [old.OBJECTID] };
+    res = await arcEdit(env, usersUrl(env), 'deleteFeatures', old.OBJECTID); logAction = 'removed';
+  } else if (op === 'off' || op === 'on') {
+    if (self) return err('You cannot turn yourself off or on. Ask another Admin.', 403);
+    res = await arcEdit(env, usersUrl(env), 'updateFeatures', [{ attributes: { OBJECTID: old.OBJECTID, active: op === 'off' ? 'No' : 'Yes' } }]);
+    logAction = op === 'off' ? 'turned off' : 'turned on';
+  } else if (op === 'setup' || op === 'clearsetup') {
+    if (old.active === 'No' && op === 'setup') return err('Turn this account on before issuing a setup code.', 400);
+    const code = op === 'setup' ? randFrom(SETUP_ABC, 10) : null, expires = Date.now() + SETUP_HOURS * 3600e3;
+    const attrs = { OBJECTID: old.OBJECTID, setup_hash: code ? await sha256hex(code) : null, setup_expires: code ? expires : null, setup_used: '' };
+    if (!old.uid) attrs.uid = newUid();
+    if (old.kind == null) attrs.kind = 'Person';
+    res = await arcEdit(env, usersUrl(env), 'updateFeatures', [{ attributes: attrs }]);
+    logAction = code ? 'setup code issued' : 'setup code cancelled';
+    if (code) out = { code: code.slice(0, 5) + '-' + code.slice(5), expires, qr: 'beacon-setup:' + code };
   } else if (op === 'add' || op === 'update') {
-    let u; try { u = cleanUser(b.user || {}, cap); } catch (e) { return err(e.message, 400); }
-    if (self && (u.cb_level !== old.cb_level || u.mci_level !== old.mci_level || u.active !== (old.active === 'No' ? 'No' : 'Yes') || normEmail(u.email) !== s.e || (u.expires || null) !== (old.expires || null)))
+    let u; try { u = cleanUser(b.user || {}, R, old); } catch (e) { return err(e.message, 400); }
+    if (self && (LEVEL_COLS.some((k) => u[k] !== (old[k] || 'None')) || u.active !== (old.active === 'No' ? 'No' : 'Yes') || u.email !== normEmail(old.email) || (u.user_role || '') !== (old.user_role || '') || (u.expires || null) !== (old.expires || null)))
       return err('You cannot change your own access. Ask another Admin.', 403);
-    if (!old || normEmail(old.email) !== u.email) {
-      const dup = await usersQuery(env, "LOWER(email) = '" + u.email.replace(/'/g, "''") + "'");
+    if (u.kind === 'Person' && (!old || normEmail(old.email) !== u.email)) {
+      const dup = (await usersQuery(env, 'LOWER(email) = ' + q(u.email) + " AND (kind IS NULL OR kind <> 'Device')", 'LOWER(email) = ' + q(u.email))).filter((a) => !isDev(a));
       if (dup.length) return err('That email is already on the list.', 409);
     }
-    edits = old ? { updates: [{ attributes: { OBJECTID: old.OBJECTID, ...u } }] } : { adds: [{ attributes: u }] };
+    if (old) {
+      if (self && u.agency !== (old.agency || '') && !R.admin) return err('Ask an Admin to change your agency.', 403);
+      const changed = Object.keys(u).filter((k) => String(u[k] == null ? '' : u[k]) !== String(old[k] == null ? '' : old[k]));
+      details = changed.map((k) => k + ': ' + (old[k] || '–') + ' → ' + (u[k] || '–')).join('; ');
+      res = await arcEdit(env, usersUrl(env), 'updateFeatures', [{ attributes: { OBJECTID: old.OBJECTID, ...u } }]);
+      logAction = 'changed';
+    } else {
+      u.uid = newUid();
+      res = await arcEdit(env, usersUrl(env), 'addFeatures', [{ attributes: u }]);
+      details = [u.kind, 'CB ' + u.cb_level, 'MCI ' + u.mci_level, u.user_role].filter(Boolean).join(', ');
+      logAction = 'added';
+    }
+    old = old || u;
   } else return err('Unknown request.');
-  const p = new URLSearchParams({ f: 'json', token: await arcToken(env) });
-  Object.keys(edits).forEach((k) => p.set(k, JSON.stringify(edits[k])));
-  const op2 = edits.deletes ? 'deleteFeatures' : edits.adds ? 'addFeatures' : 'updateFeatures';
-  if (edits.deletes) { p.delete('deletes'); p.set('objectIds', edits.deletes.join(',')); }
-  if (edits.adds) { p.delete('adds'); p.set('features', JSON.stringify(edits.adds)); }
-  if (edits.updates) { p.delete('updates'); p.set('features', JSON.stringify(edits.updates)); }
-  const r = await fetch(usersUrl(env) + '/' + op2, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p }).then((x) => x.json());
-  const res = r.error ? r : ((r.addResults || r.updateResults || r.deleteResults || [])[0] || {});
-  if (r.error || !res.success) return err('ArcGIS did not save the change: ' + ((r.error && r.error.message) || (res.error && res.error.description) || 'unknown'), 502);
-  const emails = [old && old.email, b.user && b.user.email].filter(Boolean).map(normEmail);
-  for (const e of emails) await caches.default.delete(new Request('https://gate.cache/roster/' + encodeURIComponent(e)));
-  console.log(JSON.stringify({ users: op, by: s.e, target: emails, at: new Date().toISOString() }));
-  return json({ ok: true, id: res.objectId || (old && old.OBJECTID) });
+  await forget({ uid: old.uid, email: old.email });
+  if (b.user && b.user.email) await forget({ email: b.user.email });
+  let logged = true; try { await writeLog(env, by, logAction, label(old.full_name ? old : { ...old, full_name: (b.user || {}).full_name }), details); } catch (e) { logged = false; }
+  return json({ ok: true, id: res.objectId || old.OBJECTID, logged, ...out });
+}
+async function adminLog(req, env, ctx, s, url) {
+  const [me, R] = await managerOf(env, ctx, s);
+  if (!R) return err('Only Chiefs, User managers and Admins can see the change log.', 403);
+  const n = Math.min(500, Math.max(1, parseInt(url.searchParams.get('limit'), 10) || 200));
+  const where = R.chief ? '(by_uid = ' + q(me.uid || '-') + ' OR LOWER(agency) = ' + q(R.agency) + ')' : '1=1';
+  const p = new URLSearchParams({ f: 'json', where, outFields: 'at,by_name,action,target_name,agency,details', orderByFields: 'at DESC', resultRecordCount: String(n), token: await arcToken(env) });
+  const r = await fetch(logUrl(env) + '/query?' + p).then((x) => x.json());
+  if (r.error) return json({ entries: [], note: 'The change log table is not set up yet. Run EM Ops → Setup → App Access.' });
+  return json({ entries: (r.features || []).map((f) => f.attributes) });
 }
