@@ -777,3 +777,31 @@ body.cbphone .netpill{max-width:150px;white-space:nowrap;overflow:hidden;text-ov
 /* in the app the status pill sits top-right, clear of the action bar */
 html.cbapp .netpill{top:calc(18px + env(safe-area-inset-top));bottom:auto;left:auto;right:150px;padding:6px 11px;font-size:12px;z-index:2000}
 @media (max-width:560px){html.cbapp .netpill{right:64px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}}
+/* phone map tools */
+.cbpplace{position:sticky;top:calc(64px + 128px + env(safe-area-inset-top));z-index:25;display:flex;align-items:center;gap:10px;margin:0 0 8px;padding:10px 12px;border-radius:12px;background:#FDB833;color:#111}
+.cbpplace b{flex:1;font:800 16px var(--cond)}.cbpplace .btn{background:#111;color:#fff;border-color:#111}
+.cbpwarn{margin:0 0 8px;padding:10px 12px;border-radius:12px;border:1px solid var(--gold);background:var(--gold-bg);font-size:14px}
+.cbpmt button{display:inline-flex;align-items:center;gap:6px}.cbpmt .ic,.cbpmt .cbi{width:16px;height:16px}.cbpmt .cbsideA{width:18px;height:18px;font-size:11px;line-height:18px}
+.cbpmap{border-radius:14px;overflow:hidden;border:1px solid var(--line2)}
+.cbpwb .cbwb{height:calc(100dvh - 300px);min-height:360px}
+.cbpwb .cbwbtools{flex-wrap:wrap;gap:4px}.cbpwb .cbwbpages{overflow-x:auto}
+.toast .btn.xs{margin-left:8px;padding:3px 10px;min-height:0}
+.cbpmap .cbmaphost{height:calc(100dvh - 440px - env(safe-area-inset-bottom));min-height:260px}
+/* iPhone on its side: keep the strip slim and let the content breathe */
+@media (max-height:500px){
+  .cbptop{position:static;padding:6px 12px;margin-bottom:8px}
+  .cbpwhere span{display:none}.cbpwhere b{font-size:17px}
+  .cbprow{margin-top:4px}.cbprow>*{min-height:40px}.cbprow b{font-size:18px}
+  .cbpnav{grid-template-columns:repeat(5,1fr);padding-top:2px}.cbpnav button{min-height:40px;flex-direction:row;gap:6px}
+  .cbpc{padding-bottom:calc(56px + env(safe-area-inset-bottom))}
+  .cbpmap .cbmaphost{height:calc(100dvh - 150px);min-height:200px}
+  .cbpplace{position:static}
+  .cbpwb .cbwb{height:calc(100dvh - 120px);min-height:220px}
+  .cbpc,.cbptop{padding-left:max(12px, env(safe-area-inset-left));padding-right:max(12px, env(safe-area-inset-right))}
+  .cbpasg,.cbpmarks button{max-width:100%}
+}
+@media (max-height:500px){
+  .cbbody .cbfire.cbh2{height:48px;position:relative}
+  .cbbody .cbfire .cbpatch{height:40px}.cbbody .cblock .k{display:none}.cbbody .cblock .t{font-size:20px}
+  .cbptop{top:0}
+}
