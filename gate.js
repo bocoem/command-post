@@ -8,6 +8,7 @@
   var G = window.BEACON_GATE; if (!G || !G.url || !CP.arc) return;
   var A = CP.arc, N = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.beacon;
   CP.gate = G; A.gate = true;
+  document.documentElement.classList.add('cbapp');
   CP.native = function (msg) { try { if (N) N.postMessage(msg); } catch (e) {} };
   var lvlRank = { None: 0, Guest: 1, Viewer: 2, Officer: 3, Command: 4, Chief: 5, Admin: 6 };
   CP.gate.can = function (lvl) { return (lvlRank[G.level] || 0) >= (lvlRank[lvl] || 99); };
