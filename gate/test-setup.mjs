@@ -56,7 +56,7 @@ r = await call('/admin/users', M, { op: 'setup', id: e51.OBJECTID }); ok(r[0] ==
 
 // --- legacy rows and people
 r = await call('/admin/users', C, { op: 'setup', id: 5 }); ok(r[0] === 200 && st.rows.find((x) => x.OBJECTID === 5).uid, 'Older row gets a uid when its first setup code is issued');
-r = await call('/auth/setup', null, { code: r[1].code, app: 'cb' }); ok(r[0] === 200 && r[1].kind === 'Person' && r[1].level === 'Command' && r[1].exp < Date.now() + 31 * 864e5, 'Person signs in with a setup code, 30-day session');
+r = await call('/auth/setup', null, { code: r[1].code, app: 'cb' }); ok(r[0] === 200 && r[1].kind === 'Person' && r[1].level === 'Command' && r[1].exp > Date.now() + 360 * 864e5 && r[1].exp < Date.now() + 366 * 864e5, 'Person signs in with a setup code, one-year session');
 r = await call('/admin/users', C, { op: 'setup', id: 4 }); ok(r[0] === 403 && /own agency/.test(r[1].error.message), 'Chief cannot touch another agency');
 r = await call('/admin/users', C, { op: 'add', user: { kind: 'Person', full_name: 'New Five', email: 'new5@x.gov', agency: 'Station 9', cb_level: 'Officer' } });
 ok(r[0] === 200 && st.rows.find((x) => x.email === 'new5@x.gov').agency === 'Station 5', 'Chief adds into own agency only');
