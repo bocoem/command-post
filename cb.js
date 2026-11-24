@@ -280,7 +280,7 @@
   function saveNote(t) { t = (t || '').trim(); if (!t) return false; commit(t, /command/i.test(t) ? 'Decision' : 'Event'); return true; }
 
   // ---------- the board ----------
-  function phone() { return window.innerWidth < 720 || new URLSearchParams(location.search).get('view') === '1' || (A.gate && !CP.gate.can('Command')); }
+  function phone() { return window.innerWidth < 720 || Math.min(window.innerWidth, window.innerHeight) < 500 || new URLSearchParams(location.search).get('view') === '1' || (A.gate && !CP.gate.can('Command')); }
   function app() { return !!A.gate; }
   function board() {
     var i = inc(), mode = kv('mode', ''), cond = kv('cond', ''), parEvery = +kv('parEvery', 20), parT = kv('parT', i.start), parDue = new Date(parT).getTime() + parEvery * 60000, parLeft = Math.round((parDue - Date.now()) / 1000);
@@ -401,8 +401,8 @@
       '<div class="cbprow"><div class="cbpel"><span>Elapsed</span><b id="cbEl">' + since(i.start) + '</b></div><button class="cbpar' + (left <= 0 ? ' due' : left < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR · ' + ppl(onScene()) + ' on scene</span><b id="cbPar">' + (left <= 0 ? 'DUE' : Math.floor(left / 60) + ':' + CP.pad(left % 60)) + '</b></button><button class="cbpmay" data-cb="mayday">' + I('warn') + '<span>' + (may ? 'ACTIVE' : 'MAYDAY') + '</span></button></div></div>';
     if (may) h += '<div class="cbmaybar">' + I('warn') + ' MAYDAY ' + E(since(may.t)) + ' · ' + E(may.who || '') + ' · ' + E(may.where || '') + ' <button class="btn sm" data-cb="mayclear">Clear</button></div>';
     h += etBar();
-    if (t === 'map') h += '<div class="cbphmap cbpmap"><div class="cbmaphost" id="cbMapHost"></div></div><p class="dim" style="font-size:12.5px">Sides, symbols and the incident location are set on the iPad map.</p>';
-    else if (t === 'wb') h += '<div class="cbwb cbwbro"><div class="cbwbbar" id="cbWbBar">' + wbBarHtml() + '</div><div class="cbwbhost" id="cbWbHost"></div></div><p class="dim" style="font-size:12.5px">View only. Drawing is done on the iPad.</p>';
+    if (t === 'map') h += pmapView();
+    else if (t === 'wb') h += '<div class="cbpwb">' + wbView() + '</div>';
     else if (t === 'units') {
       var free = units().filter(function (r) { return !r.assign; }), wait = free.filter(function (r) { return r.status !== 'En Route'; }), enr = free.filter(function (r) { return r.status === 'En Route'; }), on = units().filter(function (r) { return r.assign; });
       h += '<div class="cbph2">' + I('plus') + 'Add a unit</div><div class="cbpadd">' + KINDS.map(function (k) { return '<button data-cb="addk" data-a="' + k[0] + '">' + E(k[0]) + '<span>' + E(k[1]) + '</span></button>'; }).join('') + '<button data-cb="pov">POV<span>Personal vehicle</span></button><button data-cb="cadunits">' + I('radio') + '<span>From CAD</span></button></div>' +
@@ -429,6 +429,61 @@
     }
     return h + pnav() + '</div>';
   }
+
+  // ---------- phone map: the iPad map tools as a row of buttons and pop-up sheets ----------
+  function pmapView() {
+    var c = incLL(), su = CB.sel ? CP.byId(inc().resources, CB.sel) : null, pl = CB.placing || '', msg = '', btn = '';
+    if (pl === 'inc') { msg = 'Tap the map where the incident is'; btn = '<button class="btn sm" data-cb="setloc">Cancel</button>'; }
+    else if (pl.indexOf('side:') === 0) { msg = 'Tap the map to place side ' + E(pl.slice(5)); btn = '<button class="btn sm" data-cb="side" data-a="' + E(pl.slice(5)) + '">Cancel</button>'; }
+    else if (pl.indexOf('sym:') === 0) { msg = 'Tap the map to place: ' + E(symDef(pl.slice(4)).n); btn = '<button class="btn sm pri" data-cb="sym" data-a="' + E(pl.slice(4)) + '">Done</button>'; }
+    else if (su) { msg = 'Tap the map to place ' + E(su.name); btn = '<button class="btn sm" data-cb="desel">Cancel</button>'; }
+    var ns = Object.keys(sides()).length, nsym = syms().length, placed = units().filter(function (r) { return r.lat != null && r.lat !== ''; }).length;
+    var tools = [['pgps', I('target'), 'Here (GPS)'], ['setloc', I('pin'), c ? 'Move pin' : 'Set location'], ['psides', '<b class="cbsideA sA">A</b>', 'Sides' + (ns ? ' ' + ns + '/4' : '')], ['psyms', svg('flag'), 'Symbols' + (nsym ? ' ' + nsym : '')], ['pplace', I('truck'), 'Units' + (placed ? ' ' + placed : '')], ['mapfit', I('map'), 'Fit all'], ['players', I('eye'), 'Show']];
+    return (msg ? '<div class="cbpplace"><b>' + msg + '</b>' + btn + '</div>' : '') +
+      (c ? '' : '<div class="cbpwarn">No incident location yet. Tap <b>Here (GPS)</b> if you are at the scene, or <b>Set location</b> and tap the map.</div>') +
+      '<div class="cbpchips cbpmt">' + tools.map(function (x) { return '<button data-cb="' + x[0] + '" class="' + ((x[0] === 'setloc' && pl === 'inc') || (x[0] === 'psides' && pl.indexOf('side:') === 0) || (x[0] === 'psyms' && pl.indexOf('sym:') === 0) || (x[0] === 'pplace' && su) ? 'on' : '') + '">' + x[1] + x[2] + '</button>'; }).join('') + '</div>' +
+      '<div class="cbphmap cbpmap"><div class="cbmaphost" id="cbMapHost"></div></div>' +
+      (c && CB.hyd && CB.hyd.length ? '<div class="cbph2">Nearest hydrants</div>' + CB.hyd.slice(0, 3).map(function (hh) { return '<div class="cbrow2' + (hh.out ? ' bad' : '') + '"><b>' + Math.round(hh.ft) + ' ft</b><span>' + E(hh.name) + (hh.psi ? ' · ' + hh.psi + ' psi' : '') + (hh.out ? ' · OUT OF SERVICE' : '') + '</span></div>'; }).join('') : c && CB.hyd && !CB.hyd.length ? '<div class="cbpwarn">No hydrants within about 1,000 yards. Plan for tanker water supply.</div>' : '');
+  }
+  // a sheet whose buttons run board actions, then close
+  function psheet(title, body) {
+    var bg = U.modal(title, body, [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
+    bg.addEventListener('click', function (e) { if (e.target.closest('[data-cb]') && !e.target.closest('[data-keep]')) setTimeout(U.closeModal, 0); });
+    return bg;
+  }
+  function p_gps() {
+    if (!navigator.geolocation) { U.toast('Location is not available on this device', 'err'); return; }
+    U.toast('Finding your location…');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var ll = [+pos.coords.latitude.toFixed(6), +pos.coords.longitude.toFixed(6)], acc = Math.round(pos.coords.accuracy || 0), c = incLL();
+      var go = function () { var i = inc(); i.location.lat = ll[0]; i.location.lng = ll[1]; CP.touch(i, 'location'); CB.hyd = null; CB.hydFor = null; CB.mapC = null; commit('Incident location set from the IC\'s phone GPS (' + ll[0] + ', ' + ll[1] + (acc ? ', ±' + acc + ' m' : '') + ')', 'Event'); if (CB.map) CB.map.setView(ll, 18); };
+      if (!c) return go();
+      sure('Move the incident pin to where you are?', 'Your position is about ' + Math.round(miles(c, ll) * 5280) + ' ft from the current pin' + (acc ? ' (phone accuracy ±' + Math.round(acc * 3.28) + ' ft)' : '') + '.', 'Move pin', go);
+    }, function (er) { U.toast(er.code === 1 ? 'Location is turned off for Command Board. Settings → Privacy → Location Services → Command Board.' : 'Could not get your location. Use Set location and tap the map.', 'err', 7000); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+  }
+  function p_sides() {
+    var cur = sides();
+    psheet('Building sides', '<p class="dim" style="margin-top:0">Pick a side, then tap the map where it is. Side A is normally the address side.</p><div class="cbpadd">' + SIDES.map(function (x) { return '<button data-cb="side" data-a="' + x + '"><b class="cbsideA s' + x + '">' + x + '</b><span>' + (cur[x] ? 'Placed · move' : 'Not placed') + '</span></button>'; }).join('') + '</div>' + (Object.keys(cur).length ? '<div class="cbpbtns"><button class="btn" data-cb="sidesclear">' + I('trash') + 'Clear all sides</button></div>' : ''));
+  }
+  function p_syms() {
+    var keep = CB.symOpen; CB.symOpen = true; var body = symPanel(); CB.symOpen = keep;
+    var n = syms().length;
+    psheet('Map symbols', '<p class="dim" style="margin-top:0">Pick a symbol, then tap the map. Tap <b>Done</b> on the map when you have placed enough. Tap a placed symbol on the map to move or remove it.</p>' + body.replace(/<button class="btn xs ghost" data-cb="symshow">[^<]*<\/button>/, '') + (n ? '<div class="cbpbtns"><span class="dim">' + n + ' placed</span></div>' : ''));
+  }
+  function p_place() {
+    var us = units();
+    if (!us.length) { U.toast('Add units first (Units tab)', 'err'); return; }
+    psheet('Place a unit', '<p class="dim" style="margin-top:0">Pick a unit, then tap the map where it is. Units already placed can also be dragged on the map.</p><div class="cbpmove">' + us.map(function (r) { var a = r.assign && CP.byId(inc().assignments, r.assign); return '<button data-cb="pplace1" data-a="' + r.id + '">' + E(r.name) + '<em>' + (r.lat != null && r.lat !== '' ? 'placed · move' : a ? E(aName(a)) : 'not placed') + '</em></button>'; }).join('') + '</div>');
+  }
+  function p_layers() {
+    psheet('Show on the map', '<div class="cbpmove"><button data-cb="lyr" data-a="hyd" class="' + (CB.hide_hyd ? '' : 'on') + '">Hydrants<em>' + (CB.hide_hyd ? 'hidden' : 'shown') + '</em></button><button data-cb="lyr" data-a="avl" class="' + (CB.hide_avl ? '' : 'on') + '">Live units (CAD)<em>' + (CB.hide_avl ? 'hidden' : 'shown') + '</em></button><button data-cb="iso">Hazmat isolation zone<em>' + (kv('iso', null) ? E(kv('iso').rTxt) : 'none') + '</em></button></div>');
+  }
+  // undo the last unit move (mis-taps happen on a phone)
+  function rememberMoves(list) { CB.lastMoves = list.map(function (r) { return { id: r.id, from: r.assign || '' }; }); CB.lastMoveT = Date.now(); }
+  function p_undo() {
+    var L0 = CB.lastMoves; if (!L0 || Date.now() - CB.lastMoveT > 120000) { U.toast('Nothing to undo', 'err'); return; } CB.lastMoves = null;
+    L0.forEach(function (m) { var r = CP.byId(inc().resources, m.id); if (r && (r.assign || '') !== m.from) moveUnit(r, m.from); });
+  }
   // tap a unit: where should it go, and what else
   function p_usheet(id) {
     var r = CP.byId(inc().resources, id); if (!r) return;
@@ -436,12 +491,13 @@
     var bg = U.modal(r.name, '<p class="dim" style="margin-top:0">' + (a ? 'In <b>' + E(aName(a)) + '</b>' : r.status === 'En Route' ? 'Responding' : 'Waiting, not assigned') + (wm ? ' · working ' + wm + ' min' : '') + (+r.persons ? ' · ' + r.persons + ' riding' : '') + (needsAck(r) ? ' · <b>not acknowledged</b>' : '') + '</p>' +
       '<div class="cbph2" style="margin-top:0">Move to</div><div class="cbpmove">' + asgs().map(function (x) { return '<button class="' + (x.id === r.assign ? 'on' : '') + '" data-mv="' + x.id + '">' + E(aName(x)) + '<em>' + unitsIn(x.id).length + '</em></button>'; }).join('') +
       '<button data-mv="__new">' + I('plus') + 'New division / group</button>' + (r.assign || r.status === 'En Route' ? '<button data-mv="">Waiting (unassigned)</button>' : '') + '</div>' +
-      '<div class="cbpbtns">' + (wm ? '<button class="btn" data-ua="rehab">' + svg('rehab') + 'Rehab</button>' : '') + '<button class="btn" data-ua="crew">' + I('users') + 'Crew</button><button class="btn" data-ua="note">' + I('log') + 'Note</button><button class="btn" data-ua="more">' + I('menu') + 'More</button></div>',
+      '<div class="cbpbtns"><button class="btn" data-ua="map">' + I('pin') + (r.lat != null && r.lat !== '' ? 'Move on map' : 'Place on map') + '</button>' + (wm ? '<button class="btn" data-ua="rehab">' + svg('rehab') + 'Rehab</button>' : '') + '<button class="btn" data-ua="crew">' + I('users') + 'Crew</button><button class="btn" data-ua="note">' + I('log') + 'Note</button><button class="btn" data-ua="more">' + I('menu') + 'More</button></div>',
       [{ label: 'Close', cls: 'ghost' }], { nofocus: true });
     bg.addEventListener('click', function (e) {
       var m = e.target.closest('[data-mv]'), u = e.target.closest('[data-ua]'); if (!m && !u) return; e.preventDefault(); U.closeModal();
-      if (m) { if (m.dataset.mv === '__new') { CB.sel = r.id; return setTimeout(act.newasg, 30); } if ((r.assign || '') === m.dataset.mv) return; return moveUnit(r, m.dataset.mv); }
+      if (m) { if (m.dataset.mv === '__new') { CB.sel = r.id; return setTimeout(act.newasg, 30); } if ((r.assign || '') === m.dataset.mv) return; rememberMoves([r]); moveUnit(r, m.dataset.mv); return U.toast(E(r.name) + ' moved <button class="btn xs" data-cb="pundo">Undo</button>', 'ok', 6000); }
       var k = u.dataset.ua;
+      if (k === 'map') { CB.sel = r.id; CB.placing = null; return act.ptab('map'); }
       if (k === 'rehab') act.torehab(r.id); else if (k === 'crew') setTimeout(function () { unitCrew(r.id); }, 30); else if (k === 'note') setTimeout(function () { unitNote(r.id); }, 30); else setTimeout(function () { unitMenu(r.id); }, 30);
     });
   };
@@ -454,7 +510,7 @@
       '<div class="cbpbtns"><button class="btn" data-as="opts">' + I('menu') + 'Supervisor, task, PAR, rename…</button></div>',
       [{ label: 'Cancel', cls: 'ghost' }, { label: 'Assign', cls: 'pri', fn: function (b) {
         var ids = [].slice.call(b.querySelectorAll('.cbppick input:checked')).map(function (x) { return x.value; }); if (!ids.length) { U.toast('Tick the units to assign', 'err'); return false; }
-        ids.forEach(function (id) { var r = CP.byId(inc().resources, id); if (r) moveUnit(r, aid); });
+        var rs = ids.map(function (id) { return CP.byId(inc().resources, id); }).filter(Boolean); rememberMoves(rs); rs.forEach(function (r) { moveUnit(r, aid); }); U.toast(rs.length + ' assigned to ' + E(aName(a)) + ' <button class="btn xs" data-cb="pundo">Undo</button>', 'ok', 6000);
       } }], { nofocus: true });
     bg.addEventListener('click', function (e) { var o = e.target.closest('[data-as]'), c = e.target.closest('[data-cb="usheet"]'); if (o) { e.preventDefault(); U.closeModal(); setTimeout(function () { act.amenu(aid); }, 30); } if (c) { e.preventDefault(); e.stopPropagation(); U.closeModal(); setTimeout(function () { act.usheet(c.dataset.a); }, 30); } });
   };
@@ -523,7 +579,7 @@
 
   // ---------- actions ----------
   var act = {};
-  act.usheet = function (id) { p_usheet(id); }; act.asheet = function (aid) { p_asheet(aid); }; act.pmore = function () { p_pmore(); };
+  act.usheet = function (id) { p_usheet(id); }; act.pgps = function () { p_gps(); }; act.psides = function () { p_sides(); }; act.psyms = function () { p_syms(); }; act.pplace = function () { p_place(); }; act.players = function () { p_layers(); }; act.pundo = function () { p_undo(); }; act.pplace1 = function (id) { CB.sel = id; CB.placing = null; render(); }; act.asheet = function (aid) { p_asheet(aid); }; act.pmore = function () { p_pmore(); };
   // =================== tabs: board · map · whiteboard ===================
   CB.tab = CB.tab || 'board';
   act.tab = function (t) { CB.tab = t; CB.sel = null; CB.placing = null; render(); };
@@ -870,7 +926,7 @@
       var d = 0.01, f = await A.query(HYD, '1=1', { geom: true, fields: 'Location_Name,Location,Static_Pressure,Operational_Status,Authority,Icon_Color', n: 300, extra: { geometry: JSON.stringify({ xmin: c[1] - d * 1.25, ymin: c[0] - d, xmax: c[1] + d * 1.25, ymax: c[0] + d, spatialReference: { wkid: 4326 } }), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects' } });
       CB.hyd = f.filter(function (x) { return x.geometry; }).map(function (x) { var a = x.attributes, ll = [x.geometry.y, x.geometry.x]; return { ll: ll, name: a.Location_Name || 'Hydrant', where: a.Location || '', psi: a.Static_Pressure, out: a.Operational_Status && !/INUSE|IN USE|ACTIVE/i.test(a.Operational_Status), st: a.Operational_Status || '', auth: a.Authority || '', ft: miles(c, ll) * 5280 }; }).sort(function (a, b) { return a.ft - b.ft; });
     } catch (e) { CB.hyd = []; CB.hydFor = null; console.warn('hydrants', e); }
-    if (CB.tab === 'map') render();
+    if (CB.tab === 'map' || (CB.ptab === 'map' && document.querySelector('.cbpc'))) render();
   }
   function mapMount() {
     var host = document.getElementById('cbMapHost'); if (!host) return;
@@ -889,7 +945,7 @@
     setTimeout(function () { CB.map.invalidateSize(); }, 40);
     if (!c && !CB.ro && i.location.desc && navigator.onLine && !(CB.geoTried || {})[i.id]) { CB.geoTried = CB.geoTried || {}; CB.geoTried[i.id] = 1; geocode(i.location.desc).then(function (g) { if (!g || !inc() || inc().id !== i.id || incLL()) return; i.location.lat = g.ll[0]; i.location.lng = g.ll[1]; CP.touch(i, 'location'); CB.hyd = null; CB.hydFor = null; commit('Incident located from the address (' + g.ll[0].toFixed(5) + ', ' + g.ll[1].toFixed(5) + ')', 'Event'); }).catch(function () {}); }
     if (!host.querySelector('#cbCoords')) { var cc = document.createElement('div'); cc.id = 'cbCoords'; cc.className = 'cbcoords'; host.appendChild(cc); } paintCoords();
-    mapDraw(); loadHyd(); if (!CB.avl || Date.now() - (CB.avlT || 0) > 15000) loadAvl().then(function (ok) { if (ok && CB.tab === 'map') render(); });
+    mapDraw(); loadHyd(); if (!CB.avl || Date.now() - (CB.avlT || 0) > 15000) loadAvl().then(function (ok) { if (ok && (CB.tab === 'map' || (CB.ptab === 'map' && document.querySelector('.cbpc')))) render(); });
   }
   function mapClick(e) {
     if (!inc()) return;
