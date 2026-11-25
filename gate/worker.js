@@ -30,7 +30,8 @@ const S6 = 'services6.arcgis.com/6h5xc2eGkGuRiFia/arcgis/rest/services/';
 //  guestScope: guests only see their incident's rows.
 //  layers: only these layer numbers inside the service (the service's own summary is refused).
 //  only: the only operations allowed on this service (for example add-only).
-//  statsBelow: levels below this may only ask for counts (by triage, status, hospital), never rows.  countsOnly: everyone.
+//  statsBelow: levels below this may only ask for counts (by triage, status, hospital), never rows.
+//  stampBy: field the gate fills with the signed-in person's name on every add or change (overwrites whatever the app sent).  countsOnly: everyone.
 const DEFAULT_SERVICES = {
   users: S6 + 'BEACON_App_Access/FeatureServer', cp: S6 + 'BOCO_Command_Post/FeatureServer',
   cadCalls: S6 + 'CAD_Calls_For_Service_Active_Fire_EMS/FeatureServer', cadUnits: S6 + 'CAD_Units_Fire_EMS/FeatureServer',
@@ -62,7 +63,7 @@ function layersFor(env) {
     mci: [ // the MCI Board iPad/iPhone app (no guests: patient records)
       { svc: S.cp, read: 'Viewer', write: null, layers: [0] },
       // patients: Officers triage, treat and transport; names only for Command and up; Viewers get counts only; nothing is ever deleted
-      { svc: S.patients, read: 'Viewer', write: 'Officer', del: null, layers: [PT_LAYER], strip: [/first_name/i, /last_name/i], stripBelow: 'Command', noWrite: true, statsBelow: 'Officer' },
+      { svc: S.patients, read: 'Viewer', write: 'Officer', del: null, layers: [PT_LAYER], strip: [/first_name/i, /last_name/i], stripBelow: 'Command', noWrite: true, statsBelow: 'Officer', stampBy: 'edited_by' },
       { svc: S.ops, read: 'Viewer', write: 'Officer', del: null, layers: [HOSP_LAYER] },            // hospital board only
       { svc: S.prot, read: 'Command', write: 'Command', del: null, layers: [REUN_LAYER], only: /^addFeatures$/ }, // send a found person to Reunification; can't read it back
       { svc: S.cadUnits, read: 'Officer' }
@@ -322,6 +323,17 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
     // and answers always come back as JSON so they can be removed (GeoJSON or PBF would carry them through)
     for (const [k, v] of p) if (k !== 'f' && L.strip.some((re) => re.test(v))) return err('That request is not allowed.', 403);
     if (!/attachments\/\d+$/.test(op)) p.set('f', 'json');
+  }
+  // who changed it: the gate writes the signed-in person (or truck iPad) into any layer marked stampBy, so it can't be faked
+  if (L.stampBy && isWrite) {
+    const who = String(s.n || s.e || 'unknown').slice(0, 100);
+    for (const k of ['features', 'adds', 'updates']) {
+      if (!p.has(k)) continue;
+      let list; try { list = JSON.parse(p.get(k)); } catch (e) { return err('That request is not allowed.', 400); }
+      if (!Array.isArray(list)) return err('That request is not allowed.', 400);
+      list.forEach((f) => { if (f && typeof f === 'object') { f.attributes = f.attributes || {}; f.attributes[L.stampBy] = who; } });
+      p.set(k, JSON.stringify(list));
+    }
   }
   p.set('token', await arcToken(env)); if (!p.get('f')) p.set('f', 'json');
   const target = 'https://' + L.svc + (tail ? '/' + tail : '');

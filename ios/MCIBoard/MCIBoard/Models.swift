@@ -136,6 +136,9 @@ struct Patient: Codable, Identifiable, Equatable {
     var triageTime: Date?
     var transportTime: Date?
     var arriveTime: Date?
+    /// Who last changed this record and when (the gate stamps the name; ArcGIS keeps the time). Read only.
+    var editedBy: String?
+    var editedAt: Date?
     var id: String { lid }
 
     var triage: Triage? { Triage(rawValue: triageRaw) }
@@ -167,6 +170,7 @@ struct Patient: Codable, Identifiable, Equatable {
         injuries = AV.str(a["injuries"]); vitals = AV.str(a["vitals"]); treatment = AV.str(a["treatment"]); foundAt = AV.str(a["found_at"])
         unit = AV.str(a["unit"]); hospital = AV.str(a["hospital"]); notes = AV.str(a["notes"]); reunCase = AV.str(a["reun_case"])
         triageTime = AV.date(a["triage_time"]); transportTime = AV.date(a["transport_time"]); arriveTime = AV.date(a["arrive_time"])
+        editedBy = AV.str(a["edited_by"]); editedAt = AV.date(a["EditDate"])
     }
 
     /// Applies changed ArcGIS attributes (from attrs()) onto this record, leaving every other field as it is.
@@ -237,6 +241,26 @@ struct Hospital: Codable, Identifiable, Equatable {
         name = AV.str(a["name"]) ?? "Hospital"; level = AV.str(a["level"]); status = AV.str(a["status"]) ?? "Unknown"
         capRed = AV.int(a["cap_red"]); capYellow = AV.int(a["cap_yellow"]); capGreen = AV.int(a["cap_green"])
         phone = AV.str(a["phone"]); driveMin = AV.dbl(a["drive_min"]); updated = AV.date(a["updated"]); notes = AV.str(a["notes"])
+    }
+    /// Copies the fields named in `d` (ArcGIS names) from `src` onto this card, leaving the rest as they are.
+    func applying(_ d: [String: JV], from src: Hospital) -> Hospital {
+        var h = self
+        for k in d.keys {
+            switch k {
+            case "name": h.name = src.name
+            case "level": h.level = src.level
+            case "status": h.status = src.status
+            case "cap_red": h.capRed = src.capRed
+            case "cap_yellow": h.capYellow = src.capYellow
+            case "cap_green": h.capGreen = src.capGreen
+            case "phone": h.phone = src.phone
+            case "drive_min": h.driveMin = src.driveMin
+            case "notes": h.notes = src.notes
+            case "updated": h.updated = src.updated
+            default: break
+            }
+        }
+        return h
     }
     func cap(_ t: Triage) -> Int? { switch t { case .red: return capRed; case .yellow: return capYellow; case .green: return capGreen; default: return nil } }
     var closed: Bool { status == "Closed" || status == "Diversion" }

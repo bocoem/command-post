@@ -187,7 +187,7 @@
       S('tag_no', 30, 'Triage tag #', { req: 1, list: 1 }), S('triage', 30, 'Triage', { o: K.triage, list: 1, req: 1 }), S('status', 30, 'Status', { o: K.ptStatus, list: 1 }), S('age_group', 20, 'Age group', { o: K.ageGroup }), I('age', 'Age'), S('sex', 10, 'Sex', { o: K.sex }),
       S('first_name', 80, 'First name', { list: 1 }), S('last_name', 80, 'Last name', { list: 1 }), S('injuries', 1000, 'Injuries / chief complaint', { area: 1 }), S('vitals', 255, 'Vitals'), S('treatment', 1000, 'Treatment given', { area: 1 }),
       S('found_at', 255, 'Found at / sector'), S('unit', 40, 'Transport unit', { list: 1 }), S('hospital', 150, 'Destination', { list: 1 }), T('triage_time', 'Triaged'), T('transport_time', 'Transported'), T('arrive_time', 'Arrived'),
-      S('reun_case', 30, 'Reunification case #', { hide: 1 }), S('notes', 1000, 'Notes', { area: 1 })]) }
+      S('reun_case', 30, 'Reunification case #', { hide: 1 }), S('notes', 1000, 'Notes', { area: 1 }), S('edited_by', 100, 'Last changed by', { ro: 1 })]) }
   };
   Object.keys(OPS.LAYERS).forEach(function (k) { OPS.LAYERS[k].key = k; });
 })(window.CP);

@@ -219,6 +219,19 @@ final class MCIStore: ObservableObject {
                          lat: location.recent?.latitude, lon: location.recent?.longitude)
         var r = recentStandalone; r.insert(i, at: 0); recentStandalone = Array(r.prefix(10))
         open(i)
+        // Let other iPads see the new MCI straight away (the incident list finds MCIs by their records in the patient layer).
+        // This one record is not a patient: no triage color, status "Entered in error", so it is left out of every count,
+        // list and report here, on Command Board and on the dashboards.
+        if level.canEdit {
+            let attrs: [String: JV] = [
+                "incident_key": .s(i.key), "incident_name": .str(i.name), "practice": practice ? .s("Yes") : .null,
+                "tag_no": .s("MCI-DECLARED"), "triage": .null, "status": .s(PtStatus.error.rawValue),
+                "notes": .s("Not a patient: marks that this MCI was declared, so other iPads can join it."),
+                "triage_time": .time(Date())
+            ]
+            outbox.append(Edit(kind: .addPatient, lid: "declared-" + i.key, label: "MCI declared", attrs: attrs, lat: i.lat, lon: i.lon))
+            save(); kick()
+        }
     }
 
     private var recentStandalone: [Incident] {
@@ -422,16 +435,24 @@ final class MCIStore: ObservableObject {
         show(Toast(text: "Sent to Reunification (\(code))"))
     }
 
-    func saveHospital(_ h: Hospital, isNew: Bool) {
+    /// `old`: the card as it was when the sheet opened. Only the fields changed on the sheet are sent, applied on top of
+    /// the latest copy, so two people updating the same hospital (one the status, one the red count) don't undo each other.
+    func saveHospital(_ h: Hospital, isNew: Bool, from old: Hospital? = nil) {
         guard level.canEdit else { return }
         var h = h; h.updated = Date()
         if isNew {
             hospitals.append(h)
             outbox.append(Edit(kind: .addHospital, lid: h.lid, label: h.name, attrs: h.attrs()))
         } else {
-            if let i = hospitals.firstIndex(where: { $0.lid == h.lid }) { hospitals[i] = h }
-            if let j = outbox.firstIndex(where: { $0.kind == .addHospital && $0.lid == h.lid && $0.id != inFlight }) { outbox[j].attrs = h.attrs() }
-            else if let oid = h.oid { outbox.append(Edit(kind: .updateHospital, lid: h.lid, oid: oid, label: h.name, attrs: h.attrs())) }
+            let before = (old ?? h).attrs(), after = h.attrs()
+            var diff = after.filter { $0.key != "updated" && before[$0.key] != $0.value }
+            if old != nil && diff.isEmpty { return }
+            if old == nil { diff = after } else { diff["updated"] = after["updated"] }
+            let base = hospitals.first(where: { $0.lid == h.lid }) ?? h
+            let merged = base.applying(diff, from: h)
+            if let i = hospitals.firstIndex(where: { $0.lid == h.lid }) { hospitals[i] = merged }
+            if let j = outbox.firstIndex(where: { $0.kind == .addHospital && $0.lid == h.lid && $0.id != inFlight }) { outbox[j].attrs = merged.attrs() }
+            else if let oid = merged.oid ?? h.oid { outbox.append(Edit(kind: .updateHospital, lid: h.lid, oid: oid, label: h.name, attrs: diff)) }
         }
         lastActivity = Date()
         save(); kick()

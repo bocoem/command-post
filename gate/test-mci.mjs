@@ -68,3 +68,9 @@ const CB = await tok('admin@x.gov', 'cb');
 r = await call('/me', CB); ok(r[1].layers.find(l => /PatientCare/.test(l.url)).counts === true, 'Command Board app: patient layer is counts only');
 r = await call('/arc/' + S + 'BOCO_EMS_PatientCare/FeatureServer/0/query', CB, { where: "incident_key='abc123'", outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }]), groupByFieldsForStatistics: 'triage,status' }); ok(r[0] === 200, 'Command Board live MCI count works');
 r = await call('/arc/' + S + 'BOCO_EMS_PatientCare/FeatureServer/0/query', CB, { where: '1=1', outFields: '*' }); ok(r[0] === 403, 'Command Board (even Admin) cannot read patient rows');
+// who changed it: the gate writes the signed-in name into edited_by, whatever the app sent
+r = await call(PT + '/addFeatures', O, { features: JSON.stringify([{ attributes: { incident_key: 'X', tag_no: '7', triage: 'Minor (Green)', edited_by: 'Somebody Else' } }]) }, 'POST');
+ok(r[0] === 200 && JSON.parse(last.p.get('features'))[0].attributes.edited_by === 'off@x.gov', 'Add: edited_by stamped by the gate (not what the app sent)');
+r = await call(PT + '/updateFeatures', C, { features: JSON.stringify([{ attributes: { OBJECTID: 9, status: 'Transported' } }]) }, 'POST');
+ok(r[0] === 200 && JSON.parse(last.p.get('features'))[0].attributes.edited_by === 'cmd@x.gov', 'Update: edited_by stamped');
+r = await call(PT + '/addFeatures', O, { features: 'not json' }, 'POST'); ok(r[0] === 400, 'Bad features JSON refused');

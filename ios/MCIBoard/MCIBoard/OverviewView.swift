@@ -289,6 +289,9 @@ struct HospitalSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State var h: Hospital
     let isNew: Bool
+    /// The card as it was when the sheet opened (only what changes here is sent).
+    private let original: Hospital
+    init(h: Hospital, isNew: Bool) { _h = State(initialValue: h); self.isNew = isNew; original = h }
 
     var body: some View {
         NavigationStack {
@@ -314,7 +317,7 @@ struct HospitalSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { store.saveHospital(h, isNew: isNew); Haptic.done(); dismiss() }.font(.heavy(19)).disabled(h.name.nilIfBlank == nil)
+                    Button("Save") { store.saveHospital(h, isNew: isNew, from: isNew ? nil : original); Haptic.done(); dismiss() }.font(.heavy(19)).disabled(h.name.nilIfBlank == nil)
                 }
             }
         }

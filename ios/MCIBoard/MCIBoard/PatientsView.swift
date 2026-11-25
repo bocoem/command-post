@@ -272,6 +272,9 @@ struct PatientSheet: View {
                     if let t = p.triageTime { LabeledContent("Triaged", value: t.formatted(date: .omitted, time: .shortened) + " · \(t.ago) ago") }
                     if let t = p.transportTime { LabeledContent("Transported", value: t.formatted(date: .omitted, time: .shortened)) }
                     if let t = p.arriveTime { LabeledContent("Arrived", value: t.formatted(date: .omitted, time: .shortened)) }
+                    if let by = live.editedBy {
+                        LabeledContent("Last changed", value: by + (live.editedAt.map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""))
+                    }
                     if canEdit && !(p.status?.done ?? false) && [Triage.red, .yellow, .green].contains(p.triage ?? .black) {
                         Button { saveIfChanged(); moving = true } label: { Label("Transport…", systemImage: "car.fill") }
                     }

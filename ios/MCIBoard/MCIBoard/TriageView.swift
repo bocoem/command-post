@@ -6,6 +6,8 @@ struct TriageView: View {
     @EnvironmentObject var store: MCIStore
     @Environment(\.horizontalSizeClass) private var hsize
     @AppStorage("autoNumber") private var autoNumber = true
+    /// This iPad's tag letter (A, B, C…): with several iPads numbering on their own, A12 and B12 can't collide. Empty = numbers only.
+    @AppStorage("tagLetter") private var tagLetter = ""
     @State private var tag = ""
     @State private var ageGroup: String? = "Adult"
     @State private var sex: String?
@@ -57,10 +59,15 @@ struct TriageView: View {
 
     private var tagCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Caption("Triage tag #")
-                Spacer()
-                Toggle(isOn: $autoNumber) { Text("Number automatically").font(.semi(16)).foregroundStyle(Theme.muted) }.fixedSize()
+            // iPad: one line. iPhone: the switch goes under the title.
+            if hsize == .regular {
+                HStack { Caption("Triage tag #"); Spacer(); letterMenu; numberSwitch }
+            } else {
+                HStack { Caption("Triage tag #"); Spacer(); letterMenu }
+                numberSwitch
+            }
+            if autoNumber && tagLetter.isEmpty && store.dupeTags.isEmpty == false {
+                Text("Tags are repeating. With more than one iPad numbering, give each iPad its own letter.").font(.footnote).foregroundStyle(Theme.gold)
             }
             HStack(spacing: 12) {
                 TextField("Tag", text: $tag)
@@ -208,14 +215,39 @@ struct TriageView: View {
         store.show(Toast(text: "Tag \(tg) · \(t.short) saved"))
         withAnimation(.spring(duration: 0.25)) { flash = t }
         Task { try? await Task.sleep(nanoseconds: 450_000_000); withAnimation { flash = nil } }
-        tag = autoNumber ? (Self.bump(tg) ?? nextTag()) : ""
+        // next number: one up from this tag, unless that one is already on the board (another iPad got there first)
+        if autoNumber, let b = Self.bump(tg), store.tagInUse(b) == nil { tag = b } else { tag = autoNumber ? nextTag() : "" }
         injuries = ""; sex = nil; ageGroup = "Adult"; dupeOf = nil; dupeColor = nil
         if !autoNumber { tagFocus = true }
     }
 
+    @ViewBuilder private var letterMenu: some View {
+        if autoNumber {
+            Menu {
+                Picker("Letter for this iPad", selection: $tagLetter) {
+                    Text("Numbers only").tag("")
+                    ForEach(["A", "B", "C", "D", "E", "F", "G", "H"], id: \.self) { l in Text("\(l)  (\(l)1, \(l)2…)").tag(l) }
+                }
+            } label: {
+                Label(tagLetter.isEmpty ? "Letter" : "iPad \(tagLetter)", systemImage: "character.textbox").font(.semi(16))
+            }
+            .onChange(of: tagLetter) { _, _ in tag = nextTag() }
+        }
+    }
+
+    private var numberSwitch: some View {
+        Toggle(isOn: $autoNumber) { Text("Number automatically").font(.semi(16)).foregroundStyle(Theme.muted) }.fixedSize()
+    }
+
+    /// One past the highest tag in this iPad's series (its letter, or plain numbers).
     private func nextTag() -> String {
-        let n = store.patients.compactMap { Int($0.tag) }.max() ?? 0
-        return String(n + 1)
+        let l = tagLetter.uppercased()
+        let n = store.patients.compactMap { p -> Int? in
+            let t = p.tag.uppercased()
+            guard l.isEmpty || t.hasPrefix(l) else { return nil }
+            return Int(l.isEmpty ? t : String(t.dropFirst(l.count)))
+        }.max() ?? 0
+        return l + String(n + 1)
     }
 
     /// "12" → "13", "A0099" → "A0100"
