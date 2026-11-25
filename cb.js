@@ -498,7 +498,7 @@
       var m = e.target.closest('[data-mv]'), u = e.target.closest('[data-ua]'); if (!m && !u) return; e.preventDefault(); U.closeModal();
       if (m) { if (m.dataset.mv === '__new') { CB.sel = r.id; return setTimeout(act.newasg, 30); } if ((r.assign || '') === m.dataset.mv) return; rememberMoves([r]); moveUnit(r, m.dataset.mv); return U.toast(E(r.name) + ' moved <button class="btn xs" data-cb="pundo">Undo</button>', 'ok', 6000); }
       var k = u.dataset.ua;
-      if (k === 'map') { CB.sel = r.id; CB.placing = null; return act.ptab('map'); }
+      if (k === 'map') { CB.sel = r.id; CB.placing = null; return act.ptab('map', true); }
       if (k === 'rehab') act.torehab(r.id); else if (k === 'crew') setTimeout(function () { unitCrew(r.id); }, 30); else if (k === 'note') setTimeout(function () { unitNote(r.id); }, 30); else setTimeout(function () { unitMenu(r.id); }, 30);
     });
   };
@@ -1131,7 +1131,8 @@
   act.signin = function () { A.signIn(); };
   act.pp = function (a) { return CP.preplan ? CP.preplan.act(a) : null; };
   act.copyll = function (k) { var x = coordTxt(k === 'tap' ? CB.tapLL : incLL()); if (!x) return; var t = x.dec + ' (' + x.ddm + ')'; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { U.toast('Copied ' + E(t), 'ok'); }, function () { U.toast(E(t), 'ok', 8000); }); };
-  act.ptab = function (t) { CB.ptab = t; window.scrollTo(0, 0); render(); };
+  // switching tabs drops a half-finished pick (a unit or a pin waiting for a map tap), unless the unit sheet asked for the map
+  act.ptab = function (t, keep) { if (keep !== true) { CB.sel = null; CB.placing = null; } CB.ptab = t; window.scrollTo(0, 0); render(); };
   act.cadtoggle = function () { var on = !cadPref(); CP.store.setPref('cbCad', on ? 'on' : 'off'); CB.cadHealth = null; CB.cad = on ? undefined : []; CB.avl = on ? CB.avl : []; if (on && inc()) U.toast('CAD on', 'ok'); render(); if (!inc() || on) loadLists().then(render); };
   act.local = function () { CB.localOk = true; CP.store.setPref('cbLocal', 1); CB.list = localBoards(); CB.cad = []; render(); };
   act.tpl = function (k) { CB.tpl = k; if (!CB.call || CB.call[2] !== k) CB.call = CALLS.find(function (c) { return c[0] === TPL_CALL[k]; }) || null; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; render(); };
@@ -1163,7 +1164,7 @@
     var kind = KINDS.find(function (x) { return x[0] === k; });
     var bg = U.modal('Add ' + kind[1], '<div class="cbpad"><input class="in big" id="cbUn" value="' + (k === 'U' ? '' : k) + '" style="font-size:28px;font-weight:800;text-transform:uppercase;text-align:center"><div class="cbkeys">' + '1 2 3 4 5 6 7 8 9 ⌫ 0 ✓'.split(' ').map(function (d) { return '<button data-k="' + d + '">' + d + '</button>'; }).join('') + '</div>' +
       '<div class="cbh sm" style="margin-top:10px">Riding</div>' + rideRow(crewDefault(kind[2]), 8) + '<label class="chk"><input type="checkbox" id="cbEnr"> Responding (not on scene yet)</label><input class="in" id="cbAg" placeholder="Agency (optional)" style="margin-top:8px"></div>', [{ label: 'Cancel', cls: 'ghost' }, { label: 'Add unit', cls: 'pri', fn: function (b) { go(b); } }], { nofocus: true });
-    function go(b) { var n = b.querySelector('#cbUn').value; if (!n || n === k) { U.toast('Unit number?', 'err'); return false; } var r = addUnit(n, kind[2], b.querySelector('#cbAg').value, b.querySelector('#cbEnr').checked ? 'En Route' : 'Checked In'); if (r) r.persons = rideVal(b, r.persons); U.closeModal(); CB.sel = r && r.id; commit(null); }
+    function go(b) { var n = b.querySelector('#cbUn').value; if (!n || n === k) { U.toast('Unit number?', 'err'); return false; } var r = addUnit(n, kind[2], b.querySelector('#cbAg').value, b.querySelector('#cbEnr').checked ? 'En Route' : 'Checked In'); if (r) r.persons = rideVal(b, r.persons); U.closeModal(); CB.sel = phone() ? null : r && r.id; commit(null); }
     rideWire(bg);
     bg.addEventListener('click', function (e) { var b = e.target.closest('[data-k]'); if (!b) return; e.preventDefault(); var i = bg.querySelector('#cbUn'); if (b.dataset.k === '⌫') i.value = i.value.slice(0, -1); else if (b.dataset.k === '✓') go(bg); else i.value += b.dataset.k; });
   };

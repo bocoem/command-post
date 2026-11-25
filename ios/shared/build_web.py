@@ -26,7 +26,11 @@ font_css = ''.join("@font-face{font-family:'%s';font-style:normal;font-weight:%d
 # drop what the app does not use: web manifest, install meta, Google Fonts, CDN links
 html = re.sub(r'<link rel="(manifest|preconnect|icon|apple-touch-icon)"[^>]*>', '', html)
 html = re.sub(r'<link rel="stylesheet" href="https://fonts\.googleapis\.com[^>]*>', '<style>' + font_css + '</style>', html)
-html = re.sub(r'<link rel="stylesheet" href="https://unpkg\.com/leaflet[^>]*>', lambda m: '<style>' + open(os.path.join(V, 'leaflet.css')).read() + '</style>', html)
+# Leaflet's CSS points at images/… next to the page, which the app doesn't have: put the images inside the CSS
+def leaflet_css():
+    css = open(os.path.join(V, 'leaflet.css')).read()
+    return re.sub(r'url\(images/([\w-]+\.png)\)', lambda m: 'url(data:image/png;base64,%s)' % b64(os.path.join(V, m.group(1))), css)
+html = re.sub(r'<link rel="stylesheet" href="https://unpkg\.com/leaflet[^>]*>', lambda m: '<style>' + leaflet_css() + '</style>', html)
 html = re.sub(r'<script src="https://unpkg\.com/qrcode-generator[^>]*></script>', lambda m: '<script>' + open(os.path.join(V, 'qrcode.js')).read() + '</script>', html)
 html = re.sub(r'<script src="https://unpkg\.com/leaflet[^>]*></script>', lambda m: '<script>' + open(os.path.join(V, 'leaflet.js')).read() + '</script>', html)
 html = re.sub(r'<meta name="(apple-mobile-web-app-[^"]*|mobile-web-app-capable)"[^>]*>', '', html)

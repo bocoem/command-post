@@ -165,7 +165,12 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
         return .allow
     }
     func webView(_ w: WKWebView, createWebViewWith c: WKWebViewConfiguration, for a: WKNavigationAction, windowFeatures f: WKWindowFeatures) -> WKWebView? {
-        if let u = a.request.url, !u.isFileURL, u.scheme != "about", u.scheme != "blob" { UIApplication.shared.open(u) }
+        if let u = a.request.url, !u.isFileURL, u.scheme != "about", u.scheme != "blob" {
+            UIApplication.shared.open(u) { [weak self] ok in
+                // "Open MCI Board app" on an iPad that doesn't have it: say so instead of doing nothing
+                if !ok, u.scheme == "beaconmci" { self?.notice("The MCI Board app isn't on this device. Install it from TestFlight, then tap Open MCI Board app again.") }
+            }
+        }
         return nil
     }
     // page dialogs: the board uses its own, but if a browser alert or confirm appears it must really be asked
@@ -182,6 +187,11 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
         a.addAction(UIAlertAction(title: "OK", style: .destructive) { _ in done(true) })
         guard let vc = topController() else { done(false); return }
         vc.present(a, animated: true)
+    }
+    private func notice(_ msg: String) {
+        let a = UIAlertController(title: nil, message: msg, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "OK", style: .default))
+        topController()?.present(a, animated: true)
     }
     private func topController() -> UIViewController? {
         var vc = view.window?.rootViewController

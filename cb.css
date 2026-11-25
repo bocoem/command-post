@@ -879,3 +879,7 @@ body.cbphone:not(.cbpcmd) .netpill,html.cbapp body.cbphone:not(.cbpcmd) .netpill
 .cbpwait b{white-space:nowrap}
 /* iPad app: the sync pill takes the clock's spot instead of sitting on top of it */
 @media (min-width:561px){html.cbapp body:not(.cbphone):has(#netpill) .cbhclock{visibility:hidden}}
+/* iPad upright (and iPad mini): the action bar in two rows of four instead of three rows, so more of the board shows */
+@media (max-width:999px) and (min-width:700px){.cbbody .cbact>*{flex:1 1 22%;min-height:50px}}
+/* View-only screen on an iPad (truck iPads below Command, mutual-aid guests): use the width; divisions and benchmarks two across */
+@media (min-width:900px){.cbph{max-width:1040px;display:grid;grid-template-columns:1fr 1fr;column-gap:12px;align-items:start}.cbph>*{grid-column:1 / -1}.cbph>.cbphasg,.cbph>.cbphm{grid-column:auto}}
