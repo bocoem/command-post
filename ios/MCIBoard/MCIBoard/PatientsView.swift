@@ -14,6 +14,7 @@ struct PatientsView: View {
             Backdrop()
             VStack(spacing: 12) {
                 controls
+                if !store.dupeTags.isEmpty { DupeTagsBar(tags: store.dupeTags) }
                 let list = shown
                 if list.isEmpty {
                     ContentUnavailableView(store.patients.isEmpty ? "No patients yet" : "Nobody matches", systemImage: "person.3",
@@ -28,7 +29,7 @@ struct PatientsView: View {
                                     .contextMenu { quickMenu(p) }
                             }
                         }.padding(.bottom, 20)
-                    }
+                    }.scrollDismissesKeyboard(.interactively)
                 }
             }.padding(.horizontal, hsize == .compact ? 12 : 18).padding(.top, hsize == .compact ? 10 : 14)
         }
@@ -69,7 +70,7 @@ struct PatientsView: View {
     @ViewBuilder private func quickMenu(_ p: Patient) -> some View {
         Section("Re-triage tag \(p.tag)") {
             ForEach(Triage.allCases.filter { $0 != p.triage }) { t in
-                Button(t.short + " · " + t.word) { var n = p; n.triageRaw = t.rawValue; if t == .black { n.statusRaw = PtStatus.deceased.rawValue }; store.update(n, from: p) }
+                Button(t.short + " · " + t.word) { store.update(p.retriaged(t), from: p) }
             }
         }
         Section("Status") {
@@ -227,7 +228,7 @@ struct PatientSheet: View {
                     }
                     HStack(spacing: 8) {
                         ForEach(Triage.allCases) { t in
-                            Button { p.triageRaw = t.rawValue; if t == .black { p.statusRaw = PtStatus.deceased.rawValue }; Haptic.tap() } label: {
+                            Button { p = p.retriaged(t); Haptic.tap() } label: {
                                 Text(t.short).font(.heavy(17)).foregroundStyle(t.ink).frame(maxWidth: .infinity).padding(.vertical, 12)
                                     .background(t.color.opacity(p.triage == t ? 1 : 0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(p.triage == t ? Color.white : .clear, lineWidth: 3))
@@ -235,7 +236,7 @@ struct PatientSheet: View {
                         }
                     }.disabled(!canEdit)
                     Picker("Status", selection: $p.statusRaw) {
-                        ForEach(PtStatus.pickable) { Text($0.rawValue).tag($0.rawValue) }
+                        ForEach(PtStatus.pickable.filter { $0 != .transported || patient.status == .transported }) { Text($0.rawValue).tag($0.rawValue) }
                         if p.status == nil || p.status == .error { Text(p.statusRaw).tag(p.statusRaw) }
                     }.disabled(!canEdit)
                 } header: { Text("Triage") }
@@ -317,7 +318,12 @@ struct PatientSheet: View {
 
     /// Only what was changed on this screen is saved, on top of the latest copy (another iPad may have changed other fields).
     @State private var saved = false
-    private func saveIfChanged() { if !saved && p != patient { store.update(p, from: patient); saved = true } }
+    private func saveIfChanged() {
+        guard !saved, p != patient else { return }
+        var n = p
+        if n.status == .arrived && n.arriveTime == nil { n.arriveTime = Date() }   // picked "Arrived" here: stamp the time
+        store.update(n, from: patient); saved = true
+    }
 
     private func opt(_ k: WritableKeyPath<Patient, String?>) -> Binding<String> {
         Binding(get: { p[keyPath: k] ?? "" }, set: { p[keyPath: k] = $0.isEmpty ? nil : $0 })

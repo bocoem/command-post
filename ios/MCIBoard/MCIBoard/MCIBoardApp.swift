@@ -43,6 +43,11 @@ struct MCIBoardApp: App {
                 awake()
             }
             .onChange(of: store.incident?.key) { _, _ in awake() }
+            // from the Command Board app (beaconmci://open?incident=KEY). Kept until sign-in if nobody is signed in yet.
+            .onOpenURL { url in
+                guard url.scheme == "beaconmci", let key = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "incident" })?.value, !key.isEmpty else { return }
+                Task { await store.open(key: key) }
+            }
             .onChange(of: keepAwake) { _, _ in awake() }
         }
     }

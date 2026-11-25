@@ -221,3 +221,18 @@ struct ChipPicker: View {
         }
     }
 }
+
+/// Two patients with the same tag number: usually two iPads numbering on their own, or a typo. Fix it before transport.
+struct DupeTagsBar: View {
+    let tags: [String]
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.gold).font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Tag \(tags.prefix(6).joined(separator: ", "))\(tags.count > 6 ? "…" : "") used twice").font(.heavy(19)).foregroundStyle(.white)
+                Text("Check the physical tags. Open one and change its number, or mark the extra one entered in error.").font(.callout).foregroundStyle(Theme.muted)
+            }
+            Spacer(minLength: 0)
+        }.card(12, tint: Theme.gold)
+    }
+}

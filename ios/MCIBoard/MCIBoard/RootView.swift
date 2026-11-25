@@ -45,10 +45,6 @@ struct RootView: View {
             }
         }
         .animation(.spring(duration: 0.35), value: store.toast)
-        .onOpenURL { url in
-            guard url.scheme == "beaconmci", let key = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "incident" })?.value, !key.isEmpty else { return }
-            Task { await store.open(key: key) }
-        }
     }
 }
 
@@ -264,6 +260,7 @@ struct ReportSheet: View {
 
 struct IncidentPicker: View {
     @EnvironmentObject var store: MCIStore
+    @Environment(\.horizontalSizeClass) private var hsize
     @State private var newName = ""
     @State private var practice = false
     @State private var showNew = false
@@ -274,13 +271,14 @@ struct IncidentPicker: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(spacing: 14) {
-                        Image("Patch").resizable().scaledToFit().frame(width: 64)
+                        Image("Patch").resizable().scaledToFit().frame(width: hsize == .compact ? 52 : 64)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("BOTETOURT COUNTY · BEACON").font(.semi(13)).tracking(2).foregroundStyle(Theme.gold)
-                            Text("MCI BOARD").font(.heavy(40)).foregroundStyle(.white)
+                            Text("BOTETOURT COUNTY · BEACON").font(.semi(13)).tracking(2).foregroundStyle(Theme.gold).lineLimit(1).minimumScaleFactor(0.8)
+                            Text("MCI BOARD").font(.heavy(hsize == .compact ? 32 : 40)).foregroundStyle(.white)
+                            if hsize == .compact { SyncPill().padding(.top, 4) }
                         }
                         Spacer()
-                        SyncPill()
+                        if hsize != .compact { SyncPill() }
                     }
                     HStack {
                         Text("Pick the incident").font(.heavy(28)).foregroundStyle(.white)
@@ -324,7 +322,7 @@ struct IncidentPicker: View {
                     Text("Signed in as \(store.me) · \(store.level.name)").font(.footnote).foregroundStyle(Theme.muted)
                     Button("Sign out", role: .destructive) { store.signOut() }.font(.footnote)
                 }
-                .padding(24).frame(maxWidth: 1100).frame(maxWidth: .infinity)
+                .padding(hsize == .compact ? 16 : 24).frame(maxWidth: 1100).frame(maxWidth: .infinity)
             }
         }
         .task { await store.loadIncidents() }

@@ -57,7 +57,7 @@ enum Api {
         catch { throw ArcError(message: "No connection", offline: true) }
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            throw ArcError(message: "Unexpected answer from the gate (\(status))", code: status, offline: status >= 500 || status == 0)
+            throw ArcError(message: status == 429 ? "The gate is busy. Retrying shortly." : "Unexpected answer from the gate (\(status))", code: status, offline: status >= 500 || status == 0 || status == 429)
         }
         if let e = j["error"] as? [String: Any] {
             let code = AV.int(e["code"]) ?? status
@@ -134,7 +134,7 @@ enum Api {
                 out.transported += n; out.moved[t, default: 0] += n
                 if let h = AV.str(r["hospital"]) { out.byHospital[h, default: [:]][t, default: 0] += n }
             } else if st?.done != true {
-                out.onScene += n; if t == .red || t == .yellow { out.waitingRY += n }
+                out.onScene += n; out.waiting[t, default: 0] += n; if t == .red || t == .yellow { out.waitingRY += n }
             }
         }
         return out

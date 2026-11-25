@@ -4,6 +4,7 @@ import Charts
 /// The big picture: MCI level, counts by color, who is waiting, where patients went.
 struct OverviewView: View {
     @EnvironmentObject var store: MCIStore
+    @Environment(\.horizontalSizeClass) private var hsize
 
     var body: some View {
         let s = store.summary
@@ -12,6 +13,7 @@ struct OverviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     levelBanner(s)
+                    if !store.dupeTags.isEmpty { DupeTagsBar(tags: store.dupeTags) }
                     if s.level <= 2 { rhcc(s) }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                         ForEach(Triage.allCases) { t in TriageTile(t: t, n: s.by[t] ?? 0, moved: s.moved[t] ?? 0) }
@@ -28,7 +30,7 @@ struct OverviewView: View {
                     if store.level.countsOnly {
                         Text("Your access shows counts only. Patient details are for EMS officers.").font(.footnote).foregroundStyle(Theme.muted)
                     }
-                }.padding(18)
+                }.padding(hsize == .compact ? 12 : 18)
             }
             .refreshable { await store.refresh() }
         }
@@ -65,18 +67,32 @@ struct OverviewView: View {
 
     /// Still on scene, by color: what the IC and transport officer chase.
     private func waitingStrip(_ s: Summary) -> some View {
-        HStack(spacing: 10) {
-            Text("STILL ON SCENE").font(.heavy(16)).tracking(1.2).foregroundStyle(Theme.gold)
+        let compact = hsize == .compact
+        let chips = HStack(spacing: compact ? 6 : 10) {
             ForEach([Triage.red, .yellow, .green, .gray]) { t in
-                HStack(spacing: 6) {
-                    Circle().fill(t.color).frame(width: 14, height: 14)
-                    Text("\(s.waiting[t] ?? 0)").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.white)
-                    Text(t.short).font(.semi(15)).foregroundStyle(Theme.muted)
+                HStack(spacing: compact ? 4 : 6) {
+                    Circle().fill(t.color).frame(width: compact ? 11 : 14, height: compact ? 11 : 14)
+                    Text("\(s.waiting[t] ?? 0)").font(.system(size: compact ? 20 : 22, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                    if !compact { Text(t.short).font(.semi(15)).foregroundStyle(Theme.muted) }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 6).background(Theme.page, in: Capsule())
+                .padding(.horizontal, compact ? 8 : 10).padding(.vertical, 6).background(Theme.page, in: Capsule())
             }
-            Spacer()
-            if let o = s.oldestWaiting { Text("Longest red/yellow wait \(o.ago)").font(.semi(16)).foregroundStyle(Theme.red) }
+        }
+        return Group {
+            if compact {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("STILL ON SCENE").font(.heavy(16)).tracking(1.2).foregroundStyle(Theme.gold)
+                    chips
+                    if let o = s.oldestWaiting { Text("Longest red/yellow wait \(o.ago)").font(.semi(16)).foregroundStyle(Theme.red) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 10) {
+                    Text("STILL ON SCENE").font(.heavy(16)).tracking(1.2).foregroundStyle(Theme.gold)
+                    chips
+                    Spacer()
+                    if let o = s.oldestWaiting { Text("Longest red/yellow wait \(o.ago)").font(.semi(16)).foregroundStyle(Theme.red) }
+                }
+            }
         }.card(12)
     }
 
@@ -125,9 +141,11 @@ struct OverviewView: View {
         if let t = rhccAt {
             HStack {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.ok)
-                Text("RHCC notified at \(t.hm)").font(.semi(19)).foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("RHCC notified at \(t.hm)").font(.semi(19)).foregroundStyle(.white)
+                    Text("Call again if the level changes").font(.footnote).foregroundStyle(Theme.muted)
+                }
                 Spacer()
-                Text("Call again if the level changes").font(.footnote).foregroundStyle(Theme.muted)
             }.card(12)
         } else {
             rhccCard(s)
@@ -136,10 +154,12 @@ struct OverviewView: View {
 
     private func rhccCard(_ s: Summary) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "phone.arrow.up.right.fill").font(.title2).foregroundStyle(Theme.red)
-                Text("Level \(s.level): call RHCC").font(.heavy(26)).foregroundStyle(.white)
-                Spacer()
+            (hsize == .compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout())) {
+                HStack {
+                    Image(systemName: "phone.arrow.up.right.fill").font(.title2).foregroundStyle(Theme.red)
+                    Text("Level \(s.level): call RHCC").font(.heavy(hsize == .compact ? 22 : 26)).foregroundStyle(.white)
+                }
+                if hsize != .compact { Spacer() }
                 if let u = URL(string: "tel:" + AppConfig.rhccPhone.filter(\.isNumber)) {
                     Link(destination: u) { Label(AppConfig.rhccPhone, systemImage: "phone.fill").font(.heavy(20)) }
                         .buttonStyle(.borderedProminent).tint(Theme.red)
@@ -193,6 +213,7 @@ struct OverviewView: View {
 
 struct HospitalsView: View {
     @EnvironmentObject var store: MCIStore
+    @Environment(\.horizontalSizeClass) private var hsize
     @State private var editing: Hospital?
     @State private var adding = false
 
@@ -201,21 +222,21 @@ struct HospitalsView: View {
             Backdrop()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack {
+                    (hsize == .compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout())) {
                         Text("Update capacity after each call with the hospital or RHCC. Check VHASS for live status.").font(.callout).foregroundStyle(Theme.muted)
-                        Spacer()
-                        if store.level.canEdit {
+                        if hsize != .compact { Spacer() }
+                        if store.level.canEdit { HStack {
                             if store.hospitals.isEmpty { Button("Add EOP hospitals") { store.seedHospitals() }.buttonStyle(.bordered) }
                             Button { adding = true } label: { Label("Hospital", systemImage: "plus") }.buttonStyle(.borderedProminent).tint(Theme.gold).foregroundStyle(.black)
-                        }
+                        } }
                     }
                     if store.hospitals.isEmpty { Text("No hospitals on the board yet.").font(.semi(19)).foregroundStyle(Theme.muted).padding(.top, 20) }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 14)], spacing: 14) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
                         ForEach(store.hospitals) { h in
                             HospitalCard(h: h, canEdit: store.level.canEdit) { editing = h }
                         }
                     }
-                }.padding(18)
+                }.padding(hsize == .compact ? 12 : 18)
             }
             .refreshable { await store.refresh() }
         }

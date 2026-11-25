@@ -24,11 +24,12 @@ struct TriageView: View {
             Backdrop()
             if hsize == .regular {
                 HStack(alignment: .top, spacing: 18) {
-                    ScrollView { main.padding(.vertical, 18) }
+                    ScrollView { main.padding(.vertical, 18) }.scrollDismissesKeyboard(.interactively)
                     recent.frame(width: 330).padding(.vertical, 18)
                 }.padding(.horizontal, 18)
             } else {
-                ScrollView { VStack(spacing: 18) { main; recent } .padding(16) }
+                // iPhone: drag the screen to put the keyboard away and reach the color buttons
+                ScrollView { VStack(spacing: 18) { main; recent } .padding(16) }.scrollDismissesKeyboard(.interactively)
             }
         }
         .onAppear { store.location.warm(); if tag.isEmpty && autoNumber { tag = nextTag() } }

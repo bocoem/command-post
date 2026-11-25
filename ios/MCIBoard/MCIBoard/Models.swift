@@ -139,6 +139,14 @@ struct Patient: Codable, Identifiable, Equatable {
     var id: String { lid }
 
     var triage: Triage? { Triage(rawValue: triageRaw) }
+
+    /// Re-triage: BLACK means deceased; moving off BLACK (a mis-tap fixed) puts them back on scene.
+    func retriaged(_ t: Triage) -> Patient {
+        var n = self; n.triageRaw = t.rawValue
+        if t == .black { n.statusRaw = PtStatus.deceased.rawValue }
+        else if n.status == .deceased { n.statusRaw = PtStatus.onScene.rawValue }
+        return n
+    }
     var status: PtStatus? { PtStatus(rawValue: statusRaw) }
     var counted: Bool { status != .error }
     var name: String? { let n = [firstName, lastName].compactMap { $0 }.joined(separator: " "); return n.isEmpty ? nil : n }
@@ -273,6 +281,10 @@ struct Edit: Codable, Identifiable, Equatable {
     var error: String?
     /// An add that went out at least once: before sending it again, check ArcGIS didn't already save it.
     var sent: Bool? = nil
+    /// When it last failed (so a change ArcGIS keeps refusing is retried less and less often, not every 10 seconds).
+    var lastTry: Date? = nil
+    /// Wait before the next try after `tries` failures: 10 s, 20 s, 40 s … up to 5 minutes.
+    var due: Bool { guard tries > 0, let l = lastTry else { return true }; return Date().timeIntervalSince(l) >= min(300, 10 * pow(2, Double(tries - 1))) }
 }
 
 struct Toast: Identifiable, Equatable {

@@ -24,6 +24,7 @@ final class MCIStore: ObservableObject {
 
     private weak var sessions: SessionStore?
     private(set) var services = Services.from([])
+    /// Whose copy is open (GateSession.owner: gate id, else email). Truck iPads can have no email.
     private var email = ""
     private var loop: Task<Void, Never>?
     private let monitor = NWPathMonitor()
@@ -68,7 +69,7 @@ final class MCIStore: ObservableObject {
             }
             monitor.start(queue: DispatchQueue(label: "mci.net"))
         }
-        if email != sess.email { load(for: sess.email) }
+        if email != sess.owner { load(for: sess.owner, alt: sess.email) }
         await refreshMe(force: true)
         resume()
         if let k = wantKey { wantKey = nil; await open(key: k) }
@@ -140,7 +141,12 @@ final class MCIStore: ObservableObject {
         sess.level = me["level"] as? String ?? sess.level
         sess.name = me["name"] as? String ?? sess.name
         if let k = me["kind"] as? String { sess.kind = k }
+        if let u = me["uid"] as? String, !u.isEmpty { sess.uid = u }
         sess.role = me["role"] as? String
+        // access lowered on the Users page: drop what this level may no longer see, at once
+        let was = Level(s.session?.level), now = Level(sess.level)
+        if now.countsOnly && !was.countsOnly { patients = []; save() }
+        else if !now.names && was.names { patients = patients.map { var p = $0; p.firstName = nil; p.lastName = nil; p.reunCase = nil; return p }; save() }
         sess.layers = (me["layers"] as? [[String: Any]] ?? []).compactMap { $0["url"] as? String }
         services = Services.from(sess.layers)
         if sess != s.session { s.set(sess) }
@@ -162,9 +168,10 @@ final class MCIStore: ObservableObject {
 
     // MARK: this iPad's copy
 
-    private func load(for who: String) {
+    /// `alt`: the email the copy was saved under before sessions carried the gate id (so nothing unsent is lost on update).
+    private func load(for who: String, alt: String = "") {
         email = who
-        guard let v = Vault.load(), v.email == who else { Vault.wipe(); return }
+        guard let v = Vault.load(), v.email == who || (!alt.isEmpty && v.email == alt) else { Vault.wipe(); return }
         incident = v.incident; patients = v.patients; hospitals = v.hospitals; units = v.units; outbox = v.outbox
     }
 
@@ -304,6 +311,13 @@ final class MCIStore: ObservableObject {
         patients.filter { $0.counted && $0.hospital == hospital && $0.triage == t && ($0.status?.moved ?? false) }.count
     }
 
+    /// Tags on more than one patient in this incident.
+    var dupeTags: [String] {
+        var seen: [String: Int] = [:], shown: [String: String] = [:]
+        for p in patients where p.counted { let k = p.tag.lowercased(); seen[k, default: 0] += 1; shown[k] = p.tag }
+        return seen.filter { $0.value > 1 }.map { shown[$0.key] ?? $0.key }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
     func isPending(_ p: Patient) -> Bool { outbox.contains { $0.lid == p.lid } }
     func tagInUse(_ tag: String) -> Patient? {
         let t = tag.trimmingCharacters(in: .whitespaces).lowercased()
@@ -439,6 +453,7 @@ final class MCIStore: ObservableObject {
         defer { flushing = false }
         send: for id in outbox.map(\.id) {
             guard let e = outbox.first(where: { $0.id == id }) else { continue }
+            if !e.due { continue send }   // ArcGIS refused it recently: wait a little longer before asking again
             inFlight = id
             defer { inFlight = nil }
             do {
@@ -474,12 +489,19 @@ final class MCIStore: ObservableObject {
             } catch let er as ArcError {
                 if er.code == 401 { signOut(wipe: false); return }
                 if er.offline { online = false; break send }
-                if let i = outbox.firstIndex(where: { $0.id == id }) { outbox[i].tries += 1; outbox[i].error = er.message }
+                if let i = outbox.firstIndex(where: { $0.id == id }) { outbox[i].tries += 1; outbox[i].lastTry = Date(); outbox[i].error = er.message }
                 save()
             } catch {
-                if let i = outbox.firstIndex(where: { $0.id == id }) { outbox[i].tries += 1; outbox[i].error = error.localizedDescription }
+                if let i = outbox.firstIndex(where: { $0.id == id }) { outbox[i].tries += 1; outbox[i].lastTry = Date(); outbox[i].error = error.localizedDescription }
+                save()
             }
         }
+    }
+
+    /// "Send now" on the Unsent screen: try everything again straight away, ignoring the wait between tries.
+    func retryNow() {
+        for i in outbox.indices { outbox[i].lastTry = nil }
+        kick()
     }
 
     /// Drop a change that ArcGIS keeps refusing (Command and up; from the Unsent screen).

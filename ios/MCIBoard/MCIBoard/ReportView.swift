@@ -206,7 +206,7 @@ struct UnsentSheet: View {
             .navigationTitle("Waiting to send").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .topBarLeading) { Button("Send now") { store.kick() } }
+                ToolbarItem(placement: .topBarLeading) { Button("Send now") { store.retryNow() } }
             }
         }
     }

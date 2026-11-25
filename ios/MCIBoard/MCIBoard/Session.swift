@@ -17,7 +17,11 @@ struct GateSession: Codable, Equatable {
     var kind: String? = nil
     /// "User manager" can open the Users page without a Chief level.
     var role: String? = nil
+    /// The gate's id for this person or truck iPad (setup-code sign-ins). Truck iPads may have no email at all.
+    var uid: String? = nil
     var isDevice: Bool { kind == "Device" }
+    /// Whose copy of the board this is on the iPad: the gate id, else the email, else this iPad.
+    var owner: String { uid?.nilIfBlank ?? email.nilIfBlank ?? "device-" + SessionStore.deviceId }
 }
 
 @MainActor
@@ -58,6 +62,8 @@ enum Gate {
         catch { throw Failure(message: "No connection. Signing in needs a connection once; after that triage keeps working offline.") }
         let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         if let e = j["error"] as? [String: Any] { throw Failure(message: e["message"] as? String ?? "Sign-in failed.") }
+        // a gate or network page that isn't the gate's answer (outage, rate limit): never "sign in" with no token
+        guard (j["token"] as? String)?.isEmpty == false else { throw Failure(message: "The BEACON gate didn't answer properly. Try again in a minute.") }
         return j
     }
 
@@ -78,7 +84,7 @@ enum Gate {
     private static func session(from j: [String: Any]) -> GateSession {
         GateSession(token: j["token"] as? String ?? "", email: j["email"] as? String ?? "", name: j["name"] as? String ?? "",
                     agency: j["agency"] as? String ?? "", level: j["level"] as? String ?? "Viewer",
-                    incident: j["incident"] as? String, layers: [], kind: j["kind"] as? String, role: j["role"] as? String)
+                    incident: j["incident"] as? String, layers: [], kind: j["kind"] as? String, role: j["role"] as? String, uid: j["uid"] as? String)
     }
 
     /// Current level and layers (asked on launch and every few minutes; the saved copy lets the app start offline).
