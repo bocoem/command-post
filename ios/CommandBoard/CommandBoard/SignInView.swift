@@ -1,5 +1,6 @@
 import SwiftUI
 import VisionKit
+import AVFoundation
 
 /// Sign in with a setup code from a Chief, a User manager or an Admin (typed, or scanned from its QR),
 /// or with an incident code from the IC (mutual aid, view only). Email sign-in was retired Nov 24, 2026.
@@ -36,7 +37,7 @@ struct SignInView: View {
                             .onChange(of: setupCode) { _, v in if Gate.cleanSetup(v).count == 10 && !busy { useSetup() } }
                         Button(action: useSetup) { wide(busy ? "Checking…" : "Sign in") }.buttonStyle(.borderedProminent).disabled(busy || Gate.cleanSetup(setupCode).count != 10)
                         if DataScannerViewController.isSupported {
-                            Button { message = nil; scanning = true } label: { wide("Scan setup code") }.buttonStyle(.bordered)
+                            Button { startScan() } label: { wide("Scan setup code") }.buttonStyle(.bordered)
                         }
                         Text("Ask a Chief, a User manager or Emergency Management for a setup code. It's good for 24 hours. A truck iPad stays signed in until it's turned off; a person stays signed in while they keep using the app.")
                             .font(.footnote).foregroundStyle(Theme.muted)
@@ -47,7 +48,7 @@ struct SignInView: View {
                         TextField("G1234567", text: $gCode).textInputAutocapitalization(.characters).autocorrectionDisabled()
                             .font(.system(size: 26, weight: .bold, design: .monospaced)).focused($focus).field()
                         if DataScannerViewController.isSupported {
-                            Button { message = nil; scanning = true } label: { wide("Scan incident code") }.buttonStyle(.bordered)
+                            Button { startScan() } label: { wide("Scan incident code") }.buttonStyle(.bordered)
                         }
                         label("Your name and unit")
                         TextField("e.g. Capt. Smith, Engine 5", text: $gName).field()
@@ -84,6 +85,20 @@ struct SignInView: View {
             }
         }
     }
+
+    /// Open the camera to scan a code, or say how to turn the camera on if it's off for this app.
+    private func startScan() {
+        message = nil
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: scanning = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { yes in
+                DispatchQueue.main.async { if yes { scanning = true } else { message = cameraOff } }
+            }
+        default: message = cameraOff
+        }
+    }
+    private var cameraOff: String { "The camera is off for this app. Turn it on in Settings → \(AppConfig.appName) → Camera, or type the code." }
 
     private func label(_ s: String) -> some View { Text(s.uppercased()).font(.custom("BarlowCondensed-SemiBold", size: 13)).tracking(1.2).foregroundStyle(Theme.muted) }
     private func wide(_ s: String) -> some View { Text(s).font(.custom("BarlowCondensed-ExtraBold", size: 19)).tracking(0.6).frame(maxWidth: .infinity).padding(.vertical, 6) }

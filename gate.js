@@ -79,6 +79,18 @@
     w.querySelector('iframe').src = G.url.replace(/\/$/, '') + '/users#t=' + encodeURIComponent(G.token);
     w.querySelector('#cbUsersClose').onclick = function () { w.remove(); };
   };
+  // ---------- app errors: sent to the gate's change log ("App error") so problems on truck iPads are seen without a call ----------
+  // At most 5 different errors per launch; the gate also caps each person at 20 an hour.
+  var sentErr = {}, nErr = 0;
+  CP.gate.report = function (msg, where) {
+    msg = String(msg || '').slice(0, 300);
+    if (!msg || /^Script error\.?$|ResizeObserver loop/.test(msg) || nErr >= 5 || sentErr[msg] || !navigator.onLine || !G.token) return;
+    sentErr[msg] = 1; nErr++;
+    try { fetch(G.url.replace(/\/$/, '') + '/report', { method: 'POST', headers: { Authorization: 'Bearer ' + G.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ msg: msg, where: where || '', ver: G.ver || '' }) }).catch(function () {}); } catch (e) {}
+  };
+  window.addEventListener('error', function (e) { if (e && e.message) CP.gate.report(e.message, String(e.filename || '').split('/').pop() + ':' + (e.lineno || '')); });
+  window.addEventListener('unhandledrejection', function (e) { var r = e && e.reason; if (!r || r.offline || r.code === 401 || r.code === 403) return; CP.gate.report('Unhandled: ' + (r.message || r), ''); });
+
   // the app tells the page when the connection comes back
   window.addEventListener('online', function () { A.connect(); });
 })(window.CP = window.CP || {});

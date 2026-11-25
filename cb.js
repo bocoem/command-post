@@ -695,9 +695,27 @@
     };
     f.click();
   };
-  var upBusy = false, grpIds = null;
+  var upBusy = false, grpIds = null, upOff = 0;
+  // in the app: through the gate, as attachments on the incident's Command Post row (Officer and up)
+  async function uploadPhotosGate() {
+    if (upBusy || A.status !== 'on' || !inc() || !A.own || !CP.gate.can('Officer') || Date.now() < upOff) return;
+    var pend = photos().filter(function (p) { return !p.item && !p.att && !p.del; }); if (!pend.length) return; upBusy = true;
+    try {
+      var q = await A.req(A.own.url + '/0/query', { where: 'incident_key = ' + A.sq(inc().id), returnIdsOnly: true }), oid = (q.objectIds || [])[0];
+      if (!oid) return; // the board hasn't reached ArcGIS yet; try again next minute
+      for (var k = 0; k < pend.length; k++) {
+        var p = pend[k], blob = await pget(p.id); if (!blob) continue;
+        var fd = new FormData(); fd.append('attachment', blob, 'scene-' + p.id + '.jpg'); fd.append('f', 'json');
+        var r = await fetch(CP.gate.url.replace(/\/$/, '') + '/arc/' + A.own.url.replace(/^https:\/\//, '') + '/0/' + oid + '/addAttachment', { method: 'POST', headers: { Authorization: 'Bearer ' + CP.gate.token }, body: fd }).then(function (x) { return x.json(); });
+        var res = r && r.addAttachmentResult;
+        if (!res || !res.success) throw new Error((r && r.error && r.error.message) || (res && res.error && res.error.description) || 'Photo upload failed');
+        p.att = { oid: oid, id: res.objectId }; p.u = CP.now(); CP.touch(inc(), 'cbPhotos'); await pput(p.id, undefined); commit(null, null, true);
+      }
+    } catch (e) { if (!e.offline) { upOff = Date.now() + 10 * 60000; console.warn('photo upload', e); } } finally { upBusy = false; }
+  }
   async function uploadPhotos() {
-    if (A.gate || upBusy || A.status !== 'on' || !inc() || !A.user) return; var pend = photos().filter(function (p) { return !p.item; }); if (!pend.length) return; upBusy = true;
+    if (A.gate) return uploadPhotosGate();
+    if (upBusy || A.status !== 'on' || !inc() || !A.user) return; var pend = photos().filter(function (p) { return !p.item; }); if (!pend.length) return; upBusy = true;
     try {
       if (!grpIds) { var me = await A.req(A.portal + '/sharing/rest/community/self'); grpIds = (me.groups || []).filter(function (g) { return /^BOCO Access [1-4] /.test(g.title); }).map(function (g) { return g.id; }); }
       for (var k = 0; k < pend.length; k++) {
@@ -712,15 +730,24 @@
     } catch (e) { console.warn('photo upload', e); } finally { upBusy = false; }
   }
   setInterval(uploadPhotos, 60000);
-  function photoUrl(p) { return p.item && A.signedIn() && !A.gate ? A.portal + '/sharing/rest/content/items/' + p.item + '/data?token=' + encodeURIComponent((A.auth() || {}).token || '') : ''; }
+  function photoUrl(p) {
+    if (p.item && A.signedIn() && !A.gate) return A.portal + '/sharing/rest/content/items/' + p.item + '/data?token=' + encodeURIComponent((A.auth() || {}).token || '');
+    if (p.att && A.own && A.signedIn() && !A.gate) return A.own.url + '/0/' + p.att.oid + '/attachments/' + p.att.id + '?token=' + encodeURIComponent((A.auth() || {}).token || '');
+    return '';
+  }
+  // in the app the full photo comes through the gate (needs the sign-in header, so it is fetched, not linked)
+  async function gatePhoto(p) {
+    if (!A.gate || !p.att || !A.own) return '';
+    try { var r = await fetch(CP.gate.url.replace(/\/$/, '') + '/arc/' + A.own.url.replace(/^https:\/\//, '') + '/0/' + p.att.oid + '/attachments/' + p.att.id, { headers: { Authorization: 'Bearer ' + CP.gate.token } }); if (!r.ok) return ''; return URL.createObjectURL(await r.blob()); } catch (e) { return ''; }
+  }
   act.pview = async function (id) {
-    var p = CP.byId(inc().cbPhotos, id); if (!p) return; var src = p.th, b = await pget(p.id); if (b) src = URL.createObjectURL(b); else if (photoUrl(p)) src = photoUrl(p);
+    var p = CP.byId(inc().cbPhotos, id); if (!p) return; var src = p.th, b = await pget(p.id); if (b) src = URL.createObjectURL(b); else if (photoUrl(p)) src = photoUrl(p); else if (p.att) src = (await gatePhoto(p)) || p.th;
     U.modal('Photo · ' + CP.fmtTime(p.t) + (p.by ? ' · ' + p.by : ''), '<img src="' + E(src) + '" alt="" style="width:100%;max-height:62vh;object-fit:contain;border-radius:8px;background:#000"><label class="f" style="margin-top:8px"><span>Caption</span><input class="in" name="cap" value="' + E(p.cap || '') + '" placeholder="Side C, second floor"></label><div class="dim" style="font-size:12px">' + (p.item ? 'Saved to county ArcGIS.' : 'Saved on this device. It uploads to county ArcGIS when online.') + '</div>',
       [{ label: 'Delete', cls: 'ghost', fn: function () { sure('Delete this photo?', 'It comes off the incident record.', 'Delete', function () { p.del = true; p.u = CP.now(); CP.touch(inc(), 'cbPhotos'); commit('Scene photo removed', 'Event'); }); } }, { label: 'Close', cls: 'ghost' }, { label: 'Save caption', cls: 'pri', fn: function (bg) { p.cap = U.val(bg, 'cap'); p.u = CP.now(); CP.touch(inc(), 'cbPhotos'); commit(p.cap ? 'Photo ' + CP.fmtTime(p.t) + ': ' + p.cap : null, 'Event'); } }]);
   };
   function photoStrip() {
     var ps = photos();
-    return '<div class="cbh sm">' + svg('cam') + 'Photos <span class="ct">' + ps.length + '</span></div><div class="cbphotos">' + ps.slice(-8).reverse().map(function (p) { return '<button data-cb="pview" data-a="' + p.id + '" title="' + E(p.cap || CP.fmtTime(p.t)) + '"><img src="' + E(p.th) + '" alt="">' + (p.item ? '' : '<i title="Uploads when online">•</i>') + '</button>'; }).join('') + '<button class="add" data-cb="photo">' + svg('cam') + '<span>Add</span></button></div>';
+    return '<div class="cbh sm">' + svg('cam') + 'Photos <span class="ct">' + ps.length + '</span></div><div class="cbphotos">' + ps.slice(-8).reverse().map(function (p) { return '<button data-cb="pview" data-a="' + p.id + '" title="' + E(p.cap || CP.fmtTime(p.t)) + '"><img src="' + E(p.th) + '" alt="">' + (p.item || p.att ? '' : '<i title="Uploads when online">•</i>') + '</button>'; }).join('') + '<button class="add" data-cb="photo">' + svg('cam') + '<span>Add</span></button></div>';
   }
 
   // =================== acknowledge (phone view) ===================
@@ -1655,6 +1682,8 @@
   act.guestcode = async function () {
     if (!CP.gate.can('Command')) { U.toast('Only Command can hand out incident codes.', 'err'); return; }
     try {
+      // the code only works once the board is in ArcGIS (a board started with no connection hasn't been sent yet)
+      if (A.own) { var have = await A.req(A.own.url + '/0/query', { where: 'incident_key = ' + A.sq(inc().id), returnCountOnly: true }).catch(function (e) { if (e.offline) throw e; return { count: 1 }; }); if (!have.count) { U.modal('Incident code', '<p><b>This board hasn\'t reached ArcGIS yet</b>, so a code for it wouldn\'t work. It sends as soon as this iPad has a connection; the bar at the top shows what is still waiting.</p><p>Try again in a minute.</p>', [{ label: 'OK', cls: 'pri' }]); push(); return; } }
       var r = await fetch(CP.gate.url.replace(/\/$/, '') + '/guest-code?incident=' + encodeURIComponent(inc().id), { headers: { Authorization: 'Bearer ' + CP.gate.token } }).then(function (x) { return x.json(); });
       if (!r.code) throw new Error((r.error && r.error.message) || 'No code');
       var qr = ''; try { if (window.qrcode) { var q = qrcode(0, 'M'); q.addData('beacon-incident:' + r.code); q.make(); qr = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } } catch (e) {}
@@ -1921,7 +1950,7 @@
     var f = act[el.dataset.cb]; if (!f) return;
     if (el.tagName === 'A' && el.dataset.cb !== 'tocp') return;
     e.preventDefault(); e.stopPropagation();
-    try { var r = f(el.dataset.a, el, e); if (r && r.catch) r.catch(function (er) { U.toast(E(er.message), 'err'); }); } catch (er) { console.error(er); U.toast(E(er.message), 'err'); }
+    try { var r = f(el.dataset.a, el, e); if (r && r.catch) r.catch(function (er) { U.toast(E(er.message), 'err'); }); } catch (er) { console.error(er); U.toast(E(er.message), 'err'); if (CP.gate && CP.gate.report && !er.offline) CP.gate.report(er.message, 'button ' + el.dataset.cb); }
   });
   document.addEventListener('change', function (e) { var el = e.target.closest('[data-cbchg="call"]'); if (!el) return; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; CB.call = CALLS.find(function (c) { return c[0] === el.value; }) || null; if (CB.call) CB.tpl = CB.call[2]; render(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey && e.target && e.target.id === 'cbQuick') { e.preventDefault(); act.notesave(); } });

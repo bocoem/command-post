@@ -51,7 +51,7 @@ function layersFor(env) {
   const S = services(env);
   return {
     cb: [
-      { svc: S.cp, read: 'Guest', write: 'Officer', del: 'Command', guestScope: 'incident_key' },
+      { svc: S.cp, read: 'Guest', write: 'Officer', del: 'Command', guestScope: 'incident_key', attach: 'Officer' }, // attach: scene photos on the incident row
       { svc: S.cadCalls, read: 'Officer', strip: [/caller/i], stripBelow: 'Command' },
       { svc: S.cadUnits, read: 'Officer' },
       { svc: S.hydrants, read: 'Viewer' },
@@ -247,6 +247,19 @@ export default {
         return json({ token: s.g ? null : await sign(env, fresh), ...sessionOut(fresh, lvl, row), layers: (layersFor(env)[s.a] || []).filter((L) => L.read && rank(lvl) >= rank(L.read)).map((L) => ({ url: 'https://' + L.svc, write: !!(L.write && rank(lvl) >= rank(L.write)), ids: L.layers || null, only: L.only ? String(L.only.source) : null, counts: !!(L.countsOnly || (L.statsBelow && rank(lvl) < rank(L.statsBelow))), hidden: L.strip && rank(lvl) < rank(L.stripBelow) ? L.strip.map((re) => re.source) : [] })) });
       }
 
+      // app error reports: written to the change log as "App error" so problems on truck iPads are seen without a call from the field
+      if (path === '/report' && req.method === 'POST') {
+        let b; try { b = await req.json(); } catch (e) { b = {}; }
+        if (!String(b.msg || '').trim()) return err('Nothing to report.');
+        const id = s.u || s.e || 'x', key = new Request('https://gate.cache/report/' + encodeURIComponent(id) + '/' + Math.floor(Date.now() / 36e5));
+        const hit = await caches.default.match(key); const n = hit ? +(await hit.text()) : 0;
+        if (n >= 20) return json({ ok: true, dropped: true });
+        await caches.default.put(key, new Response(String(n + 1), { headers: { 'Cache-Control': 'max-age=3600' } }));
+        const msg = String(b.msg || '').replace(/\s+/g, ' ').slice(0, 300), where = String(b.where || '').slice(0, 120), ver = String(b.ver || '').slice(0, 40);
+        ctx.waitUntil(writeLog(env, { uid: s.u || '', name: s.n || s.e }, 'App error', { uid: s.u || '', name: s.n || s.e, agency: s.ag || '' }, ({ cb: 'Command Board', mci: 'MCI Board', admin: 'Users page' }[s.a] || s.a) + (ver ? ' ' + ver : '') + ' · ' + lvl + (s.d ? ' · ' + s.d : '') + ' · ' + msg + (where ? ' @ ' + where : '')).catch(() => {}));
+        return json({ ok: true });
+      }
+
       // 4) guest code for an incident (Command only)
       if (path === '/guest-code') {
         if (rank(lvl) < rank('Command')) return err('Only Command can hand out incident codes.', 403);
@@ -284,6 +297,7 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
   const op = tail.replace(/^\d+\/?/, '');
   if (L.layers) { const m = tail.match(/^(\d+)(\/|$)/); if (!m || !L.layers.includes(+m[1])) return err('That layer is not available in this app.', 403); }
   if (L.only && !L.only.test(op)) return err('That request is not allowed.', 403);
+  if (/^\d+\/addAttachment$/.test(op)) return await addAttachment(req, env, L, lvl, tail);
   // read params from query string and (for POST) the form body
   const p = new URLSearchParams(url.search);
   if (req.method === 'POST') { const body = new URLSearchParams(await req.text()); for (const [k, v] of body) p.set(k, v); }
@@ -315,7 +329,13 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
   if (lvl === 'Guest') {
     if (isWrite || isDel) return err('Guests can only view.', 403);
     // guests: the filter is replaced, not added to, so no where clause can widen it
-    if (L.guestScope && /query/.test(op)) { p.set('where', L.guestScope + " = '" + String(s.g).replace(/'/g, "''") + "'"); ['objectIds', 'geometry', 'text', 'relationshipParam'].forEach((k) => p.delete(k)); }
+    if (L.guestScope && /attachments\/\d+$/.test(op)) {
+      // a photo: only one on this guest's own incident
+      const m = tail.match(/^(\d+)\/(\d+)\/attachments\/\d+$/);
+      if (!m || !(await guestOwns(env, L, +m[1], +m[2], s.g))) return err('Guests can only view their incident.', 403);
+    } else if (L.guestScope && op === 'queryAttachments') {
+      p.set('definitionExpression', L.guestScope + " = '" + String(s.g).replace(/'/g, "''") + "'"); ['objectIds', 'globalIds', 'where'].forEach((k) => p.delete(k));
+    } else if (L.guestScope && /query/.test(op)) { p.set('where', L.guestScope + " = '" + String(s.g).replace(/'/g, "''") + "'"); ['objectIds', 'geometry', 'text', 'relationshipParam'].forEach((k) => p.delete(k)); }
     else if (!L.guestScope && op) return err('Guests can only view their incident.', 403);
   }
   if (L.strip && rank(lvl) < rank(L.stripBelow)) {
@@ -347,6 +367,30 @@ async function arcProxy(req, env, ctx, s, lvl, url) {
   if (j && typeof j === 'object' && !Array.isArray(j)) { delete j.serviceItemId; } // nothing that helps find the source item
   return json(j, r.status === 200 ? 200 : r.status);
 }
+// scene photos from the Command Board app: one image file onto the incident's row (Officer and up; never guests)
+const MAX_PHOTO = 8 * 1024 * 1024;
+async function addAttachment(req, env, L, lvl, tail) {
+  if (!L.attach || rank(lvl) < rank(L.attach)) return err('Your access level cannot add photos.', 403);
+  if (req.method !== 'POST') return err('That request is not allowed.', 405);
+  let fd; try { fd = await req.formData(); } catch (e) { return err('That request is not allowed.', 400); }
+  const f = fd.get('attachment');
+  if (!f || typeof f === 'string') return err('No photo was sent.', 400);
+  if (!/^image\/(jpeg|png|heic|heif|webp)$/i.test(f.type || '')) return err('Only photos can be added.', 415);
+  if (f.size > MAX_PHOTO) return err('That photo is too big.', 413);
+  const out = new FormData();
+  out.append('attachment', f, String(f.name || 'photo.jpg').replace(/[^\w.-]/g, '_').slice(0, 80));
+  out.append('f', 'json'); out.append('token', await arcToken(env));
+  const r = await fetch('https://' + L.svc + '/' + tail, { method: 'POST', body: out });
+  let j; try { j = await r.json(); } catch (e) { return err('The photo could not be saved.', 502); }
+  return json(j, r.status === 200 ? 200 : r.status);
+}
+// is this row on the guest's incident?
+async function guestOwns(env, L, layer, oid, key) {
+  const p = new URLSearchParams({ f: 'json', where: L.guestScope + " = '" + String(key).replace(/'/g, "''") + "'", objectIds: String(oid), returnCountOnly: 'true', token: await arcToken(env) });
+  const r = await fetch('https://' + L.svc + '/' + layer + '/query', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p }).then((x) => x.json()).catch(() => ({}));
+  return (r.count || 0) > 0;
+}
+
 function stripFields(j, pats) {
   const bad = (n) => pats.some((re) => re.test(n));
   if (Array.isArray(j.fields)) j.fields = j.fields.filter((f) => !bad(f.name) && !bad(f.alias || ''));

@@ -88,7 +88,8 @@ final class BoardWeb: NSObject, ObservableObject, WKScriptMessageHandler, WKNavi
     static func bootScript(_ s: GateSession) -> String {
         let gate: [String: Any] = ["url": AppConfig.gateURL.absoluteString, "token": s.token, "email": s.email, "name": s.name, "agency": s.agency,
                                    "level": s.level, "app": AppConfig.appKey, "incident": s.incident ?? NSNull(), "layers": s.layers.map { ["url": $0] },
-                                   "kind": s.kind ?? "Person", "role": s.role ?? ""]
+                                   "kind": s.kind ?? "Person", "role": s.role ?? "",
+                                   "ver": "b" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")]
         BoardVault.prune()
         let saved = BoardVault.recent().map { ["id": $0.0.id, "updated": $0.0.updated, "json": $0.1] }
         let g = String(data: try! JSONSerialization.data(withJSONObject: gate), encoding: .utf8)!

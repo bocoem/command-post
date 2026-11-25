@@ -48,6 +48,11 @@
       var r2 = await A.req(adm + '/0/addToDefinition', { addToDefinition: { fields: [{ name: 'exercise', type: 'esriFieldTypeString', alias: 'Practice / exercise', length: 5, nullable: true, editable: true }] } }, true);
       if (!r2.success) throw new Error('could not add the practice field'); A.own.fields = A.own.fields || {}; A.own.fields.exercise = 1; out.push('practice field added');
     }
+    // scene photos from the Command Board app are kept as attachments on the incident row (through the BEACON gate)
+    if (!l0.hasAttachments) {
+      var r3 = await A.req(adm + '/0/updateDefinition', { updateDefinition: { hasAttachments: true } }, true);
+      if (r3.success === false) throw new Error('could not turn on photos (attachments) for incidents'); out.push('incident photos (attachments) turned on');
+    }
     return out.join(', ') || 'already in place';
   };
 
@@ -213,7 +218,7 @@
     if (OPS.st.tool !== 'setup') OPS.go('setup');
     await OPS.findServices();
     for (var k of OPS.SVC_KEYS) { if (OPS.svc[k] && !OPS.svc[k].view) { var kk = k; await step('Update ' + OPS.SERVICES[kk].name, function () { return OPS.upgrade(kk); }); } }
-    await step('Command Post service (safe saves, practice)', H.cpService);
+    await step('Command Post service (safe saves, practice, photos)', H.cpService);
     await step('Command Post incidents shared with incident groups', H.cpShare);
     await OPS.findServices();
     for (var vk of Object.keys(OPS.VIEWS)) { var v2 = vk; await step('View: ' + OPS.VIEWS[v2].title, function () { return H.view(v2); }); }
