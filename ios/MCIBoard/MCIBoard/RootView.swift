@@ -14,6 +14,8 @@ enum Pane: String, CaseIterable, Identifiable, Hashable {
         case .report: return "Patient report"
         }
     }
+    /// tab label on iPhone
+    var short: String { self == .report ? "Report" : title }
     var icon: String {
         switch self {
         case .overview: return "chart.bar.xaxis"
@@ -52,13 +54,45 @@ struct RootView: View {
 
 struct MainView: View {
     @EnvironmentObject var store: MCIStore
+    @Environment(\.horizontalSizeClass) private var hsize
     @State private var pane: Pane? = nil
     @State private var sheet: SheetKind?
     @State private var visibility = NavigationSplitViewVisibility.all
 
-    enum SheetKind: String, Identifiable { case account, guide, unsent, users; var id: String { rawValue } }
+    enum SheetKind: String, Identifiable { case account, guide, unsent, users, report; var id: String { rawValue } }
 
     var body: some View {
+        Group { if hsize == .compact { phone } else { split } }
+        .sheet(item: $sheet) { k in
+            switch k {
+            case .account: AccountSheet()
+            case .guide: TriageGuideSheet()
+            case .unsent: UnsentSheet()
+            case .users: UsersSheet()
+            case .report: ReportSheet()
+            }
+        }
+        .onAppear { if pane == nil { pane = store.level.canEdit ? .triage : .overview } }
+    }
+
+    /// iPhone: a tab bar (the iPad sidebar collapses into a screen with no way back on a phone).
+    /// The patient report and the sidebar extras live in the incident bar's menu.
+    private var phone: some View {
+        let s = store.summary, tabs = Pane.allCases.filter { $0.allowed(store.level) && $0 != .report }
+        return TabView(selection: Binding(get: { pane ?? (store.level.canEdit ? .triage : .overview) }, set: { pane = $0 })) {
+            ForEach(tabs) { p in
+                detail(p)
+                    .safeAreaInset(edge: .top, spacing: 0) { IncidentBar(open: { sheet = $0 }) }
+                    .tabItem { Label(p.short, systemImage: p.icon) }
+                    .badge(p == .transport ? s.waitingRY : 0)
+                    .tag(p)
+            }
+        }
+        .toolbarBackground(Theme.navy, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+    }
+
+    private var split: some View {
         NavigationSplitView(columnVisibility: $visibility) {
             sidebar
         } detail: {
@@ -69,15 +103,6 @@ struct MainView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .sheet(item: $sheet) { k in
-            switch k {
-            case .account: AccountSheet()
-            case .guide: TriageGuideSheet()
-            case .unsent: UnsentSheet()
-            case .users: UsersSheet()
-            }
-        }
-        .onAppear { if pane == nil { pane = store.level.canEdit ? .triage : .overview } }
     }
 
     private var sidebar: some View {
@@ -151,10 +176,58 @@ struct MainView: View {
 /// Top of every screen: which incident, how big, and the connection.
 struct IncidentBar: View {
     @EnvironmentObject var store: MCIStore
+    @Environment(\.horizontalSizeClass) private var hsize
     @State private var confirmLeave = false
+    /// set on iPhone: opens the sheets the iPad sidebar has
+    var open: ((MainView.SheetKind) -> Void)? = nil
     var body: some View {
+        Group { if hsize == .compact { compact } else { wide } }
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) { Rectangle().fill(store.summary.level <= 2 ? Theme.red : Theme.gold).frame(height: 2) }
+        .confirmationDialog("Switch incident?", isPresented: $confirmLeave, titleVisibility: .visible) {
+            Button("Switch incident") { store.leave() }
+        } message: { Text("Anything waiting to send keeps sending.") }
+    }
+
+    private var compact: some View {
         let s = store.summary
-        HStack(spacing: 12) {
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(store.incident?.name ?? "").font(.heavy(20)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
+                if store.incident?.exercise == true { PracticeChip() }
+                Spacer(minLength: 4)
+                menu
+            }
+            HStack(spacing: 10) {
+                LevelBadge(level: s.level)
+                Text("\(s.total)").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundColor(.white)
+                    + Text(" pts").font(.semi(14)).foregroundColor(Theme.muted)
+                Spacer(minLength: 4)
+                SyncPill()
+            }
+        }
+        .padding(.horizontal, 14).padding(.top, 6).padding(.bottom, 8)
+    }
+
+    private var menu: some View {
+        Menu {
+            if let open {
+                Button { open(.guide) } label: { Label("START / JumpSTART", systemImage: "list.bullet.clipboard") }
+                if Pane.report.allowed(store.level) { Button { open(.report) } label: { Label("Patient report", systemImage: "doc.text.fill") } }
+                if !store.outbox.isEmpty { Button { open(.unsent) } label: { Label("\(store.outbox.count) waiting to send", systemImage: "arrow.up.circle") } }
+                if store.canManageUsers { Button { open(.users) } label: { Label("Users", systemImage: "person.badge.key") } }
+                Button { open(.account) } label: { Label(store.me.isEmpty ? "Account" : store.me, systemImage: "person.crop.circle") }
+                Divider()
+            }
+            Button { confirmLeave = true } label: { Label("Switch incident", systemImage: "arrow.left.arrow.right") }
+        } label: {
+            Image(systemName: "ellipsis.circle").font(.system(size: 26)).foregroundStyle(Theme.gold).frame(width: 44, height: 44)
+        }
+    }
+
+    private var wide: some View {
+        let s = store.summary
+        return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(store.incident?.name ?? "").font(.heavy(24)).foregroundStyle(.white).lineLimit(1)
@@ -169,18 +242,21 @@ struct IncidentBar: View {
             Text("\(s.total)").font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundColor(.white)
                 + Text(" pts").font(.semi(15)).foregroundColor(Theme.muted)
             SyncPill()
-            Menu {
-                Button { confirmLeave = true } label: { Label("Switch incident", systemImage: "arrow.left.arrow.right") }
-            } label: {
-                Image(systemName: "ellipsis.circle").font(.system(size: 24)).foregroundStyle(Theme.gold)
-            }
+            menu
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) { Rectangle().fill(s.level <= 2 ? Theme.red : Theme.gold).frame(height: 2) }
-        .confirmationDialog("Switch incident?", isPresented: $confirmLeave, titleVisibility: .visible) {
-            Button("Switch incident") { store.leave() }
-        } message: { Text("Anything waiting to send keeps sending.") }
+    }
+}
+
+/// iPhone: the patient report opens as a sheet from the incident bar menu.
+struct ReportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ReportView()
+                .navigationTitle("Patient report").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
     }
 }
 
@@ -213,7 +289,7 @@ struct IncidentPicker: View {
                     }
                     if let e = store.incidentsError { Text(e).font(.callout).foregroundStyle(Theme.gold) }
                     if store.incidentsLoading && store.incidents.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(30) }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 14)], spacing: 14) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
                         ForEach(store.incidents) { i in
                             Button { store.open(i) } label: { IncidentCard(i: i) }.buttonStyle(.plain)
                         }

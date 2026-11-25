@@ -813,3 +813,69 @@ html.cbapp .netpill{top:calc(18px + env(safe-area-inset-top));bottom:auto;left:a
   .cbreport{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .cbmayck{grid-template-columns:1fr!important}
 }
+
+/* ===== Nov 25 2026: iPhone layout pass =====
+   The app header now makes room for the status bar (it used to sit under the clock), and the phone incident views
+   take over the whole screen: no app header above them, the incident strip pinned flush to the top, nothing behind it. */
+.cbbody .cbfire.cbh2{height:calc(64px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}
+@media (max-width:560px){
+  .cbbody .cbfire.cbh2{height:calc(56px + env(safe-area-inset-top))}
+  .cbbody .cbbadge{width:64px}.cbbody .cbbadge .cbpatch{height:58px;margin-top:3px}
+  .cbbody .cbh2 .cblock .t{font-size:21px}
+}
+@media (max-height:500px){.cbbody .cbfire.cbh2{height:calc(48px + env(safe-area-inset-top))}}
+
+/* phone incident views: the strip is the header */
+body.cbphone .cbfire{display:none}
+body.cbphone .cbwrap{padding-top:env(safe-area-inset-top)}
+body.cbphone::after{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:#080f1c;z-index:65;pointer-events:none}
+body.cbphone .cbptop{position:sticky;top:env(safe-area-inset-top);margin:0 -12px 10px;padding:8px 12px 10px}
+.cbptl{display:flex;align-items:center;gap:10px;min-width:0}.cbptl .cbpwhere{flex:1;min-width:0}
+.cbphome{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--line2,rgba(255,255,255,.14));background:rgba(255,255,255,.05);color:#c9d6e6;touch-action:manipulation;cursor:pointer}
+.cbphome .ic,.cbphome .cbi{width:20px;height:20px}
+/* scrolled: one slim line, so the IC keeps the screen for the board */
+body.cbpslim .cbpwhere span{display:none}
+body.cbpslim .cbpwhere b{font-size:17px}
+body.cbpslim .cbptop{padding-top:6px;padding-bottom:6px}
+body.cbpslim .cbphome{width:36px;height:36px}
+body.cbpslim .cbprow{margin-top:6px}body.cbpslim .cbprow>*{min-height:42px}
+body.cbpslim .cbprow b{font-size:18px}body.cbpslim .cbprow .cbpar span{font-size:9.5px}
+/* view-only phone: tabs pinned under the status bar, home button first */
+body.cbphone .cbphtabs{top:calc(env(safe-area-inset-top) + 4px)}
+.cbphtabs.hh{grid-template-columns:44px repeat(3,1fr)}
+.cbphtabs .cbphome{width:44px;height:44px;border:0;background:transparent}
+/* the map's "tap the map" banner sits with the map, not floating over the page */
+.cbpplace{position:static}
+/* network pill: small, top-right inside the strip, never over a sheet */
+body.cbphone .netpill,html.cbapp body.cbphone .netpill{top:calc(env(safe-area-inset-top) + 6px);bottom:auto;right:8px;left:auto;padding:3px 8px;font-size:11px;gap:5px;max-width:96px;z-index:70}
+@media (max-width:560px){
+  .netpill .npl{display:none}.netpill .nps{display:inline}
+  /* start screen: bottom right, clear of the header and the floating tabs */
+  body.cbbody:not(.cbphone) .netpill,html.cbapp body.cbbody:not(.cbphone) .netpill{top:auto;bottom:calc(16px + env(safe-area-inset-bottom));right:10px;left:auto;padding:5px 9px;font-size:11.5px;max-width:110px}
+}
+body.cbphone .netpill .npl{display:none}body.cbphone .netpill .nps{display:inline}
+body.cbpcmd:has(#netpill) .cbpwhere{padding-right:84px}
+body:has(#modal) .netpill{display:none}
+/* toasts: full width just above the tab bar */
+@media (max-width:560px){
+  body.cbbody .toasts{left:10px;right:10px;bottom:calc(16px + env(safe-area-inset-bottom));align-items:stretch}
+  body.cbpcmd .toasts{bottom:calc(80px + env(safe-area-inset-bottom))}
+}
+/* phone sheets: full screen, clear of the status bar and the home indicator */
+@media (max-width:640px){
+  .cbbody .modal{border-radius:0;border:0}
+  .cbbody .modal .mh{border-radius:0;padding-top:calc(12px + env(safe-area-inset-top));position:sticky;top:0;z-index:2}
+  .cbbody .modal .mf{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+}
+@media (max-height:500px){
+  body.cbphone .cbptop{position:static}
+}
+/* view-only phone: the incident card stacks; the network pill goes bottom right (the tabs fill the top) */
+.cbph .cbphaddr{display:block;padding:10px 12px}
+.cbph .cbphaddr b{display:block;font:800 22px/1.15 var(--cond)}.cbph .cbphaddr span{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+body.cbphone:not(.cbpcmd) .netpill,html.cbapp body.cbphone:not(.cbpcmd) .netpill{top:auto;bottom:calc(16px + env(safe-area-inset-bottom));right:10px;padding:5px 9px;font-size:11.5px}
+@media (max-width:400px){.cbphtabs button{font-size:12.5px;letter-spacing:.5px;gap:4px}.cbphtabs button .ic,.cbphtabs button .cbi{width:16px;height:16px}}
+@media (max-width:350px){.cbphtabs button span{display:none}}
+.cbpwait b{white-space:nowrap}
+/* iPad app: the sync pill takes the clock's spot instead of sitting on top of it */
+@media (min-width:561px){html.cbapp body:not(.cbphone):has(#netpill) .cbhclock{visibility:hidden}}

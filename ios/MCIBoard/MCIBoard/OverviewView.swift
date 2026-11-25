@@ -18,7 +18,7 @@ struct OverviewView: View {
                     }
                     waitingStrip(s)
                     if !store.level.countsOnly { benchmarks(s) }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 12)], spacing: 12) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
                         StatTile(value: "\(s.total)", label: "Patients")
                         StatTile(value: "\(s.onScene)", label: "Still on scene")
                         StatTile(value: "\(s.transported)", label: "Transported", color: Theme.blue)

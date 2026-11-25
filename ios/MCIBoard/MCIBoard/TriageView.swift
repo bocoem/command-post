@@ -131,13 +131,18 @@ struct TriageView: View {
 
     /// Mis-tapped a color? Undo puts it right (gone if it hasn't left the iPad, otherwise marked entered in error).
     private func undoBar(_ l: Patient) -> some View {
-        HStack(spacing: 12) {
-            TriageChip(t: l.triage, big: true)
-            Text("Tag \(l.tag) saved").font(.semi(20)).foregroundStyle(.white)
-            Spacer()
+        // iPhone: what was saved on one line, the two buttons under it
+        (hsize == .compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))) {
+            HStack(spacing: 12) {
+                TriageChip(t: l.triage, big: true)
+                Text("Tag \(l.tag) saved").font(.semi(20)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
+            }
+            if hsize != .compact { Spacer() }
+            HStack(spacing: 12) {
             Button { open = store.patients.first { $0.lid == l.lid } ?? l } label: { Label("Fix", systemImage: "pencil") }.buttonStyle(.bordered).font(.heavy(18))
             Button(role: .destructive) { store.undo(store.patients.first { $0.lid == l.lid } ?? l); last = nil } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                 .buttonStyle(.borderedProminent).tint(Theme.red).font(.heavy(18))
+            }
         }
         .card(12)
         .transition(.opacity)
@@ -161,7 +166,12 @@ struct TriageView: View {
             Caption("Just triaged")
             let list = Array(store.patients.filter(\.counted).sorted { ($0.triageTime ?? .distantPast) > ($1.triageTime ?? .distantPast) }.prefix(14))
             if list.isEmpty { Text("Nobody yet.").font(.semi(17)).foregroundStyle(Theme.muted) }
-            ScrollView {
+            // iPad: this column scrolls by itself. iPhone: it sits in the screen's scroll (nested scrolls collapse on a phone)
+            if hsize == .regular { ScrollView { recentList(list) } } else { recentList(list) }
+        }
+    }
+
+    private func recentList(_ list: [Patient]) -> some View {
                 VStack(spacing: 8) {
                     ForEach(list) { p in
                         Button { open = p } label: {
@@ -176,8 +186,6 @@ struct TriageView: View {
                         }.buttonStyle(.plain)
                     }
                 }
-            }
-        }
     }
 
     // MARK: saving

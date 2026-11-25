@@ -131,7 +131,8 @@
     if (!off && !n) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('button'); el.id = 'netpill'; el.type = 'button'; el.onclick = panel; (document.body || document.documentElement).appendChild(el); }
     el.className = 'netpill ' + (bad ? 'bad' : off ? 'off' : 'busy');
-    el.innerHTML = '<span class="dot"></span>' + (off ? 'Offline' : sync.busy ? 'Sending…' : bad ? 'Needs attention' : 'Waiting to send') + (n ? ' · ' + n + (n === 1 ? ' change' : ' changes') : '') + (off && !n ? ' · saving on this device' : '');
+    // long text for wide screens, a short one for phones (the CSS shows one or the other)
+    el.innerHTML = '<span class="dot"></span><span class="npl">' + (off ? 'Offline' : sync.busy ? 'Sending…' : bad ? 'Needs attention' : 'Waiting to send') + (n ? ' · ' + n + (n === 1 ? ' change' : ' changes') : '') + (off && !n ? ' · saving on this device' : '') + '</span><span class="nps">' + (off ? 'Offline' : sync.busy ? 'Sending' : bad ? 'Check' : 'Waiting') + (n ? ' · ' + n : '') + '</span>';
   }
   function panel() {
     var box = jget(OB, []), pend = jget(PEND, {}), off = !net.ok || A.status === 'offline';

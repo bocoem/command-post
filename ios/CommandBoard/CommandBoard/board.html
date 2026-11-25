@@ -1122,6 +1122,7 @@ body.apps-open.apps-wide .appstab,body.apps-open.apps-wide .callstab{right:68vw}
 .owaqi.epa{border-radius:5px;width:30px}
 /* offline / outbox status (sync.js) */
 .netpill{position:fixed;left:14px;bottom:14px;z-index:1900;display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:1px solid var(--line2);background:#10243b;color:#fff;font:700 13.5px/1 Barlow,system-ui,sans-serif;box-shadow:var(--sh);cursor:pointer}
+.netpill .nps{display:none}
 .netpill .dot{width:9px;height:9px;border-radius:50%;background:var(--gold)}
 .netpill.off .dot{background:#9aa7b5}.netpill.off{background:#2a3442}
 .netpill.busy .dot{background:var(--gold);animation:np 1.2s infinite}.netpill.bad{border-color:var(--red2)}.netpill.bad .dot{background:var(--red2)}
@@ -1959,6 +1960,72 @@ html.cbapp .netpill{top:calc(18px + env(safe-area-inset-top));bottom:auto;left:a
   .cbreport{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .cbmayck{grid-template-columns:1fr!important}
 }
+
+/* ===== Nov 25 2026: iPhone layout pass =====
+   The app header now makes room for the status bar (it used to sit under the clock), and the phone incident views
+   take over the whole screen: no app header above them, the incident strip pinned flush to the top, nothing behind it. */
+.cbbody .cbfire.cbh2{height:calc(64px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}
+@media (max-width:560px){
+  .cbbody .cbfire.cbh2{height:calc(56px + env(safe-area-inset-top))}
+  .cbbody .cbbadge{width:64px}.cbbody .cbbadge .cbpatch{height:58px;margin-top:3px}
+  .cbbody .cbh2 .cblock .t{font-size:21px}
+}
+@media (max-height:500px){.cbbody .cbfire.cbh2{height:calc(48px + env(safe-area-inset-top))}}
+
+/* phone incident views: the strip is the header */
+body.cbphone .cbfire{display:none}
+body.cbphone .cbwrap{padding-top:env(safe-area-inset-top)}
+body.cbphone::after{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:#080f1c;z-index:65;pointer-events:none}
+body.cbphone .cbptop{position:sticky;top:env(safe-area-inset-top);margin:0 -12px 10px;padding:8px 12px 10px}
+.cbptl{display:flex;align-items:center;gap:10px;min-width:0}.cbptl .cbpwhere{flex:1;min-width:0}
+.cbphome{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--line2,rgba(255,255,255,.14));background:rgba(255,255,255,.05);color:#c9d6e6;touch-action:manipulation;cursor:pointer}
+.cbphome .ic,.cbphome .cbi{width:20px;height:20px}
+/* scrolled: one slim line, so the IC keeps the screen for the board */
+body.cbpslim .cbpwhere span{display:none}
+body.cbpslim .cbpwhere b{font-size:17px}
+body.cbpslim .cbptop{padding-top:6px;padding-bottom:6px}
+body.cbpslim .cbphome{width:36px;height:36px}
+body.cbpslim .cbprow{margin-top:6px}body.cbpslim .cbprow>*{min-height:42px}
+body.cbpslim .cbprow b{font-size:18px}body.cbpslim .cbprow .cbpar span{font-size:9.5px}
+/* view-only phone: tabs pinned under the status bar, home button first */
+body.cbphone .cbphtabs{top:calc(env(safe-area-inset-top) + 4px)}
+.cbphtabs.hh{grid-template-columns:44px repeat(3,1fr)}
+.cbphtabs .cbphome{width:44px;height:44px;border:0;background:transparent}
+/* the map's "tap the map" banner sits with the map, not floating over the page */
+.cbpplace{position:static}
+/* network pill: small, top-right inside the strip, never over a sheet */
+body.cbphone .netpill,html.cbapp body.cbphone .netpill{top:calc(env(safe-area-inset-top) + 6px);bottom:auto;right:8px;left:auto;padding:3px 8px;font-size:11px;gap:5px;max-width:96px;z-index:70}
+@media (max-width:560px){
+  .netpill .npl{display:none}.netpill .nps{display:inline}
+  /* start screen: bottom right, clear of the header and the floating tabs */
+  body.cbbody:not(.cbphone) .netpill,html.cbapp body.cbbody:not(.cbphone) .netpill{top:auto;bottom:calc(16px + env(safe-area-inset-bottom));right:10px;left:auto;padding:5px 9px;font-size:11.5px;max-width:110px}
+}
+body.cbphone .netpill .npl{display:none}body.cbphone .netpill .nps{display:inline}
+body.cbpcmd:has(#netpill) .cbpwhere{padding-right:84px}
+body:has(#modal) .netpill{display:none}
+/* toasts: full width just above the tab bar */
+@media (max-width:560px){
+  body.cbbody .toasts{left:10px;right:10px;bottom:calc(16px + env(safe-area-inset-bottom));align-items:stretch}
+  body.cbpcmd .toasts{bottom:calc(80px + env(safe-area-inset-bottom))}
+}
+/* phone sheets: full screen, clear of the status bar and the home indicator */
+@media (max-width:640px){
+  .cbbody .modal{border-radius:0;border:0}
+  .cbbody .modal .mh{border-radius:0;padding-top:calc(12px + env(safe-area-inset-top));position:sticky;top:0;z-index:2}
+  .cbbody .modal .mf{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+}
+@media (max-height:500px){
+  body.cbphone .cbptop{position:static}
+}
+/* view-only phone: the incident card stacks; the network pill goes bottom right (the tabs fill the top) */
+.cbph .cbphaddr{display:block;padding:10px 12px}
+.cbph .cbphaddr b{display:block;font:800 22px/1.15 var(--cond)}.cbph .cbphaddr span{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+body.cbphone:not(.cbpcmd) .netpill,html.cbapp body.cbphone:not(.cbpcmd) .netpill{top:auto;bottom:calc(16px + env(safe-area-inset-bottom));right:10px;padding:5px 9px;font-size:11.5px}
+@media (max-width:400px){.cbphtabs button{font-size:12.5px;letter-spacing:.5px;gap:4px}.cbphtabs button .ic,.cbphtabs button .cbi{width:16px;height:16px}}
+@media (max-width:350px){.cbphtabs button span{display:none}}
+.cbpwait b{white-space:nowrap}
+/* iPad app: the sync pill takes the clock's spot instead of sitting on top of it */
+@media (min-width:561px){html.cbapp body:not(.cbphone):has(#netpill) .cbhclock{visibility:hidden}}
 </style>
 </head>
 <body class="cbbody">
@@ -6136,7 +6203,8 @@ window.CP = window.CP || {};
     if (!off && !n) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('button'); el.id = 'netpill'; el.type = 'button'; el.onclick = panel; (document.body || document.documentElement).appendChild(el); }
     el.className = 'netpill ' + (bad ? 'bad' : off ? 'off' : 'busy');
-    el.innerHTML = '<span class="dot"></span>' + (off ? 'Offline' : sync.busy ? 'Sending…' : bad ? 'Needs attention' : 'Waiting to send') + (n ? ' · ' + n + (n === 1 ? ' change' : ' changes') : '') + (off && !n ? ' · saving on this device' : '');
+    // long text for wide screens, a short one for phones (the CSS shows one or the other)
+    el.innerHTML = '<span class="dot"></span><span class="npl">' + (off ? 'Offline' : sync.busy ? 'Sending…' : bad ? 'Needs attention' : 'Waiting to send') + (n ? ' · ' + n + (n === 1 ? ' change' : ' changes') : '') + (off && !n ? ' · saving on this device' : '') + '</span><span class="nps">' + (off ? 'Offline' : sync.busy ? 'Sending' : bad ? 'Check' : 'Waiting') + (n ? ' · ' + n : '') + '</span>';
   }
   function panel() {
     var box = jget(OB, []), pend = jget(PEND, {}), off = !net.ok || A.status === 'offline';
@@ -6882,7 +6950,8 @@ window.CP = window.CP || {};
 
   // ---------- phone view (read-only, live) ----------
   // phone: Board (list) · Map · Whiteboard, all view-only; the iPad runs the incident
-  function phoneTabs() { return '<div class="cbphtabs">' + [['list', 'truck', 'Board'], ['map', 'map', 'Map'], ['wb', 'pen', 'Whiteboard']].map(function (t) { return '<button class="' + ((CB.ptab || 'list') === t[0] ? 'on' : '') + '" data-cb="ptab" data-a="' + t[0] + '">' + (t[1] === 'pen' ? svg('pen') : I(t[1])) + '<span>' + t[2] + '</span></button>'; }).join('') + '</div>'; }
+  function homeBtn() { return app() && CP.gate.incident ? '' : '<button class="cbphome" data-cb="home" aria-label="All incidents" title="All incidents">' + I('home') + '</button>'; }
+  function phoneTabs() { return '<div class="cbphtabs' + (homeBtn() ? ' hh' : '') + '">' + homeBtn() + [['list', 'truck', 'Board'], ['map', 'map', 'Map'], ['wb', 'pen', 'Whiteboard']].map(function (t) { return '<button class="' + ((CB.ptab || 'list') === t[0] ? 'on' : '') + '" data-cb="ptab" data-a="' + t[0] + '">' + (t[1] === 'pen' ? svg('pen') : I(t[1])) + '<span>' + t[2] + '</span></button>'; }).join('') + '</div>'; }
   function phoneMapView() {
     var used = {}; syms().forEach(function (o) { used[o.k] = 1; });
     var leg = Object.keys(used).map(function (k) { var d = symDef(k); return '<span class="cbleg">' + symI(d) + E(d.n) + '</span>'; }).join('');
@@ -6895,9 +6964,9 @@ window.CP = window.CP || {};
     if (CB.ptab === 'map') return phoneMapView();
     if (CB.ptab === 'wb') return phoneWbView();
     var i = inc(), may = kv('mayday', null), parEvery = +kv('parEvery', 20), parDue = new Date(kv('parT', i.start)).getTime() + parEvery * 60000, left = Math.round((parDue - Date.now()) / 1000);
-    var h = '<div class="cbph">' + phoneTabs() + myUnitCard() + '<div class="cbaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + E(kv('mode', '')) + ' · ' + E(kv('cond', '')) + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
+    var h = '<div class="cbph">' + phoneTabs() + myUnitCard() + '<div class="cbaddr cbphaddr"><b>' + E(i.location.desc || i.name) + '</b><span>' + [kv('cmdName', ''), kv('mode', ''), kv('cond', ''), i.exercise ? 'PRACTICE' : ''].filter(Boolean).map(E).join(' · ') + '</span></div>' +
       '<div class="cbphrow"><div><span>Elapsed</span><b id="cbEl">' + since(i.start) + '</b></div><div class="' + (left <= 0 ? 'bad-t' : '') + '"><span>PAR</span><b id="cbPar">' + (left <= 0 ? 'DUE' : Math.floor(left / 60) + ':' + CP.pad(left % 60)) + '</b></div><div><span>Units</span><b>' + units().length + '</b></div></div>' +
-      (may ? '<div class="cbmaybar">' + I('warn') + ' MAYDAY · ' + E(may.who || '') + ' · ' + E(may.where || '') + '</div>' : '') + mciPanel() +
+      (may ? '<div class="cbmaybar">' + I('warn') + ' ' + ['MAYDAY', may.who, may.where].filter(Boolean).map(E).join(' · ') + '</div>' : '') + mciPanel() +
       asgs().map(function (a) { var us = unitsIn(a.id); return '<div class="cbphasg"><b>' + E(aName(a)) + '</b>' + (a.reportTo ? ' <span class="dim">· ' + E(a.reportTo) + '</span>' : '') + '<div>' + (us.length ? us.map(function (r) { return '<span class="chip">' + E(r.name) + (r.note ? ' · ' + E(r.note) : '') + '</span>'; }).join(' ') : '<span class="dim">—</span>') + '</div></div>'; }).join('') +
       '<div class="cbphasg"><b>Not assigned</b><div>' + units().filter(function (r) { return !r.assign; }).map(function (r) { return '<span class="chip' + (r.status === 'En Route' ? ' blue' : '') + '">' + E(r.name) + (r.status === 'En Route' ? ' (resp.)' : '') + '</span>'; }).join(' ') + '</div></div>' +
       '<div class="cbh">Benchmarks</div>' + marks().map(function (m) { return '<div class="cbphm ' + (m.t ? 'ok-t' : 'dim') + '">' + I(m.t ? 'check' : 'clock') + E(m.label) + (m.t ? ' · ' + E(CP.fmtTime(m.t)) : '') + '</div>'; }).join('') +
@@ -6925,7 +6994,7 @@ window.CP = window.CP || {};
     CB.ro = false;
     var i = inc(), t = CB.ptab || 'list', may = kv('mayday', null), parEvery = +kv('parEvery', 20), parDue = new Date(kv('parT', i.start)).getTime() + parEvery * 60000, left = Math.round((parDue - Date.now()) / 1000);
     var h = '<div class="cbpc">';
-    h += '<div class="cbptop' + (may ? ' mayday' : '') + '"><div class="cbpwhere" data-cb="staff"><b>' + (kv('cmdName', '') ? E(kv('cmdName')) + ' · ' : '') + E(i.location.desc || i.name) + '</b><span>' + E(TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type) + (kv('mode', '') ? ' · ' + E(kv('mode')) : '') + (kv('cond', '') ? ' · ' + E(kv('cond')) : '') + (i.exercise ? ' · PRACTICE' : '') + '</span></div>' +
+    h += '<div class="cbptop' + (may ? ' mayday' : '') + '"><div class="cbptl">' + homeBtn() + '<div class="cbpwhere" data-cb="staff"><b>' + E(i.location.desc || i.name) + '</b><span>' + [kv('cmdName', ''), TEMPLATES[kv('tpl', 'other')] ? TEMPLATES[kv('tpl', 'other')].n : i.type, kv('mode', ''), kv('cond', ''), i.exercise ? 'PRACTICE' : ''].filter(Boolean).map(E).join(' · ') + '</span></div></div>' +
       '<div class="cbprow"><div class="cbpel"><span>Elapsed</span><b id="cbEl">' + since(i.start) + '</b></div><button class="cbpar' + (left <= 0 ? ' due' : left < 120 ? ' soon' : '') + '" data-cb="par"><span>PAR · ' + ppl(onScene()) + ' on scene</span><b id="cbPar">' + (left <= 0 ? 'DUE' : Math.floor(left / 60) + ':' + CP.pad(left % 60)) + '</b></button><button class="cbpmay" data-cb="mayday">' + I('warn') + '<span>' + (may ? 'ACTIVE' : 'MAYDAY') + '</span></button></div></div>';
     if (may) h += mayPanel();
     h += etBar();
@@ -7072,13 +7141,13 @@ window.CP = window.CP || {};
     document.body.classList.remove('cbfit');
     if (!A.signedIn() && !inc() && !CB.localOk) { m.innerHTML = '<div class="cbstart"><div class="cbhero2 solo"><div class="ht"><p>Sign in with your county ArcGIS account so the board is shared live with Command Post, the EOC and phones on scene. You can also start offline; it shares once you sign in.</p><button class="btn big pri" data-cb="signin">' + I('cloud') + 'Sign in with ArcGIS</button> <button class="btn big" data-cb="local">Start without signing in</button></div></div></div>'; return; }
     if (!inc() && !CB.wx && navigator.onLine) loadWx();
-    if (!inc()) { document.body.classList.remove('cbphone'); var hv = CB.htab === 'map' ? homeMapView() : CB.htab === 'wb' ? homeWbView() : startScreen(); m.innerHTML = hv; document.body.classList.toggle('cbfit', CB.htab !== 'home'); var ts0 = document.getElementById('cbTabSlot'); if (ts0) ts0.innerHTML = homeTabs(); if (CB.htab === 'map') homeMapMount(); if (CB.htab === 'wb') wbMount(); return; }
+    if (!inc()) { document.body.classList.remove('cbphone', 'cbpcmd', 'cbpslim'); var hv = CB.htab === 'map' ? homeMapView() : CB.htab === 'wb' ? homeWbView() : startScreen(); m.innerHTML = hv; document.body.classList.toggle('cbfit', CB.htab !== 'home'); var ts0 = document.getElementById('cbTabSlot'); if (ts0) ts0.innerHTML = homeTabs(); if (CB.htab === 'map') homeMapMount(); if (CB.htab === 'wb') wbMount(); return; }
     var y = window.scrollY, qn = document.getElementById('cbQuick'), qv = qn ? qn.value : '', qf = qn && document.activeElement === qn;
     var force = new URLSearchParams(location.search).get('view');
     CB.ro = false;
     m.innerHTML = inc().status === 'Closed' ? closedScreen() : (force === '0' && !(app() && !CP.gate.can('Command')) ? false : phone()) ? phoneView() : board();
     document.body.classList.toggle('cbfit', !!m.querySelector('.cbx'));
-    document.body.classList.toggle('cbphone', !!m.querySelector('.cbpc'));
+    document.body.classList.toggle('cbphone', !!m.querySelector('.cbpc,.cbph')); document.body.classList.toggle('cbpcmd', !!m.querySelector('.cbpc'));
     var ts = document.getElementById('cbTabSlot'); if (ts) ts.innerHTML = m.querySelector('.cbx') ? tabs() : '';
     if (m.querySelector('.cbx') && (!CB.wx || (incLL() && CB.wx.key !== incLL()[0].toFixed(2) + ',' + incLL()[1].toFixed(2)))) loadWx();
     if (m.querySelector('#cbMapHost')) mapMount(); if (m.querySelector('#cbWbHost')) wbMount();
@@ -8452,6 +8521,7 @@ window.CP = window.CP || {};
   document.addEventListener('change', function (e) { var el = e.target.closest('[data-cbchg="call"]'); if (!el) return; CB.addr = (document.getElementById('cbAddr') || {}).value || CB.addr; CB.call = CALLS.find(function (c) { return c[0] === el.value; }) || null; if (CB.call) CB.tpl = CB.call[2]; render(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey && e.target && e.target.id === 'cbQuick') { e.preventDefault(); act.notesave(); } });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && CB.sel && !document.getElementById('modal')) { CB.sel = null; render(); } });
+  window.addEventListener('scroll', function () { var b = document.body, y = window.scrollY; if (!b.classList.contains('cbpcmd')) { b.classList.remove('cbpslim'); return; } if (y > 60) b.classList.add('cbpslim'); else if (y < 6) b.classList.remove('cbpslim'); }, { passive: true });
   window.addEventListener('resize', function () { clearTimeout(CB._rz); CB._rz = setTimeout(render, 200); });
   window.addEventListener('cp-incident-synced', function (ev) { if (inc() && inc().id === ev.detail) { var s = CP.store.get(ev.detail); if (s) { CB.inc = CP.merge(inc(), s); render(); } } });
   window.addEventListener('cp-reconnected', function () { if (inc()) push(); });

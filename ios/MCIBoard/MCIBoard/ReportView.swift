@@ -5,6 +5,7 @@ import UIKit
 /// (AirDrop, Files, print). The file is removed from the iPad when the share sheet closes.
 struct ReportView: View {
     @EnvironmentObject var store: MCIStore
+    @Environment(\.horizontalSizeClass) private var hsize
     @State private var file: URL?
     @State private var includeNames = true
 
@@ -15,19 +16,20 @@ struct ReportView: View {
             Backdrop()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top) {
+                    // iPhone: title, then the switch and the button on their own line
+                    (hsize == .compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .top))) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("MCI patient tracking").font(.heavy(30)).foregroundStyle(.white)
+                            Text("MCI patient tracking").font(.heavy(hsize == .compact ? 24 : 30)).foregroundStyle(.white)
                             Text("\(s.total) patients · Level \(s.level) · \(s.transported) transported").font(.semi(19)).foregroundStyle(Theme.muted)
                         }
-                        Spacer()
+                        if hsize != .compact { Spacer() }
                         Toggle("Include names", isOn: $includeNames).fixedSize().font(.semi(17))
                         Button { file = Report.pdf(store: store, names: includeNames) } label: { Label("Share PDF", systemImage: "square.and.arrow.up") }
                             .buttonStyle(.borderedProminent).tint(Theme.gold).foregroundStyle(.black).font(.heavy(18))
                     }
                     Label("RESTRICTED: protected health information. Share only with people who need it for patient care, family notification or the incident record.", systemImage: "lock.fill")
                         .font(.callout).foregroundStyle(Theme.gold)
-                    Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+                    ScrollView(.horizontal, showsIndicators: hsize == .compact) { Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
                         GridRow {
                             ForEach(["Tag", "Triage", "Patient", "Status", "Transport", "Triaged"], id: \.self) { Text($0.uppercased()).font(.semi(13)).tracking(1).foregroundStyle(Theme.muted) }
                         }
@@ -42,8 +44,8 @@ struct ReportView: View {
                                 Text(p.triageTime?.hm ?? "")
                             }.font(.semi(17)).foregroundStyle(.white)
                         }
-                    }.card()
-                }.padding(18)
+                    } }.card()
+                }.padding(hsize == .compact ? 12 : 18)
             }
         }
         .sheet(item: Binding(get: { file.map { ShareFile(url: $0) } }, set: { if $0 == nil { cleanup() } })) { f in

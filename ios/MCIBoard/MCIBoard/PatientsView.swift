@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PatientsView: View {
     @EnvironmentObject var store: MCIStore
+    @Environment(\.horizontalSizeClass) private var hsize
     @State private var q = ""
     @State private var filter = "On scene"
     @State private var colors: Set<Triage> = []
@@ -29,7 +30,7 @@ struct PatientsView: View {
                         }.padding(.bottom, 20)
                     }
                 }
-            }.padding(.horizontal, 18).padding(.top, 14)
+            }.padding(.horizontal, hsize == .compact ? 12 : 18).padding(.top, hsize == .compact ? 10 : 14)
         }
         .sheet(item: $open) { p in PatientSheet(patient: p) }
         .sheet(item: $moving) { p in TransportSheet(patient: p) }
@@ -37,7 +38,8 @@ struct PatientsView: View {
 
     private var controls: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
+            // iPhone: search on its own line, the filter under it
+            (hsize == .compact ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))) {
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
                     TextField(store.level.names ? "Tag, name, injury, unit, hospital" : "Tag, injury, unit, hospital", text: $q)
@@ -46,9 +48,9 @@ struct PatientsView: View {
                 }.field()
                 Picker("", selection: $filter) {
                     ForEach(["On scene", "All", "Transported"], id: \.self) { Text($0) }
-                }.pickerStyle(.segmented).frame(maxWidth: 380)
+                }.pickerStyle(.segmented).frame(maxWidth: hsize == .compact ? CGFloat.infinity : 380)
             }
-            HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) {
                 ForEach(Triage.allCases) { t in
                     let on = colors.contains(t), n = store.patients.filter { $0.counted && $0.triage == t && matchesFilter($0) }.count
                     Button { if on { colors.remove(t) } else { colors.insert(t) }; Haptic.tap() } label: {
@@ -60,7 +62,7 @@ struct PatientsView: View {
                     }.buttonStyle(.plain)
                 }
                 Spacer()
-            }
+            } }
         }
     }
 
@@ -109,8 +111,46 @@ struct PatientRow: View {
     let names: Bool
     var onTransport: () -> Void
     var onArrived: () -> Void
+    @Environment(\.horizontalSizeClass) private var hsize
 
     var body: some View {
+        Group { if hsize == .compact { compact } else { wide } }
+        .background(Theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.border))
+        .contentShape(Rectangle())
+    }
+
+    /// iPhone: tag and status on top, who in the middle, where they are going and the button underneath
+    private var compact: some View {
+        HStack(spacing: 0) {
+            Rectangle().fill(p.triage?.color ?? Theme.muted).frame(width: 8)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    TriageChip(t: p.triage)
+                    Text(p.tag).font(.system(size: 22, weight: .heavy, design: .monospaced)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
+                    Spacer(minLength: 4)
+                    if pending { Image(systemName: "arrow.up.circle").foregroundStyle(Theme.gold) }
+                    StatusChip(s: p.status, raw: p.statusRaw)
+                }
+                if names, let n = p.name { Text(n).font(.heavy(19)).foregroundStyle(.white).lineLimit(1) }
+                Text(p.who.isEmpty ? "No details yet" : p.who).font(.semi(16)).foregroundStyle(names && p.name != nil ? Theme.muted : .white).lineLimit(2)
+                if let i = p.injuries { Text(i).font(.callout).foregroundStyle(Theme.muted).lineLimit(1) }
+                HStack(spacing: 8) {
+                    if let h = p.hospital {
+                        Text([p.unit, "→ " + h].compactMap { $0 }.joined(separator: " ")).font(.semi(15)).foregroundStyle(Theme.blue).lineLimit(1)
+                    } else if let t = p.triageTime {
+                        Text("On scene \(t.ago)").font(.semi(15)).foregroundStyle(waitColor(t))
+                    }
+                    Spacer(minLength: 4)
+                    action
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+        }
+    }
+
+    private var wide: some View {
         HStack(spacing: 0) {
             Rectangle().fill(p.triage?.color ?? Theme.muted).frame(width: 10)
             HStack(alignment: .center, spacing: 14) {
@@ -139,10 +179,6 @@ struct PatientRow: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
         }
-        .background(Theme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.border))
-        .contentShape(Rectangle())
     }
 
     @ViewBuilder private var action: some View {

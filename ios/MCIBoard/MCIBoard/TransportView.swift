@@ -47,7 +47,10 @@ struct TransportView: View {
                 Text("\(list.count)").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.white)
             }
             if list.isEmpty { Text(empty).font(.semi(18)).foregroundStyle(Theme.muted).padding(.vertical, 8) }
-            ScrollView { LazyVStack(spacing: 10) { ForEach(list) { p in row(p) } } }
+            // iPad: each column scrolls on its own. iPhone: the whole screen is one scroll (a scroll view inside a
+            // scroll view collapses to nothing on a phone, which hid the lists)
+            if hsize == .regular { ScrollView { LazyVStack(spacing: 10) { ForEach(list) { p in row(p) } } } }
+            else { LazyVStack(spacing: 10) { ForEach(list) { p in row(p) } } }
         }
     }
 
