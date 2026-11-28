@@ -1,0 +1,10 @@
+.git
+.github
+.wrangler
+node_modules
+ios
+gate
+wrangler.toml
+site-worker.js
+*.mjs
+README.md

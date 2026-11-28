@@ -1,0 +1,19 @@
+# Cloudflare copy of the BEACON web apps (Worker "beacon-web", static assets).
+# Connected to this repo in Cloudflare (Workers Builds): every push to main redeploys it.
+# Plain files are served as-is and are free; site-worker.js only runs for "/" (sends index.html).
+# The gate has its own settings in gate/wrangler.toml and is still deployed separately.
+name = "beacon-web"
+main = "site-worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[assets]
+directory = "."
+binding = "ASSETS"
+# Serve files exactly as named (commandboard.html stays commandboard.html, no redirects),
+# so the pages, the service worker and the ArcGIS sign-in return address behave as on GitHub Pages.
+html_handling = "none"
+not_found_handling = "none"
+
+[observability]
+enabled = true
