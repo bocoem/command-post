@@ -776,7 +776,7 @@
     L1.push('', 'BENCHMARKS'); marks().forEach(function (m) { L1.push((m.t ? CP.fmtTime(m.t) : '----') + '  ' + m.label); });
     L1.push('', 'ASSIGNMENTS'); asgs().forEach(function (a) { var us = AL(i.resources).filter(function (r) { return r.assign === a.id; }); if (us.length) L1.push(aName(a) + ': ' + us.map(function (r) { return r.name; }).join(', ')); });
     L1.push('', 'TIMELINE (latest)'); AL(i.log).slice(-25).forEach(function (l) { L1.push(CP.fmtTime(l.ts) + '  ' + l.text); });
-    L1.push('', 'Full record: ' + (app() ? 'https://bocoem.github.io/command-post/' : location.origin + location.pathname.replace(/[^\/]*$/, '')) + 'index.html?incident=' + encodeURIComponent(i.id));
+    L1.push('', 'Full record: ' + (app() ? 'https://beacon-web.dmurray-5fa.workers.dev/' : location.origin + location.pathname.replace(/[^\/]*$/, '')) + 'index.html?incident=' + encodeURIComponent(i.id));
     return L1.join('\n');
   }
   function sendBtns(html, fname) {

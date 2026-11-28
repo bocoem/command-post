@@ -6,9 +6,9 @@ One record per incident fills every ICS form (201, 202, 203, 204, 205, 205A, 206
 
 The **Affected Area** page replaces the old EM Information Manager impact tools: pick or draw an area, count the homes and buildings in it, list what's inside, get Esri population numbers, and run Business Analyst infographics (PDF, Excel or interactive) for it.
 
-Live app: https://bocoem.github.io/command-post/
+Live app: https://beacon-web.dmurray-5fa.workers.dev/ (Cloudflare Worker `beacon-web`, since Nov 28, 2026). The old GitHub Pages copy at https://bocoem.github.io/command-post/ still works during the switch.
 
-- Plain HTML/JS, no build step. Hosted on GitHub Pages.
+- Plain HTML/JS, no build step. Hosted on Cloudflare (Worker `beacon-web`, static files; `wrangler.toml`, `site-worker.js`, `.assetsignore`). Every push to main redeploys it through Cloudflare Workers Builds.
 - Sign-in uses ArcGIS Online OAuth 2.0 (PKCE). The client ID in `config.js` is public by design; no secrets are stored here.
 - County data lives in ArcGIS Online, not in this repository.
 

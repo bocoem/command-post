@@ -10,7 +10,7 @@
   var HB = OPS.hubs = {};
   var DIR_ID = 'a15306f28560414bbbb4f48c93b9f4f6', SITE_ID = '4a92157ef20543ffb1904ffa7591c227';
   var PUB_VIEW = 'BOCO_Hotline_Public_Answers';
-  var BASE = 'https://bocoem.github.io/command-post/';
+  var BASE = 'https://beacon-web.dmurray-5fa.workers.dev/';
   function P(path) { return A.portal + '/sharing/rest' + path; }
   function brand() { return CP.BRAND || 'Command Post'; }
   function S(tag) { return '<span id="cpS-' + tag + '"></span>'; } function En(tag) { return '<span id="cpE-' + tag + '"></span>'; }
